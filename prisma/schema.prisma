@@ -1,0 +1,233 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+// ==========================================
+// 1. BETTER AUTH MODELS
+// ==========================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  
+  // Custom roles and relationships for UEP Proyect (Module 1)
+  role          String    @default("OPERATOR") // ADMIN, HOSPITAL_USER, OPERATOR
+  hospitalId    String?   // Links to their hospital if role is HOSPITAL_USER
+  hospital      Hospital? @relation(fields: [hospitalId], references: [id])
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+}
+
+// ==========================================
+// 2. SYSTEM / CONFIG / PORTAL MODELS
+// ==========================================
+
+model Hospital {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String   @unique // Code to match with ERP provider/purchases code (e.g. "HOSP_VIDAL")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+  agents    Agent[]
+  purchases Compra[]
+}
+
+model Period {
+  id           String        @id @default(cuid())
+  name         String        @unique // e.g., "Junio 2026"
+  startDate    DateTime
+  endDate      DateTime
+  status       String        @default("OPEN") // OPEN, CLOSED
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  liquidations Liquidation[]
+}
+
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==========================================
+// 3. ERP / IMPORT SIMULATED TABLES
+// ==========================================
+
+model Cliente {
+  id        String   @id @default(cuid())
+  nombre    String
+  cuit      String   @unique
+  cbtes     Cbte[]
+}
+
+model Proveedor {
+  id        String   @id @default(cuid())
+  nombre    String
+  cuit      String   @unique
+  code      String   @unique // Matches Hospital code
+}
+
+model Cbte {
+  id             String        @id @default(cuid())
+  type           String        // "FC" (Factura de Venta), "RC" (Recibo de Cobranza)
+  puntoVenta     String
+  numero         String
+  fecha          DateTime
+  importe        Decimal       @db.Decimal(15, 2)
+  clienteId      String        // Customer (Obra Social)
+  cliente        Cliente       @relation(fields: [clienteId], references: [id])
+  hospitalCode   String?       // Hospital code associated (for sales invoices)
+  
+  // Relations for applied logic
+  appliedAsRc    CbteAplica[]  @relation("rcRelation")
+  appliedAsFc    CbteAplica[]  @relation("fcRelation")
+  
+  // If this is an RC, it serves as the root of a liquidation
+  liquidations   Liquidation[]
+}
+
+model CbteAplica {
+  id             String   @id @default(cuid())
+  rcId           String
+  rc             Cbte     @relation("rcRelation", fields: [rcId], references: [id])
+  fcId           String
+  fc             Cbte     @relation("fcRelation", fields: [fcId], references: [id])
+  importe        Decimal  @db.Decimal(15, 2) // Amount of this FC paid/applied by this RC
+}
+
+model Compra {
+  id             String      @id @default(cuid())
+  numero         String
+  fecha          DateTime
+  importe        Decimal     @db.Decimal(15, 2)
+  hospitalId     String
+  hospital       Hospital    @relation(fields: [hospitalId], references: [id])
+  fcVentaId      String?     // Associated Sales Invoice (from CBTES)
+}
+
+// ==========================================
+// 4. LIQUIDATION & DISTRIBUTION MODELS
+// ==========================================
+
+model Agent {
+  id              String         @id @default(cuid())
+  dni             String         @unique
+  cuil            String         @unique
+  nombre          String
+  cargo           String
+  establecimiento String
+  hospitalId      String
+  hospital        Hospital       @relation(fields: [hospitalId], references: [id])
+  distributions   Distribution[]
+}
+
+model Liquidation {
+  id             String              @id @default(cuid())
+  periodId       String
+  period         Period              @relation(fields: [periodId], references: [id])
+  rcId           String
+  rc             Cbte                @relation(fields: [rcId], references: [id])
+  
+  totalFacturado Decimal             @db.Decimal(15, 2)
+  netoInicial    Decimal             @db.Decimal(15, 2)
+  
+  // Operator adjustments (Module 3)
+  creditos       Decimal             @default(0) @db.Decimal(15, 2)
+  debitos        Decimal             @default(0) @db.Decimal(15, 2)
+  ajustes        Decimal             @default(0) @db.Decimal(15, 2)
+  recuperos      Decimal             @default(0) @db.Decimal(15, 2)
+  pendientes     Decimal             @default(0) @db.Decimal(15, 2)
+  
+  status         String              @default("PENDIENTE") // PENDIENTE, EN_PROCESO, CONSOLIDADA, CERRADA
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  
+  details        LiquidationDetail[]
+  distributions  Distribution[]
+  attachments    Attachment[]
+}
+
+model LiquidationDetail {
+  id            String      @id @default(cuid())
+  liquidationId String
+  liquidation   Liquidation @relation(fields: [liquidationId], references: [id], onDelete: Cascade)
+  fcVentaId     String
+  amount        Decimal     @db.Decimal(15, 2)
+}
+
+model Distribution {
+  id               String      @id @default(cuid())
+  liquidationId    String
+  liquidation      Liquidation @relation(fields: [liquidationId], references: [id], onDelete: Cascade)
+  agentId          String
+  agent            Agent       @relation(fields: [agentId], references: [id])
+  
+  honorarios       Decimal     @default(0) @db.Decimal(15, 2)
+  sobreasignaciones Decimal    @default(0) @db.Decimal(15, 2)
+  gastos           Decimal     @default(0) @db.Decimal(15, 2)
+  
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}
+
+model Attachment {
+  id            String      @id @default(cuid())
+  liquidationId String
+  liquidation   Liquidation @relation(fields: [liquidationId], references: [id], onDelete: Cascade)
+  fileName      String
+  fileUrl       String
+  createdAt     DateTime    @default(now())
+}

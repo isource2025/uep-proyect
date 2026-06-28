@@ -44,15 +44,15 @@ export function DashboardSidebar() {
   ];
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950 text-zinc-300">
+    <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-card text-muted-foreground">
       {/* Brand Header */}
-      <div className="flex h-16 items-center gap-2 border-b border-zinc-800 px-6 bg-zinc-950">
+      <div className="flex h-16 items-center gap-2 border-b border-border px-6 bg-card">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-zinc-950 font-bold">
           U
         </div>
         <div className="flex flex-col">
-          <span className="text-sm font-bold tracking-wider text-white">UEP PORTAL</span>
-          <span className="text-[10px] text-zinc-500 font-medium">LIQUIDACIONES ERP</span>
+          <span className="text-sm font-bold tracking-wider text-foreground">UEP PORTAL</span>
+          <span className="text-[10px] text-muted-foreground font-medium">LIQUIDACIONES ERP</span>
         </div>
       </div>
 
@@ -69,14 +69,14 @@ export function DashboardSidebar() {
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 group relative",
                 isActive
-                  ? "bg-emerald-500/10 text-emerald-400 border-l-2 border-emerald-500 rounded-l-none pl-2.5"
-                  : "hover:bg-zinc-900/50 hover:text-white"
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-l-2 border-emerald-500 rounded-l-none pl-2.5"
+                  : "hover:bg-muted/80 hover:text-foreground"
               )}
             >
               <Icon
                 className={cn(
                   "h-4 w-4 transition-colors",
-                  isActive ? "text-emerald-400" : "text-zinc-500 group-hover:text-zinc-300"
+                  isActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground group-hover:text-foreground"
                 )}
               />
               <span>{item.name}</span>
@@ -86,12 +86,12 @@ export function DashboardSidebar() {
       </nav>
 
       {/* Footer System Status */}
-      <div className="border-t border-zinc-800/60 p-4 bg-zinc-950">
-        <div className="flex items-center gap-2 rounded-lg bg-zinc-900/40 p-3 border border-zinc-800/40">
+      <div className="border-t border-border p-4 bg-card">
+        <div className="flex items-center gap-2 rounded-lg bg-muted/40 p-3 border border-border">
           <ShieldAlert className="h-4 w-4 text-emerald-500 shrink-0" />
           <div className="flex flex-col text-[10px]">
-            <span className="font-semibold text-zinc-300">Conectado a MariaDB</span>
-            <span className="text-zinc-500 mt-0.5">uep-proyect @ localhost</span>
+            <span className="font-semibold text-foreground">Conectado a MariaDB</span>
+            <span className="text-muted-foreground mt-0.5">uep-proyect @ localhost</span>
           </div>
         </div>
       </div>

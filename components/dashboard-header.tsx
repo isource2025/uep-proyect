@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "./theme-toggle";
 import { User as UserIcon, LogOut, Shield, ChevronDown, Calendar } from "lucide-react";
 
 interface DashboardHeaderProps {
@@ -35,23 +36,25 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-900/40 px-6 backdrop-blur-md">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-card/60 px-6 backdrop-blur-md">
       {/* Current Active Period Widget */}
-      <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-xs text-emerald-400 font-medium">
+      <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/25 px-3 py-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
         <Calendar className="h-3.5 w-3.5" />
-        <span>Período Activo: <strong className="text-white">Junio 2026</strong></span>
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        <span>Período Activo: <strong className="text-foreground">Junio 2026</strong></span>
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
       </div>
 
       {/* User Actions */}
       <div className="flex items-center gap-4">
+        <ThemeToggle />
+        
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="flex items-center gap-2 hover:bg-zinc-800 text-zinc-300 hover:text-white px-3 py-1.5 rounded-lg text-sm transition-all border border-zinc-800 bg-zinc-950/20"
+              className="flex items-center gap-2 hover:bg-accent text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-lg text-sm transition-all border border-border bg-card cursor-pointer"
             >
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600/10 text-emerald-400 border border-emerald-500/20">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                 {user.role === "ADMIN" ? (
                   <Shield className="h-3.5 w-3.5" />
                 ) : (
@@ -59,24 +62,24 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                 )}
               </div>
               <div className="hidden text-left md:block">
-                <p className="text-xs font-semibold leading-none text-white">{user.name}</p>
-                <p className="text-[10px] text-zinc-400 leading-tight mt-0.5">{user.role}</p>
+                <p className="text-xs font-semibold leading-none text-foreground">{user.name}</p>
+                <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{user.role}</p>
               </div>
               <ChevronDown className="h-3 w-3 text-zinc-500" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56 border-zinc-800 bg-zinc-900 text-zinc-300">
-            <DropdownMenuLabel className="text-zinc-400 text-xs font-medium px-3 py-2">
+          <DropdownMenuContent className="w-56 border-border bg-card text-card-foreground">
+            <DropdownMenuLabel className="text-muted-foreground text-xs font-medium px-3 py-2">
               Mi Cuenta
             </DropdownMenuLabel>
             <div className="px-3 py-1.5">
-              <p className="text-xs font-medium text-white">{user.name}</p>
-              <p className="text-[10px] text-zinc-500 truncate mt-0.5">{user.email}</p>
+              <p className="text-xs font-medium text-foreground">{user.name}</p>
+              <p className="text-[10px] text-muted-foreground truncate mt-0.5">{user.email}</p>
             </div>
-            <DropdownMenuSeparator className="bg-zinc-800" />
+            <DropdownMenuSeparator className="bg-border" />
             <DropdownMenuItem
               onClick={handleLogout}
-              className="flex items-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-300 cursor-pointer"
+              className="flex items-center gap-2 text-red-500 hover:text-red-400 hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-400 cursor-pointer text-xs"
             >
               <LogOut className="h-4 w-4" />
               <span>Cerrar Sesión</span>

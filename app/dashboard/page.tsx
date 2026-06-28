@@ -44,48 +44,48 @@ export default async function DashboardPage() {
       value: hospitalCount,
       description: "Hospitales y CAPS activos en el sistema",
       icon: Building2,
-      color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+      color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
     },
     {
       title: "Agentes Médicos (SISPER)",
       value: agentCount,
       description: "Profesionales de la salud registrados",
       icon: Users,
-      color: "text-teal-400 bg-teal-500/10 border-teal-500/20",
+      color: "text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/20",
     },
     {
       title: "Facturas de Venta (FC)",
       value: fcCount,
       description: `Monto total: ${formatCurrency(totalInvoiced._sum.importe)}`,
       icon: FileText,
-      color: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+      color: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20",
     },
     {
       title: "Recibos de Cobranza (RC)",
       value: rcCount,
       description: "Recibos de cobro de obras sociales",
       icon: Landmark,
-      color: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+      color: "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20",
     },
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-foreground">
       {/* Header */}
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Dashboard General</h1>
-          <p className="text-sm text-zinc-400">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard General</h1>
+          <p className="text-sm text-muted-foreground">
             Resumen estadístico y operaciones iniciales del período actual.
           </p>
         </div>
         
         {activePeriod && (
-          <div className="flex items-center gap-3 rounded-xl bg-zinc-900 border border-zinc-800 p-3 self-start md:self-auto">
-            <CalendarDays className="h-5 w-5 text-emerald-400" />
+          <div className="flex items-center gap-3 rounded-xl bg-card border border-border p-3 self-start md:self-auto">
+            <CalendarDays className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
             <div className="text-left text-xs">
-              <p className="font-semibold text-zinc-300">Período Activo: {activePeriod.name}</p>
-              <p className="text-zinc-500 mt-0.5">
+              <p className="font-semibold text-foreground">Período Activo: {activePeriod.name}</p>
+              <p className="text-muted-foreground mt-0.5">
                 {new Date(activePeriod.startDate).toLocaleDateString("es-AR")} - {new Date(activePeriod.endDate).toLocaleDateString("es-AR")}
               </p>
             </div>
@@ -98,9 +98,9 @@ export default async function DashboardPage() {
         {statCards.map((card) => {
           const Icon = card.icon;
           return (
-            <Card key={card.title} className="border-zinc-800/80 bg-zinc-900/40 backdrop-blur-sm text-zinc-100">
+            <Card key={card.title} className="border-border bg-card text-card-foreground">
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                <CardTitle className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   {card.title}
                 </CardTitle>
                 <div className={`rounded-lg p-2 border ${card.color}`}>
@@ -108,8 +108,8 @@ export default async function DashboardPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-white tracking-tight">{card.value}</div>
-                <p className="text-xs text-zinc-500 mt-1.5 leading-tight">{card.description}</p>
+                <div className="text-3xl font-bold text-foreground tracking-tight">{card.value}</div>
+                <p className="text-xs text-muted-foreground mt-1.5 leading-tight">{card.description}</p>
               </CardContent>
             </Card>
           );
@@ -119,26 +119,26 @@ export default async function DashboardPage() {
       {/* Main Grid split */}
       <div className="grid gap-6 md:grid-cols-7">
         {/* Recent Invoices / Receipts Table */}
-        <Card className="col-span-4 border-zinc-800/80 bg-zinc-900/40 backdrop-blur-sm text-zinc-100">
+        <Card className="col-span-4 border-border bg-card text-card-foreground">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-lg font-bold text-white">Comprobantes Recientes (ERP)</CardTitle>
-              <CardDescription className="text-zinc-400 text-xs mt-1">
+              <CardTitle className="text-lg font-bold text-foreground">Comprobantes Recientes (ERP)</CardTitle>
+              <CardDescription className="text-muted-foreground text-xs mt-1">
                 Últimos comprobantes de cobro (RC) y venta (FC) importados del ERP.
               </CardDescription>
             </div>
             <Link href="/dashboard/import">
-              <Button size="sm" variant="outline" className="border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white text-xs gap-1.5 h-8">
+              <Button size="sm" variant="outline" className="border-border text-foreground hover:bg-muted text-xs gap-1.5 h-8 cursor-pointer">
                 Importar Más
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </Button>
             </Link>
           </CardHeader>
           <CardContent>
-            <div className="rounded-lg border border-zinc-800 overflow-hidden">
+            <div className="rounded-lg border border-border overflow-hidden">
               <Table>
-                <TableHeader className="bg-zinc-950/40 text-zinc-400">
-                  <TableRow className="hover:bg-transparent border-zinc-800">
+                <TableHeader className="bg-muted/50 text-muted-foreground">
+                  <TableRow className="hover:bg-transparent border-border">
                     <TableHead className="font-semibold text-xs">Tipo</TableHead>
                     <TableHead className="font-semibold text-xs">Número</TableHead>
                     <TableHead className="font-semibold text-xs">Fecha</TableHead>
@@ -148,31 +148,31 @@ export default async function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {recentCbtes.length === 0 ? (
-                    <TableRow className="border-zinc-800">
-                      <TableCell colSpan={5} className="text-center text-zinc-500 text-sm py-8">
+                    <TableRow className="border-border">
+                      <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-8">
                         No hay comprobantes cargados.
                       </TableCell>
                     </TableRow>
                   ) : (
                     recentCbtes.map((cbte) => (
-                      <TableRow key={cbte.id} className="hover:bg-zinc-900/20 border-zinc-800 text-zinc-300">
+                      <TableRow key={cbte.id} className="hover:bg-muted/40 border-border text-foreground">
                         <TableCell>
                           <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-2xs font-semibold ${
                             cbte.type === "RC"
-                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                              : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25"
+                              : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25"
                           }`}>
                             {cbte.type}
                           </span>
                         </TableCell>
-                        <TableCell className="font-mono text-xs">{cbte.puntoVenta}-{cbte.numero}</TableCell>
-                        <TableCell className="text-xs">
+                        <TableCell className="font-mono text-xs text-foreground">{cbte.puntoVenta}-{cbte.numero}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
                           {new Date(cbte.fecha).toLocaleDateString("es-AR")}
                         </TableCell>
-                        <TableCell className="text-xs font-medium text-white truncate max-w-[120px]">
+                        <TableCell className="text-xs font-medium text-foreground truncate max-w-[120px]">
                           {cbte.cliente.nombre}
                         </TableCell>
-                        <TableCell className="text-right text-xs font-semibold text-white">
+                        <TableCell className="text-right text-xs font-semibold text-foreground">
                           {formatCurrency(cbte.importe)}
                         </TableCell>
                       </TableRow>
@@ -185,53 +185,53 @@ export default async function DashboardPage() {
         </Card>
 
         {/* Shortcuts and Quick Actions */}
-        <Card className="col-span-3 border-zinc-800/80 bg-zinc-900/40 backdrop-blur-sm text-zinc-100 flex flex-col">
+        <Card className="col-span-3 border-border bg-card text-card-foreground flex flex-col">
           <CardHeader>
-            <CardTitle className="text-lg font-bold text-white">Acciones Rápidas</CardTitle>
-            <CardDescription className="text-zinc-400 text-xs mt-1">
+            <CardTitle className="text-lg font-bold text-foreground">Acciones Rápidas</CardTitle>
+            <CardDescription className="text-muted-foreground text-xs mt-1">
               Atajos a operaciones principales de liquidación y control.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col justify-between space-y-4">
             <div className="grid gap-3">
               <Link href="/dashboard/import">
-                <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/20 p-3 hover:bg-zinc-800/40 cursor-pointer transition-all duration-200">
-                  <div className="rounded-lg bg-teal-500/10 border border-teal-500/20 p-2 text-teal-400">
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3 hover:bg-muted/60 cursor-pointer transition-all duration-200">
+                  <div className="rounded-lg bg-teal-500/10 border border-teal-500/20 p-2 text-teal-600 dark:text-teal-400">
                     <Users className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-white">Importar Archivo SISPER</h3>
-                    <p className="text-[10px] text-zinc-500 mt-0.5">Sube nómina médica e identifica personal</p>
+                    <h3 className="text-xs font-bold text-foreground">Importar Archivo SISPER</h3>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Sube nómina médica e identifica personal</p>
                   </div>
                 </div>
               </Link>
 
               <Link href="/dashboard/liquidations">
-                <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/20 p-3 hover:bg-zinc-800/40 cursor-pointer transition-all duration-200">
-                  <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2 text-emerald-400">
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3 hover:bg-muted/60 cursor-pointer transition-all duration-200">
+                  <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2 text-emerald-600 dark:text-emerald-400">
                     <DollarSign className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-white">Calcular Liquidación</h3>
-                    <p className="text-[10px] text-zinc-500 mt-0.5">Generar liquidaciones automáticas basadas en RCs</p>
+                    <h3 className="text-xs font-bold text-foreground">Calcular Liquidación</h3>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Generar liquidaciones automáticas basadas en RCs</p>
                   </div>
                 </div>
               </Link>
 
               <Link href="/dashboard/periods">
-                <div className="flex items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-950/20 p-3 hover:bg-zinc-800/40 cursor-pointer transition-all duration-200">
-                  <div className="rounded-lg bg-purple-500/10 border border-purple-500/20 p-2 text-purple-400">
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3 hover:bg-muted/60 cursor-pointer transition-all duration-200">
+                  <div className="rounded-lg bg-purple-500/10 border border-purple-500/20 p-2 text-purple-600 dark:text-purple-400">
                     <CalendarDays className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-white">Configurar Período</h3>
-                    <p className="text-[10px] text-zinc-500 mt-0.5">Abrir o cerrar períodos contables de facturación</p>
+                    <h3 className="text-xs font-bold text-foreground">Configurar Período</h3>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Abrir o cerrar períodos contables de facturación</p>
                   </div>
                 </div>
               </Link>
             </div>
             
-            <div className="text-[10px] text-zinc-500 text-center border-t border-zinc-800/50 pt-4 mt-auto leading-relaxed">
+            <div className="text-[10px] text-muted-foreground text-center border-t border-border pt-4 mt-auto leading-relaxed">
               Sistema de Liquidaciones - Unidad Ejecutora Provincial (UEP) &copy; 2026. Todos los derechos reservados.
             </div>
           </CardContent>

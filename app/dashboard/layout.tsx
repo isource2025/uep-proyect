@@ -18,7 +18,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-zinc-900 text-zinc-100 selection:bg-emerald-500 selection:text-zinc-950 font-sans">
+    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground selection:bg-emerald-500 selection:text-zinc-950 font-sans">
       <DashboardSidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <DashboardHeader
@@ -28,7 +28,7 @@ export default async function DashboardLayout({
             role: session.user.role || "OPERATOR",
           }}
         />
-        <main className="flex-1 overflow-y-auto bg-zinc-900/60 p-8">
+        <main className="flex-1 overflow-y-auto bg-background p-8">
           {children}
         </main>
       </div>

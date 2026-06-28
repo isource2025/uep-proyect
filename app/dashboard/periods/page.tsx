@@ -65,12 +65,12 @@ export default async function PeriodsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-foreground">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Configuración de Períodos</h1>
-          <p className="text-sm text-zinc-400">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Configuración de Períodos</h1>
+          <p className="text-sm text-muted-foreground">
             Apertura y cierre de períodos de liquidación médica e históricos de cierre.
           </p>
         </div>
@@ -78,21 +78,21 @@ export default async function PeriodsPage() {
         {/* Create Period Modal */}
         <Dialog>
           <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold gap-1.5 self-start md:self-auto h-10 transition-all">
+            <Button className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold gap-1.5 self-start md:self-auto h-10 transition-all cursor-pointer">
               <Plus className="h-4.5 w-4.5" />
               Nuevo Período
             </Button>
           </DialogTrigger>
-          <DialogContent className="border-zinc-800 bg-zinc-900 text-zinc-100 max-w-md">
+          <DialogContent className="border-border bg-card text-card-foreground max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-white">Abrir Nuevo Período</DialogTitle>
-              <DialogDescription className="text-zinc-400 text-xs">
+              <DialogTitle className="text-foreground font-bold">Abrir Nuevo Período</DialogTitle>
+              <DialogDescription className="text-muted-foreground text-xs">
                 Define el intervalo de fechas para un nuevo mes de liquidación de honorarios.
               </DialogDescription>
             </DialogHeader>
             <form action={handleCreatePeriod} className="space-y-4 py-2">
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-zinc-300">
+                <Label htmlFor="name" className="text-foreground">
                   Nombre del Período
                 </Label>
                 <Input
@@ -100,13 +100,13 @@ export default async function PeriodsPage() {
                   name="name"
                   placeholder="Junio 2026"
                   required
-                  className="bg-zinc-950/50 border-zinc-800 text-white placeholder-zinc-500 focus-visible:ring-emerald-500"
+                  className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500"
                 />
               </div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="startDate" className="text-zinc-300">
+                  <Label htmlFor="startDate" className="text-foreground">
                     Fecha de Inicio
                   </Label>
                   <Input
@@ -114,11 +114,11 @@ export default async function PeriodsPage() {
                     name="startDate"
                     type="date"
                     required
-                    className="bg-zinc-950/50 border-zinc-800 text-white placeholder-zinc-500 focus-visible:ring-emerald-500 h-10"
+                    className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-10"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="endDate" className="text-zinc-300">
+                  <Label htmlFor="endDate" className="text-foreground">
                     Fecha de Fin
                   </Label>
                   <Input
@@ -126,13 +126,13 @@ export default async function PeriodsPage() {
                     name="endDate"
                     type="date"
                     required
-                    className="bg-zinc-950/50 border-zinc-800 text-white placeholder-zinc-500 focus-visible:ring-emerald-500 h-10"
+                    className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-10"
                   />
                 </div>
               </div>
               
               <DialogFooter className="pt-4">
-                <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-10">
+                <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-10 cursor-pointer">
                   Iniciar Período
                 </Button>
               </DialogFooter>
@@ -142,18 +142,18 @@ export default async function PeriodsPage() {
       </div>
 
       {/* List Card */}
-      <Card className="border-zinc-800/80 bg-zinc-900/40 backdrop-blur-sm text-zinc-100">
+      <Card className="border-border bg-card text-card-foreground">
         <CardHeader>
-          <CardTitle className="text-lg font-bold text-white">Historial de Períodos</CardTitle>
-          <CardDescription className="text-zinc-400 text-xs mt-1">
+          <CardTitle className="text-lg font-bold text-foreground">Historial de Períodos</CardTitle>
+          <CardDescription className="text-muted-foreground text-xs mt-1">
             Los períodos cerrados no permiten modificar liquidaciones ni distribuciones de honorarios.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg border border-zinc-800 overflow-hidden">
+          <div className="rounded-lg border border-border overflow-hidden">
             <Table>
-              <TableHeader className="bg-zinc-950/40 text-zinc-400">
-                <TableRow className="hover:bg-transparent border-zinc-800">
+              <TableHeader className="bg-muted/50 text-muted-foreground">
+                <TableRow className="hover:bg-transparent border-border">
                   <TableHead className="font-semibold text-xs py-3">Nombre</TableHead>
                   <TableHead className="font-semibold text-xs">Fecha Desde</TableHead>
                   <TableHead className="font-semibold text-xs">Fecha Hasta</TableHead>
@@ -163,18 +163,18 @@ export default async function PeriodsPage() {
               </TableHeader>
               <TableBody>
                 {periods.length === 0 ? (
-                  <TableRow className="border-zinc-800">
-                    <TableCell colSpan={5} className="text-center text-zinc-500 text-sm py-12">
+                  <TableRow className="border-border">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-12">
                       <div className="flex flex-col items-center gap-2">
-                        <CalendarRange className="h-8 w-8 text-zinc-600 animate-pulse" />
+                        <CalendarRange className="h-8 w-8 text-muted-foreground animate-pulse" />
                         <p>No hay períodos registrados.</p>
                       </div>
                     </TableCell>
                   </TableRow>
                 ) : (
                   periods.map((period) => (
-                    <TableRow key={period.id} className="hover:bg-zinc-900/20 border-zinc-800 text-zinc-300">
-                      <TableCell className="font-semibold text-white py-3.5">
+                    <TableRow key={period.id} className="hover:bg-muted/40 border-border text-foreground">
+                      <TableCell className="font-semibold text-foreground py-3.5">
                         {period.name}
                       </TableCell>
                       <TableCell className="text-xs">
@@ -186,8 +186,8 @@ export default async function PeriodsPage() {
                       <TableCell>
                         <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium border ${
                           period.status === "OPEN"
-                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            : "bg-zinc-800 text-zinc-400 border-zinc-700"
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
+                            : "bg-muted text-muted-foreground border-border"
                         }`}>
                           {period.status === "OPEN" ? (
                             <>
@@ -208,20 +208,20 @@ export default async function PeriodsPage() {
                             type="submit"
                             size="sm"
                             variant="ghost"
-                            className={`text-xs gap-1.5 h-8 px-2.5 hover:bg-zinc-800 border border-zinc-800 ${
+                            className={`text-xs gap-1.5 h-8 px-2.5 hover:bg-muted border border-border cursor-pointer ${
                               period.status === "OPEN"
-                                ? "text-zinc-400 hover:text-white"
-                                : "text-emerald-400 hover:text-emerald-300"
+                                ? "text-muted-foreground hover:text-foreground"
+                                : "text-emerald-600 dark:text-emerald-400 hover:text-emerald-500"
                             }`}
                           >
                             {period.status === "OPEN" ? (
                               <>
-                                <ToggleRight className="h-4 w-4 text-emerald-400" />
+                                <ToggleRight className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                                 Cerrar Período
                               </>
                             ) : (
                               <>
-                                <ToggleLeft className="h-4 w-4 text-zinc-500" />
+                                <ToggleLeft className="h-4 w-4 text-muted-foreground" />
                                 Abrir Período
                               </>
                             )}

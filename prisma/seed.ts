@@ -1,5 +1,6 @@
 import { PrismaClient } from "../lib/generated/prisma/client";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { auth } from "../lib/auth";
 
 const adapter = new PrismaMariaDb({
   user: "facundofernandez",
@@ -11,6 +12,9 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log("Starting seeding...");
+  
+  const authContext = await auth.$context;
+  const hashedPassword = await authContext.password.hash("admin123");
 
   // 1. Clean existing data
   await prisma.distribution.deleteMany();
@@ -60,8 +64,7 @@ async function main() {
       accountId: "admin@uep.gov.ar",
       providerId: "credential",
       userId: adminUser.id,
-      // Bcrypt hash for 'admin123'
-      password: "$2a$10$7Z8YQeWepNl2wFqN2.d3/.VbZ0Mv5E7K792D4q/qE5i49u6tZ8Kzq",
+      password: hashedPassword,
       createdAt: new Date(),
       updatedAt: new Date(),
     },

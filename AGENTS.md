@@ -12,6 +12,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Default Port**: 3306
 - **Connection String**: `mysql://facundofernandez@localhost:3306/uep-proyect` (No password required for local connection)
 - **ORM**: Prisma (using `@prisma/client` and `prisma`)
+- **Connection Adapter**: Instantiated using `@prisma/adapter-mariadb` via `/tmp/mysql.sock` socket.
 
 ## Functional Modules
 1. **Module 1**: User Management, Security & Configuration (Login, Pass recovery, user/hospital/period management)
@@ -25,3 +26,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **ERP Tables (Simulated/Imported)**: Cliente, Proveedor, Cbte, CbteAplica, Compra
 - **System**: Hospital, Period, SystemConfig
 - **Liquidation**: Liquidation, LiquidationDetail, Agent, Distribution, Attachment
+
+## Architectural Rules & Gotchas
+- **Prisma Client Generation Path**: Generated to a custom path (`output = "../lib/generated/prisma"` in `schema.prisma`). Client models must be imported from `@/lib/generated/prisma/client` instead of the default `@prisma/client`.
+- **Better Auth Passwords**: Account credentials must be hashed via Better Auth's runtime context helper (`(await auth.$context).password.hash(password)`) to prevent `Invalid password hash` rejections.
+- **Seeded Admin Account**: `admin@uep.gov.ar` / `admin123`.
+- **Theme Toggle**: Wrapped with `ThemeProvider` from `next-themes`. App has `defaultTheme="system"` enabled, but the `ThemeToggle` dropdown options are limited to "Claro" (`light`) and "Oscuro" (`dark`).
+- **Next.js 16 Asynchronous Headers**: In Next.js 16, `headers()` is asynchronous and must be awaited when retrieving sessions.

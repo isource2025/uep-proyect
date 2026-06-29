@@ -1,238 +1,175 @@
-import { PrismaClient } from "../lib/generated/prisma/client";
-import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { prisma } from "../lib/prisma";
 import { auth } from "../lib/auth";
 
-const adapter = new PrismaMariaDb({
-  user: "facundofernandez",
-  database: "uep-proyect",
-  socketPath: "/tmp/mysql.sock",
-});
-
-const prisma = new PrismaClient({ adapter });
-
 async function main() {
-  console.log("Starting seeding...");
+  console.log("Starting seeding on SQL Server...");
   
   const authContext = await auth.$context;
   const hashedPassword = await authContext.password.hash("admin123");
 
-  // 1. Clean existing data
+  // 1. Clean existing custom portal data
   await prisma.distribution.deleteMany();
   await prisma.agent.deleteMany();
   await prisma.liquidationDetail.deleteMany();
   await prisma.liquidation.deleteMany();
-  await prisma.compra.deleteMany();
-  await prisma.cbteAplica.deleteMany();
-  await prisma.cbte.deleteMany();
-  await prisma.cliente.deleteMany();
-  await prisma.proveedor.deleteMany();
+  
   await prisma.session.deleteMany();
   await prisma.account.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.hospital.deleteMany();
-  await prisma.period.deleteMany();
   await prisma.systemConfig.deleteMany();
 
-  console.log("Database cleared.");
+  console.log("Custom portal tables cleared.");
 
-  // 2. Create Hospitals
-  const hospitalVidal = await prisma.hospital.create({
-    data: { name: "Hospital Vidal", code: "HOSP_VIDAL" },
-  });
-  const hospitalEscuela = await prisma.hospital.create({
-    data: { name: "Hospital Escuela", code: "HOSP_ESCUELA" },
-  });
-  const hospitalSanJose = await prisma.hospital.create({
-    data: { name: "Hospital San José", code: "HOSP_SAN_JOSE" },
-  });
-  console.log("Hospitals created.");
+  // 2. Ensure we have at least some Providers (Hospitals)
+  let providers = await prisma.proveedor.findMany({ take: 3 });
+  if (providers.length === 0) {
+    console.log("No providers found in PROVEEDORES, creating mock ones...");
+    await prisma.proveedor.createMany({
+      data: [
+        { id: 1, nombre: "HOSPITAL VIDAL", code: "HOSP_VIDAL", cuit: 30123456789 },
+        { id: 2, nombre: "HOSPITAL ESCUELA", code: "HOSP_ESCUELA", cuit: 30234567891 },
+        { id: 3, nombre: "HOSPITAL SAN JOSE", code: "HOSP_SAN_JOSE", cuit: 30345678912 },
+      ]
+    });
+    providers = await prisma.proveedor.findMany({ take: 3 });
+  }
 
-  // 3. Create Admin User (password is 'admin123', using bcrypt hash compatible with better-auth)
-  const adminUser = await prisma.user.create({
-    data: {
-      name: "Administrador UEP",
-      email: "admin@uep.gov.ar",
-      emailVerified: true,
-      role: "ADMIN",
-    },
-  });
+  const prov1 = providers[0];
+  const prov2 = providers[1] || prov1;
+  const prov3 = providers[2] || prov1;
 
-  // Link account with credentials
-  await prisma.account.create({
-    data: {
-      id: "admin-account-id",
-      accountId: "admin@uep.gov.ar",
-      providerId: "credential",
-      userId: adminUser.id,
-      password: hashedPassword,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-  });
-  console.log("Admin user seeded.");
-
-  // 4. Create Active Period
-  const currentPeriod = await prisma.period.create({
-    data: {
-      name: "Junio 2026",
-      startDate: new Date("2026-06-01"),
-      endDate: new Date("2026-06-30"),
-      status: "OPEN",
-    },
-  });
-  console.log("Period seeded.");
-
-  // 5. Create ERP Clients (Obras Sociales)
-  const osde = await prisma.cliente.create({
-    data: { nombre: "OSDE", cuit: "30-54637281-9" },
-  });
-  const iose = await prisma.cliente.create({
-    data: { nombre: "IOSCOR", cuit: "30-61273849-5" },
-  });
-  console.log("ERP Clients seeded.");
-
-  // 6. Create ERP Providers (Hospitals as Providers in ERP)
-  await prisma.proveedor.createMany({
-    data: [
-      { nombre: "HOSPITAL J. R. VIDAL", cuit: "30-99900011-1", code: "HOSP_VIDAL" },
-      { nombre: "HOSPITAL ESCUELA J. F. CABRAL", cuit: "30-99900022-2", code: "HOSP_ESCUELA" },
-      { nombre: "HOSPITAL DE SAN JOSE", cuit: "30-99900033-3", code: "HOSP_SAN_JOSE" },
-    ],
-  });
-  console.log("ERP Providers seeded.");
-
-  // 7. Create ERP Invoices & Receipts (CBTES)
-  // Let's create sales invoices (FC) and a receipt (RC)
-  const fc1 = await prisma.cbte.create({
-    data: {
-      type: "FC",
-      puntoVenta: "0001",
-      numero: "00001234",
-      fecha: new Date("2026-06-10"),
-      importe: 150000.00,
-      clienteId: osde.id,
-      hospitalCode: "HOSP_VIDAL", // Vidal hospital
-    },
+  // 3. Ensure we have the Admin User in Users table
+  let adminUser = await prisma.user.findUnique({
+    where: { email: "admin@uep.gov.ar" }
   });
 
-  const fc2 = await prisma.cbte.create({
-    data: {
-      type: "FC",
-      puntoVenta: "0001",
-      numero: "00001235",
-      fecha: new Date("2026-06-12"),
-      importe: 250000.00,
-      clienteId: osde.id,
-      hospitalCode: "HOSP_ESCUELA", // Escuela hospital
-    },
-  });
-
-  const fc3 = await prisma.cbte.create({
-    data: {
-      type: "FC",
-      puntoVenta: "0001",
-      numero: "00001236",
-      fecha: new Date("2026-06-15"),
-      importe: 100000.00,
-      clienteId: iose.id,
-      hospitalCode: "HOSP_SAN_JOSE", // San Jose hospital
-    },
-  });
-
-  // Receipts (RC)
-  const rc1 = await prisma.cbte.create({
-    data: {
-      type: "RC",
-      puntoVenta: "0001",
-      numero: "00000555",
-      fecha: new Date("2026-06-25"),
-      importe: 400000.00, // Pays both fc1 and fc2
-      clienteId: osde.id,
-    },
-  });
-  console.log("ERP CBTES seeded.");
-
-  // 8. Create CBTES_APLICA (linking RC to FCs)
-  await prisma.cbteAplica.createMany({
-    data: [
-      { rcId: rc1.id, fcId: fc1.id, importe: 150000.00 },
-      { rcId: rc1.id, fcId: fc2.id, importe: 250000.00 },
-    ],
-  });
-  console.log("ERP CBTES_APLICA relations seeded.");
-
-  // 9. Create ERP Purchases (COMPRAS) - Hospitals issuing invoices to UEP
-  await prisma.compra.createMany({
-    data: [
-      {
-        numero: "0002-00004561",
-        fecha: new Date("2026-06-18"),
-        importe: 120000.00, // Vidal purchase invoice
-        hospitalId: hospitalVidal.id,
-        fcVentaId: fc1.id,
+  if (!adminUser) {
+    adminUser = await prisma.user.create({
+      data: {
+        email: "admin@uep.gov.ar",
+        password: hashedPassword,
+        firstName: "Admin",
+        lastName: "UEP",
+        dni: "00000001",
+        isAdmin: true,
+        emailVerified: true,
+        role: "ADMIN",
+        hospitalId: prov1.id,
       },
-      {
-        numero: "0005-00008273",
-        fecha: new Date("2026-06-19"),
-        importe: 210000.00, // Escuela purchase invoice
-        hospitalId: hospitalEscuela.id,
-        fcVentaId: fc2.id,
-      },
-    ],
-  });
-  console.log("ERP Purchases seeded.");
+    });
 
-  // 10. Create SISPER Agents
+    // Link account with credentials for better-auth
+    await prisma.account.create({
+      data: {
+        id: "admin-account-id",
+        accountId: "admin@uep.gov.ar",
+        providerId: "credential",
+        userId: adminUser.id,
+        password: hashedPassword,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+    console.log("Admin user admin@uep.gov.ar seeded.");
+  } else {
+    console.log("Admin user admin@uep.gov.ar already exists.");
+  }
+
+  // Also ensure the existing admin@medicenter.com has an account link if needed
+  const medicenterUser = await prisma.user.findUnique({
+    where: { email: "admin@medicenter.com" }
+  });
+  if (medicenterUser) {
+    const accountExists = await prisma.account.findFirst({
+      where: { userId: medicenterUser.id }
+    });
+    if (!accountExists) {
+      await prisma.account.create({
+        data: {
+          id: "medicenter-account-id",
+          accountId: "admin@medicenter.com",
+          providerId: "credential",
+          userId: medicenterUser.id,
+          password: medicenterUser.password, // Keep the bcrypt hash already in table
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }
+      });
+      console.log("Linked credentials account for admin@medicenter.com.");
+    }
+  }
+
+  // 4. Ensure we have an active period in Periodos_IVA (e.g. June 2026)
+  let activePeriod = await prisma.periodoIVA.findFirst({
+    where: { anio: 2026, mes: 6, iva: "V" }
+  });
+
+  if (!activePeriod) {
+    activePeriod = await prisma.periodoIVA.create({
+      data: {
+        anio: 2026,
+        mes: 6,
+        iva: "V",
+        fechaAlta: new Date(),
+      }
+    });
+    console.log("Period 2026/06 Ventas created.");
+  } else {
+    // If it exists, ensure it is open (fechaCierre is null)
+    await prisma.periodoIVA.update({
+      where: { anio_mes_iva: { anio: 2026, mes: 6, iva: "V" } },
+      data: { fechaCierre: null }
+    });
+    console.log("Period 2026/06 Ventas ensured open.");
+  }
+
+  // 5. Create SISPER Agents linking to our providers
   await prisma.agent.createMany({
     data: [
-      // Vidal Agents
       {
         dni: "20.123.456",
         cuil: "20-20123456-9",
         nombre: "Dr. Juan Pérez",
         cargo: "Médico de Guardia",
-        establecimiento: "HOSPITAL VIDAL",
-        hospitalId: hospitalVidal.id,
+        establecimiento: prov1.nombre || "HOSPITAL VIDAL",
+        hospitalId: prov1.id,
       },
       {
         dni: "27.234.567",
         cuil: "27-27234567-4",
         nombre: "Dra. María González",
         cargo: "Jefa de Pediatría",
-        establecimiento: "HOSPITAL VIDAL",
-        hospitalId: hospitalVidal.id,
+        establecimiento: prov1.nombre || "HOSPITAL VIDAL",
+        hospitalId: prov1.id,
       },
-      // Escuela Agents
       {
         dni: "20.345.678",
         cuil: "20-20345678-2",
         nombre: "Dr. Carlos Rodríguez",
         cargo: "Cirujano General",
-        establecimiento: "HOSPITAL ESCUELA",
-        hospitalId: hospitalEscuela.id,
+        establecimiento: prov2.nombre || "HOSPITAL ESCUELA",
+        hospitalId: prov2.id,
       },
       {
         dni: "27.456.789",
         cuil: "27-27456789-9",
         nombre: "Lic. Ana Martínez",
         cargo: "Enfermera Jefa",
-        establecimiento: "HOSPITAL ESCUELA",
-        hospitalId: hospitalEscuela.id,
+        establecimiento: prov2.nombre || "HOSPITAL ESCUELA",
+        hospitalId: prov2.id,
       },
-      // San Jose Agents
       {
         dni: "20.567.890",
         cuil: "20-20567890-5",
         nombre: "Dr. Luis Silva",
         cargo: "Cardiólogo",
-        establecimiento: "HOSPITAL SAN JOSE",
-        hospitalId: hospitalSanJose.id,
+        establecimiento: prov3.nombre || "HOSPITAL SAN JOSE",
+        hospitalId: prov3.id,
       },
     ],
   });
   console.log("SISPER Agents seeded.");
 
-  // 11. Create System Configs
+  // 6. Create System Configs
   await prisma.systemConfig.createMany({
     data: [
       { key: "system_name", value: "Unidad Ejecutora Provincial (UEP)" },

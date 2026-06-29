@@ -8,15 +8,15 @@ import Link from "next/link";
 export const revalidate = 0; // Force dynamic rendering so database updates show immediately
 
 export default async function DashboardPage() {
-  // Fetch summary stats from MariaDB
-  const hospitalCount = await prisma.hospital.count();
+  // Fetch summary stats from DB
+  const hospitalCount = await prisma.proveedor.count();
   const agentCount = await prisma.agent.count();
   const fcCount = await prisma.cbte.count({ where: { type: "FC" } });
   const rcCount = await prisma.cbte.count({ where: { type: "RC" } });
 
-  // Get active period
-  const activePeriod = await prisma.period.findFirst({
-    where: { status: "OPEN" },
+  // Get active period (fechaCierre is null)
+  const activePeriod = await prisma.periodoIVA.findFirst({
+    where: { fechaCierre: null, iva: "V" },
   });
 
   // Get recent ERP invoices/receipts
@@ -38,11 +38,19 @@ export default async function DashboardPage() {
     return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(num);
   };
 
+  const getMonthName = (monthNum: number) => {
+    const months = [
+      "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    ];
+    return months[monthNum - 1] || `Mes ${monthNum}`;
+  };
+
   const statCards = [
     {
-      title: "Hospitales Registrados",
+      title: "Hospitales (Proveedores)",
       value: hospitalCount,
-      description: "Hospitales y CAPS activos en el sistema",
+      description: "Centros médicos activos en el sistema ERP",
       icon: Building2,
       color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
     },
@@ -84,9 +92,11 @@ export default async function DashboardPage() {
           <div className="flex items-center gap-3 rounded-xl bg-card border border-border p-3 self-start md:self-auto">
             <CalendarDays className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
             <div className="text-left text-xs">
-              <p className="font-semibold text-foreground">Período Activo: {activePeriod.name}</p>
+              <p className="font-semibold text-foreground">
+                Período Activo: {getMonthName(activePeriod.mes)} {activePeriod.anio}
+              </p>
               <p className="text-muted-foreground mt-0.5">
-                {new Date(activePeriod.startDate).toLocaleDateString("es-AR")} - {new Date(activePeriod.endDate).toLocaleDateString("es-AR")}
+                Alta: {activePeriod.fechaAlta ? new Date(activePeriod.fechaAlta).toLocaleDateString("es-AR") : "-"}
               </p>
             </div>
           </div>

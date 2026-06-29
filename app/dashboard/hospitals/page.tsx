@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Building2, Plus, Search, Calendar } from "lucide-react";
+import { Building2, Plus, Search, ShieldCheck } from "lucide-react";
 
 export const revalidate = 0;
 
@@ -26,30 +26,38 @@ export default async function HospitalsPage({
   const resolvedSearchParams = await searchParams;
   const query = resolvedSearchParams.query || "";
 
-  // Fetch hospitals from DB based on search query
-  const hospitals = await prisma.hospital.findMany({
+  // Fetch providers (hospitals) from DB based on search query
+  const hospitals = await prisma.proveedor.findMany({
     where: {
       OR: [
-        { name: { contains: query } },
+        { nombre: { contains: query } },
         { code: { contains: query } },
       ],
     },
-    orderBy: { name: "asc" },
+    orderBy: { nombre: "asc" },
   });
 
-  // Server Action to add a hospital
+  // Server Action to add a hospital (Proveedor)
   const handleCreateHospital = async (formData: FormData) => {
     "use server";
     const name = formData.get("name") as string;
     const code = formData.get("code") as string;
+    const cuitStr = formData.get("cuit") as string;
 
     if (!name || !code) return;
 
     try {
-      await prisma.hospital.create({
+      const maxId = await prisma.proveedor.aggregate({
+        _max: { id: true }
+      });
+      const nextId = (maxId._max.id || 0) + 1;
+
+      await prisma.proveedor.create({
         data: {
-          name,
+          id: nextId,
+          nombre: name.toUpperCase(),
           code: code.toUpperCase().replace(/\s+/g, "_"),
+          cuit: cuitStr ? parseFloat(cuitStr) : null,
         },
       });
       revalidatePath("/dashboard/hospitals");
@@ -65,7 +73,7 @@ export default async function HospitalsPage({
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Gestión de Hospitales</h1>
           <p className="text-sm text-muted-foreground">
-            Administración y consulta de centros médicos y CAPS registrados en el sistema.
+            Administración y consulta de centros médicos y CAPS registrados en el sistema ERP.
           </p>
         </div>
 
@@ -108,9 +116,17 @@ export default async function HospitalsPage({
                   required
                   className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500"
                 />
-                <p className="text-[10px] text-muted-foreground">
-                  Debe coincidir con el identificador del hospital en los archivos del ERP.
-                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cuit" className="text-foreground">
+                  Nro CUIT
+                </Label>
+                <Input
+                  id="cuit"
+                  name="cuit"
+                  placeholder="30123456789"
+                  className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500"
+                />
               </div>
               <DialogFooter className="pt-4">
                 <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-10 cursor-pointer">
@@ -142,7 +158,7 @@ export default async function HospitalsPage({
                 <TableRow className="hover:bg-transparent border-border">
                   <TableHead className="font-semibold text-xs py-3">Nombre</TableHead>
                   <TableHead className="font-semibold text-xs">Código ERP</TableHead>
-                  <TableHead className="font-semibold text-xs">Fecha de Alta</TableHead>
+                  <TableHead className="font-semibold text-xs">CUIT</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -159,17 +175,17 @@ export default async function HospitalsPage({
                   hospitals.map((hospital) => (
                     <TableRow key={hospital.id} className="hover:bg-muted/40 border-border text-foreground">
                       <TableCell className="font-semibold text-foreground py-3.5">
-                        {hospital.name}
+                        {hospital.nombre}
                       </TableCell>
                       <TableCell>
                         <code className="rounded bg-muted px-2 py-1 text-xs font-mono text-emerald-600 dark:text-emerald-400 border border-border">
-                          {hospital.code}
+                          {hospital.code || "-"}
                         </code>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                          {new Date(hospital.createdAt).toLocaleDateString("es-AR")}
+                        <div className="flex items-center gap-1.5 font-mono">
+                          <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+                          {hospital.cuit ? String(hospital.cuit) : "-"}
                         </div>
                       </TableCell>
                     </TableRow>

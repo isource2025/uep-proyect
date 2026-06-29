@@ -48,22 +48,25 @@ export default async function LiquidationsPage() {
   });
 
   // Server Action to calculate a liquidation
-  const handleCalculateLiquidation = async (rcId: string) => {
+  const handleCalculateLiquidation = async (rcId: string | number) => {
     "use server";
     try {
+      const rcIdNum = typeof rcId === "number" ? rcId : parseInt(rcId, 10);
+      if (isNaN(rcIdNum)) return;
+
       const rc = await prisma.cbte.findUnique({
-        where: { id: rcId },
+        where: { id: rcIdNum },
       });
       if (!rc) return;
 
-      const activePeriod = await prisma.period.findFirst({
-        where: { status: "OPEN" },
+      const activePeriod = await prisma.periodoIVA.findFirst({
+        where: { fechaCierre: null },
       });
       if (!activePeriod) return;
 
       // Find applied sales invoices (FC)
       const applications = await prisma.cbteAplica.findMany({
-        where: { rcId },
+        where: { rcId: rcIdNum },
       });
 
       const totalFacturado = applications.reduce((sum, app) => sum + Number(app.importe), 0);
@@ -72,8 +75,9 @@ export default async function LiquidationsPage() {
       // Create liquidation
       const liquidation = await prisma.liquidation.create({
         data: {
-          periodId: activePeriod.id,
-          rcId,
+          periodAnio: activePeriod.anio,
+          periodMes: activePeriod.mes,
+          rcId: rcIdNum,
           totalFacturado,
           netoInicial,
           status: "PENDIENTE",
@@ -101,6 +105,14 @@ export default async function LiquidationsPage() {
   const formatCurrency = (val: any) => {
     const num = Number(val || 0);
     return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(num);
+  };
+
+  const getMonthName = (monthNum: number) => {
+    const months = [
+      "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    ];
+    return months[monthNum - 1] || `Mes ${monthNum}`;
   };
 
   return (
@@ -202,7 +214,7 @@ export default async function LiquidationsPage() {
                         LIQ-{liq.id.substring(0, 8).toUpperCase()}
                       </TableCell>
                       <TableCell className="text-xs">
-                        {liq.period.name}
+                        {getMonthName(liq.period.mes)} {liq.period.anio}
                       </TableCell>
                       <TableCell className="text-xs font-mono">
                         {liq.rc.puntoVenta}-{liq.rc.numero}
@@ -262,7 +274,7 @@ export default async function LiquidationsPage() {
                                     <TableBody>
                                       {liq.details.map((detail) => (
                                         <TableRow key={detail.id} className="hover:bg-transparent border-border">
-                                          <TableCell className="py-2 text-xs font-mono">FC-{detail.fcVentaId.substring(0, 8)}</TableCell>
+                                          <TableCell className="py-2 text-xs font-mono">FC-{detail.fcVentaId}</TableCell>
                                           <TableCell className="py-2 text-xs text-right text-foreground font-semibold">{formatCurrency(detail.amount)}</TableCell>
                                         </TableRow>
                                       ))}

@@ -4,7 +4,7 @@ import { prisma } from "./prisma";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
-    provider: "mysql",
+    provider: "sqlserver",
   }),
   emailAndPassword: {
     enabled: true,
@@ -17,9 +17,14 @@ export const auth = betterAuth({
         defaultValue: "OPERATOR",
       },
       hospitalId: {
-        type: "string",
+        type: "number",
         required: false,
       },
+    },
+  },
+  advanced: {
+    database: {
+      generateId: "serial",
     },
   },
 });

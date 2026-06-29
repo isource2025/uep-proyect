@@ -2,12 +2,13 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client"
-  output   = "../lib/generated/prisma"
+  provider   = "prisma-client-js"
+  output     = "../lib/generated/prisma"
+  engineType = "library"
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "sqlserver"
 }
 
 // ==========================================
@@ -15,43 +16,50 @@ datasource db {
 // ==========================================
 
 model User {
-  id            String    @id @default(cuid())
-  name          String
+  id            Int       @id @default(autoincrement())
   email         String    @unique
-  emailVerified Boolean
-  image         String?
+  password      String
+  firstName     String
+  lastName      String
+  dni           String
+  isAdmin       Boolean?  @map("isAdmin")
   createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  updatedAt     DateTime? @updatedAt @map("updatedAt")
+
+  // Additional fields needed by better-auth or custom role logic
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          String    @default("OPERATOR") // ADMIN, HOSPITAL_USER, OPERATOR
+  hospitalId    Int?      // Links to their hospital (Proveedor IDPROVEEDOR)
+  hospital      Proveedor? @relation(fields: [hospitalId], references: [id])
+
   sessions      Session[]
   accounts      Account[]
-  
-  // Custom roles and relationships for UEP Proyect (Module 1)
-  role          String    @default("OPERATOR") // ADMIN, HOSPITAL_USER, OPERATOR
-  hospitalId    String?   // Links to their hospital if role is HOSPITAL_USER
-  hospital      Hospital? @relation(fields: [hospitalId], references: [id])
+
+  @@map("Users")
 }
 
 model Session {
-  id        String   @id
+  id        String   @id @default(cuid())
   expiresAt DateTime
   token     String   @unique
   createdAt DateTime
   updatedAt DateTime
   ipAddress String?
   userAgent String?
-  userId    String
+  userId    Int
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Account {
-  id                    String    @id
+  id                    String    @id @default(cuid())
   accountId             String
   providerId            String
-  userId                String
+  userId                Int
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken           String?   @db.Text
-  refreshToken          String?   @db.Text
-  idToken               String?   @db.Text
+  accessToken           String?   @db.VarChar(Max)
+  refreshToken          String?   @db.VarChar(Max)
+  idToken               String?   @db.VarChar(Max)
   accessTokenExpiresAt  DateTime?
   refreshTokenExpiresAt DateTime?
   scope                 String?
@@ -61,7 +69,7 @@ model Account {
 }
 
 model Verification {
-  id         String   @id
+  id         String   @id @default(cuid())
   identifier String
   value      String
   expiresAt  DateTime
@@ -73,26 +81,18 @@ model Verification {
 // 2. SYSTEM / CONFIG / PORTAL MODELS
 // ==========================================
 
-model Hospital {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  code      String   @unique // Code to match with ERP provider/purchases code (e.g. "HOSP_VIDAL")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  users     User[]
-  agents    Agent[]
-  purchases Compra[]
-}
+model PeriodoIVA {
+  anio        Int       @map("Anio") @db.SmallInt
+  mes         Int       @map("Mes") @db.SmallInt
+  iva         String    @map("IVA") @db.Char(1)
+  fechaCierre DateTime? @map("Fecha_Cierre")
+  fechaAlta   DateTime? @map("Fecha_Alta")
+  fechaMod    DateTime? @map("Fecha_Mod")
 
-model Period {
-  id           String        @id @default(cuid())
-  name         String        @unique // e.g., "Junio 2026"
-  startDate    DateTime
-  endDate      DateTime
-  status       String        @default("OPEN") // OPEN, CLOSED
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
   liquidations Liquidation[]
+
+  @@id([anio, mes, iva])
+  @@map("Periodos_IVA")
 }
 
 model SystemConfig {
@@ -108,55 +108,67 @@ model SystemConfig {
 // ==========================================
 
 model Cliente {
-  id        String   @id @default(cuid())
-  nombre    String
-  cuit      String   @unique
-  cbtes     Cbte[]
+  id     Int     @id @map("IdCliente")
+  nombre String  @map("Razon_Social")
+  cuit   Decimal @map("Nro_CUIT")
+  cbtes  Cbte[]
+
+  @@map("Clientes")
 }
 
 model Proveedor {
-  id        String   @id @default(cuid())
-  nombre    String
-  cuit      String   @unique
-  code      String   @unique // Matches Hospital code
+  id     Int      @id @map("IDPROVEEDOR")
+  nombre String?  @map("DESCRIPCION")
+  cuit   Decimal? @map("NRO_CUIT")
+  code   String?  @map("NOMBRE_FANTASIA")
+
+  // Relationships previously on Hospital
+  users     User[]
+  agents    Agent[]
+  purchases Compra[]
+
+  @@map("PROVEEDORES")
 }
 
 model Cbte {
-  id             String        @id @default(cuid())
-  type           String        // "FC" (Factura de Venta), "RC" (Recibo de Cobranza)
-  puntoVenta     String
-  numero         String
-  fecha          DateTime
-  importe        Decimal       @db.Decimal(15, 2)
-  clienteId      String        // Customer (Obra Social)
+  id             Int           @id @map("IdTransaccion")
+  type           String        @map("TipoCbte")
+  puntoVenta     String?       @map("Letra_Cbte")
+  numero         Int?          @map("NroCbte")
+  fecha          DateTime      @map("Fecha")
+  importe        Decimal       @map("ImporteTotal") @db.Decimal(15, 2)
+  clienteId      Int           @map("IdCliente")
   cliente        Cliente       @relation(fields: [clienteId], references: [id])
-  hospitalCode   String?       // Hospital code associated (for sales invoices)
+  hospitalCode   String?       @map("domicilio")
   
-  // Relations for applied logic
   appliedAsRc    CbteAplica[]  @relation("rcRelation")
   appliedAsFc    CbteAplica[]  @relation("fcRelation")
-  
-  // If this is an RC, it serves as the root of a liquidation
   liquidations   Liquidation[]
+
+  @@map("Cbtes")
 }
 
 model CbteAplica {
-  id             String   @id @default(cuid())
-  rcId           String
-  rc             Cbte     @relation("rcRelation", fields: [rcId], references: [id])
-  fcId           String
-  fc             Cbte     @relation("fcRelation", fields: [fcId], references: [id])
-  importe        Decimal  @db.Decimal(15, 2) // Amount of this FC paid/applied by this RC
+  id             Int      @id @map("IdAplicabilidad")
+  rcId           Int      @map("IdTrans_Origen")
+  rc             Cbte     @relation("rcRelation", fields: [rcId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  fcId           Int      @map("IdTrans_Destino")
+  fc             Cbte     @relation("fcRelation", fields: [fcId], references: [id], onUpdate: NoAction, onDelete: NoAction)
+  importe        Decimal  @map("Importe") @db.Decimal(15, 2)
+
+  @@map("Cbtes_Aplica")
 }
 
 model Compra {
-  id             String      @id @default(cuid())
-  numero         String
-  fecha          DateTime
-  importe        Decimal     @db.Decimal(15, 2)
-  hospitalId     String
-  hospital       Hospital    @relation(fields: [hospitalId], references: [id])
-  fcVentaId      String?     // Associated Sales Invoice (from CBTES)
+  id         Int        @id @map("idtransaccion")
+  numero     Decimal    @map("NroCbte")
+  fecha      DateTime   @map("Fecha")
+  importe    Decimal    @map("ImporteTotal") @db.Decimal(15, 2)
+  hospitalId Int?       @map("IdProveedor")
+  hospital   Proveedor? @relation(fields: [hospitalId], references: [id])
+  fcVentaId  Int?       @map("IdTransaccionFacturaVta")
+
+  @@map("Compras")
 }
 
 // ==========================================
@@ -170,16 +182,18 @@ model Agent {
   nombre          String
   cargo           String
   establecimiento String
-  hospitalId      String
-  hospital        Hospital       @relation(fields: [hospitalId], references: [id])
+  hospitalId      Int
+  hospital        Proveedor      @relation(fields: [hospitalId], references: [id])
   distributions   Distribution[]
 }
 
 model Liquidation {
   id             String              @id @default(cuid())
-  periodId       String
-  period         Period              @relation(fields: [periodId], references: [id])
-  rcId           String
+  periodAnio     Int                 @db.SmallInt
+  periodMes      Int                 @db.SmallInt
+  periodIva      String              @default("V") @db.Char(1)
+  period         PeriodoIVA          @relation(fields: [periodAnio, periodMes, periodIva], references: [anio, mes, iva])
+  rcId           Int
   rc             Cbte                @relation(fields: [rcId], references: [id])
   
   totalFacturado Decimal             @db.Decimal(15, 2)
@@ -205,7 +219,7 @@ model LiquidationDetail {
   id            String      @id @default(cuid())
   liquidationId String
   liquidation   Liquidation @relation(fields: [liquidationId], references: [id], onDelete: Cascade)
-  fcVentaId     String
+  fcVentaId     Int
   amount        Decimal     @db.Decimal(15, 2)
 }
 

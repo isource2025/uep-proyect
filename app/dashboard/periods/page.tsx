@@ -19,28 +19,30 @@ import { CalendarRange, Plus, CircleCheck, CircleAlert, ToggleLeft, ToggleRight 
 export const revalidate = 0;
 
 export default async function PeriodsPage() {
-  // Fetch periods
-  const periods = await prisma.period.findMany({
-    orderBy: { startDate: "desc" },
+  // Fetch periods from Periodos_IVA where IVA = 'V'
+  const periods = await prisma.periodoIVA.findMany({
+    where: { iva: "V" },
+    orderBy: [
+      { anio: "desc" },
+      { mes: "desc" },
+    ],
   });
 
-  // Server Action to create a new Period
+  // Server Action to create a new Period (PeriodoIVA)
   const handleCreatePeriod = async (formData: FormData) => {
     "use server";
-    const name = formData.get("name") as string;
-    const startStr = formData.get("startDate") as string;
-    const endStr = formData.get("endDate") as string;
+    const anioStr = formData.get("anio") as string;
+    const mesStr = formData.get("mes") as string;
 
-    if (!name || !startStr || !endStr) return;
+    if (!anioStr || !mesStr) return;
 
     try {
-      // By default, if a new period is created as OPEN, we might want to close other periods or just create it.
-      await prisma.period.create({
+      await prisma.periodoIVA.create({
         data: {
-          name,
-          startDate: new Date(startStr),
-          endDate: new Date(endStr),
-          status: "OPEN",
+          anio: parseInt(anioStr, 10),
+          mes: parseInt(mesStr, 10),
+          iva: "V",
+          fechaAlta: new Date(),
         },
       });
       revalidatePath("/dashboard/periods");
@@ -49,19 +51,29 @@ export default async function PeriodsPage() {
     }
   };
 
-  // Server Action to toggle status
-  const handleToggleStatus = async (id: string, currentStatus: string) => {
+  // Server Action to toggle status (using fechaCierre nullability)
+  const handleToggleStatus = async (anio: number, mes: number, iva: string, currentClosed: boolean) => {
     "use server";
-    const nextStatus = currentStatus === "OPEN" ? "CLOSED" : "OPEN";
+    const nextCierre = currentClosed ? null : new Date();
     try {
-      await prisma.period.update({
-        where: { id },
-        data: { status: nextStatus },
+      await prisma.periodoIVA.update({
+        where: {
+          anio_mes_iva: { anio, mes, iva },
+        },
+        data: { fechaCierre: nextCierre },
       });
       revalidatePath("/dashboard/periods");
     } catch (e) {
       console.error("Error toggling status:", e);
     }
+  };
+
+  const getMonthName = (monthNum: number) => {
+    const months = [
+      "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    ];
+    return months[monthNum - 1] || `Mes ${monthNum}`;
   };
 
   return (
@@ -71,7 +83,7 @@ export default async function PeriodsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Configuración de Períodos</h1>
           <p className="text-sm text-muted-foreground">
-            Apertura y cierre de períodos de liquidación médica e históricos de cierre.
+            Apertura y cierre de períodos de liquidación médica e históricos del sistema ERP.
           </p>
         </div>
 
@@ -87,44 +99,37 @@ export default async function PeriodsPage() {
             <DialogHeader>
               <DialogTitle className="text-foreground font-bold">Abrir Nuevo Período</DialogTitle>
               <DialogDescription className="text-muted-foreground text-xs">
-                Define el intervalo de fechas para un nuevo mes de liquidación de honorarios.
+                Define el mes y año para la carga y liquidación de facturas.
               </DialogDescription>
             </DialogHeader>
             <form action={handleCreatePeriod} className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-foreground">
-                  Nombre del Período
-                </Label>
-                <Input
-                  id="name"
-                  name="name"
-                  placeholder="Junio 2026"
-                  required
-                  className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500"
-                />
-              </div>
-              
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="startDate" className="text-foreground">
-                    Fecha de Inicio
+                  <Label htmlFor="mes" className="text-foreground">
+                    Mes
                   </Label>
                   <Input
-                    id="startDate"
-                    name="startDate"
-                    type="date"
+                    id="mes"
+                    name="mes"
+                    type="number"
+                    min={1}
+                    max={12}
+                    placeholder="6"
                     required
                     className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-10"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="endDate" className="text-foreground">
-                    Fecha de Fin
+                  <Label htmlFor="anio" className="text-foreground">
+                    Año
                   </Label>
                   <Input
-                    id="endDate"
-                    name="endDate"
-                    type="date"
+                    id="anio"
+                    name="anio"
+                    type="number"
+                    min={2000}
+                    max={2100}
+                    placeholder="2026"
                     required
                     className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-10"
                   />
@@ -155,8 +160,8 @@ export default async function PeriodsPage() {
               <TableHeader className="bg-muted/50 text-muted-foreground">
                 <TableRow className="hover:bg-transparent border-border">
                   <TableHead className="font-semibold text-xs py-3">Nombre</TableHead>
-                  <TableHead className="font-semibold text-xs">Fecha Desde</TableHead>
-                  <TableHead className="font-semibold text-xs">Fecha Hasta</TableHead>
+                  <TableHead className="font-semibold text-xs">Fecha de Alta</TableHead>
+                  <TableHead className="font-semibold text-xs">Fecha de Cierre</TableHead>
                   <TableHead className="font-semibold text-xs">Estado</TableHead>
                   <TableHead className="font-semibold text-xs text-right">Acciones</TableHead>
                 </TableRow>
@@ -172,64 +177,67 @@ export default async function PeriodsPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  periods.map((period) => (
-                    <TableRow key={period.id} className="hover:bg-muted/40 border-border text-foreground">
-                      <TableCell className="font-semibold text-foreground py-3.5">
-                        {period.name}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {new Date(period.startDate).toLocaleDateString("es-AR")}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {new Date(period.endDate).toLocaleDateString("es-AR")}
-                      </TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium border ${
-                          period.status === "OPEN"
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
-                            : "bg-muted text-muted-foreground border-border"
-                        }`}>
-                          {period.status === "OPEN" ? (
-                            <>
-                              <CircleCheck className="h-3 w-3" />
-                              Abierto
-                            </>
-                          ) : (
-                            <>
-                              <CircleAlert className="h-3 w-3" />
-                              Cerrado
-                            </>
-                          )}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <form action={handleToggleStatus.bind(null, period.id, period.status)}>
-                          <Button
-                            type="submit"
-                            size="sm"
-                            variant="ghost"
-                            className={`text-xs gap-1.5 h-8 px-2.5 hover:bg-muted border border-border cursor-pointer ${
-                              period.status === "OPEN"
-                                ? "text-muted-foreground hover:text-foreground"
-                                : "text-emerald-600 dark:text-emerald-400 hover:text-emerald-500"
-                            }`}
-                          >
-                            {period.status === "OPEN" ? (
+                  periods.map((period) => {
+                    const isClosed = period.fechaCierre !== null;
+                    return (
+                      <TableRow key={`${period.anio}-${period.mes}-${period.iva}`} className="hover:bg-muted/40 border-border text-foreground">
+                        <TableCell className="font-semibold text-foreground py-3.5">
+                          {getMonthName(period.mes)} {period.anio}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {period.fechaAlta ? new Date(period.fechaAlta).toLocaleDateString("es-AR") : "-"}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {period.fechaCierre ? new Date(period.fechaCierre).toLocaleDateString("es-AR") : "-"}
+                        </TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium border ${
+                            !isClosed
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
+                              : "bg-muted text-muted-foreground border-border"
+                          }`}>
+                            {!isClosed ? (
                               <>
-                                <ToggleRight className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                                Cerrar Período
+                                <CircleCheck className="h-3 w-3" />
+                                Abierto
                               </>
                             ) : (
                               <>
-                                <ToggleLeft className="h-4 w-4 text-muted-foreground" />
-                                Abrir Período
+                                <CircleAlert className="h-3 w-3" />
+                                Cerrado
                               </>
                             )}
-                          </Button>
-                        </form>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <form action={handleToggleStatus.bind(null, period.anio, period.mes, period.iva, isClosed)}>
+                            <Button
+                              type="submit"
+                              size="sm"
+                              variant="ghost"
+                              className={`text-xs gap-1.5 h-8 px-2.5 hover:bg-muted border border-border cursor-pointer ${
+                                !isClosed
+                                  ? "text-muted-foreground hover:text-foreground"
+                                  : "text-emerald-600 dark:text-emerald-400 hover:text-emerald-500"
+                              }`}
+                            >
+                              {!isClosed ? (
+                                <>
+                                  <ToggleRight className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                  Cerrar Período
+                                </>
+                              ) : (
+                                <>
+                                  <ToggleLeft className="h-4 w-4 text-muted-foreground" />
+                                  Abrir Período
+                                </>
+                              )}
+                            </Button>
+                          </form>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

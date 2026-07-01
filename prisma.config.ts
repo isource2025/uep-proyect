@@ -9,6 +9,9 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Dummy URL only used by `prisma generate` when DATABASE_URL is not set yet.
+    url:
+      process.env.DATABASE_URL ??
+      "sqlserver://localhost:1433;database=build;user=sa;password=build;encrypt=false;trustServerCertificate=true",
   },
 });

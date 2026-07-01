@@ -16,7 +16,10 @@ let prismaInstance: PrismaClient;
 if (globalForPrisma.prisma) {
   prismaInstance = globalForPrisma.prisma;
 } else {
-  const url = process.env.DATABASE_URL || "sqlserver://181.4.71.230:1433;database=iSource;user=sa;password=isource;encrypt=false;trustServerCertificate=true";
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error("DATABASE_URL is not set");
+  }
   
   // Parse SQL Server connection string
   const cleanUrl = url.replace("sqlserver://", "");

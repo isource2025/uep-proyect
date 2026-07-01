@@ -1,27 +1,9 @@
 import { PrismaClient } from "./generated/prisma";
 import { PrismaMssql } from "@prisma/adapter-mssql";
 
-// LOCAL MariaDB Connection setup (commented out)
-// import { PrismaMariaDb } from "@prisma/adapter-mariadb";
-// const adapter = new PrismaMariaDb({
-//   user: "facundofernandez",
-//   database: "uep-proyect",
-//   socketPath: "/tmp/mysql.sock",
-// });
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
-
-let prismaInstance: PrismaClient;
-
-if (globalForPrisma.prisma) {
-  prismaInstance = globalForPrisma.prisma;
-} else {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("DATABASE_URL is not set");
-  }
-  
-  // Parse SQL Server connection string
+function parseSqlServerUrl(url: string) {
   const cleanUrl = url.replace("sqlserver://", "");
   const parts = cleanUrl.split(";");
   const hostPort = parts[0];
@@ -36,6 +18,17 @@ if (globalForPrisma.prisma) {
     }
   }
 
+  return { server, port, params };
+}
+
+function createPrismaClient(): PrismaClient {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error("DATABASE_URL is not set");
+  }
+
+  const { server, port, params } = parseSqlServerUrl(url);
+
   const adapter = new PrismaMssql({
     server,
     port,
@@ -43,14 +36,34 @@ if (globalForPrisma.prisma) {
     user: params.user || "sa",
     password: params.password || "isource",
     options: {
-      encrypt: params.encrypt === "true" || params.encrypt === undefined, // default behavior or explicitly true
-      trustServerCertificate: params.trustServerCertificate === "true" || params.trustServerCertificate === undefined,
-    }
+      encrypt: params.encrypt === "true" || params.encrypt === undefined,
+      trustServerCertificate:
+        params.trustServerCertificate === "true" ||
+        params.trustServerCertificate === undefined,
+    },
   });
 
-  prismaInstance = new PrismaClient({ adapter });
+  return new PrismaClient({ adapter });
 }
 
-export const prisma = prismaInstance;
+function getPrismaClient(): PrismaClient {
+  if (globalForPrisma.prisma) {
+    return globalForPrisma.prisma;
+  }
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+  const client = createPrismaClient();
+
+  if (process.env.NODE_ENV !== "production") {
+    globalForPrisma.prisma = client;
+  }
+
+  return client;
+}
+
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getPrismaClient();
+    const value = Reflect.get(client, prop, client);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});

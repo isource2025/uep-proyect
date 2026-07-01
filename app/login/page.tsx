@@ -51,7 +51,7 @@ export default function LoginPage() {
       <div className="absolute top-0 -left-4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl" />
       <div className="absolute bottom-0 -right-4 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl" />
 
-      <Card className="w-full max-w-md border-zinc-800 bg-zinc-900/50 backdrop-blur-xl text-zinc-100 shadow-2xl relative z-10">
+      <Card className="w-full max-w-md border-zinc-800 bg-zinc-900 text-zinc-100 shadow-2xl relative z-10">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-2">
             <div className="rounded-full bg-emerald-500/10 p-3 text-emerald-400">
@@ -82,7 +82,7 @@ export default function LoginPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="admin@uep.gov.ar"
+                placeholder="correo@ejemplo.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
@@ -123,12 +123,6 @@ export default function LoginPage() {
                 "Iniciar Sesión"
               )}
             </Button>
-            
-            <div className="text-xs text-zinc-500 text-center border-t border-zinc-800/50 pt-4 w-full">
-              <p className="font-semibold text-zinc-400 mb-1">Acceso de prueba:</p>
-              <p>Email: <span className="text-zinc-300 font-mono">admin@uep.gov.ar</span></p>
-              <p>Contraseña: <span className="text-zinc-300 font-mono">admin123</span></p>
-            </div>
           </CardFooter>
         </form>
       </Card>

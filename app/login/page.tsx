@@ -86,7 +86,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
-                className="bg-zinc-950/50 border-zinc-800 text-white placeholder-zinc-500 focus-visible:ring-emerald-500"
+                className="bg-zinc-950 border-zinc-800 text-white placeholder-zinc-500 focus-visible:ring-emerald-500"
               />
             </div>
             
@@ -103,12 +103,12 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}
-                className="bg-zinc-950/50 border-zinc-800 text-white placeholder-zinc-500 focus-visible:ring-emerald-500"
+                className="bg-zinc-950 border-zinc-800 text-white placeholder-zinc-500 focus-visible:ring-emerald-500"
               />
             </div>
           </CardContent>
           
-          <CardFooter className="flex flex-col space-y-4">
+          <CardFooter className="flex flex-col space-y-4 border-t border-zinc-800 bg-zinc-900">
             <Button
               type="submit"
               disabled={loading}

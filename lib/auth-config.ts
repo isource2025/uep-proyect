@@ -9,12 +9,12 @@ export function getAppUrl(): string {
 
 export const authSecret = DEV_AUTH_SECRET;
 
+/** Better Auth supports wildcards in trustedOrigins. */
 export function getTrustedOrigins(): string[] {
-  const origins = new Set<string>(["http://localhost:3000", "https://uep-proyect.vercel.app"]);
-
-  if (process.env.VERCEL_URL) {
-    origins.add(`https://${process.env.VERCEL_URL}`);
-  }
-
-  return [...origins];
+  return [
+    "http://localhost:3000",
+    "http://localhost:*",
+    "https://uep-proyect.vercel.app",
+    "https://*.vercel.app",
+  ];
 }

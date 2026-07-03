@@ -2,24 +2,12 @@ import { prisma } from "../lib/prisma";
 import { auth } from "../lib/auth";
 
 async function main() {
-  console.log("Starting seeding on SQL Server...");
+  console.log("Starting non-destructive seeding on SQL Server...");
   
   const authContext = await auth.$context;
   const hashedPassword = await authContext.password.hash("admin123");
 
-  // 1. Clean existing custom portal data
-  await prisma.distribution.deleteMany();
-  await prisma.agent.deleteMany();
-  await prisma.liquidationDetail.deleteMany();
-  await prisma.liquidation.deleteMany();
-  
-  await prisma.session.deleteMany();
-  await prisma.account.deleteMany();
-  await prisma.systemConfig.deleteMany();
-
-  console.log("Custom portal tables cleared.");
-
-  // 2. Ensure we have at least some Providers (Hospitals)
+  // 1. Ensure we have at least some Providers (Hospitals)
   let providers = await prisma.proveedor.findMany({ take: 3 });
   if (providers.length === 0) {
     console.log("No providers found in PROVEEDORES, creating mock ones...");
@@ -37,21 +25,26 @@ async function main() {
   const prov2 = providers[1] || prov1;
   const prov3 = providers[2] || prov1;
 
-  // 3. Ensure we have the Admin User in imPersonal table
-  let adminUser = await prisma.user.findUnique({
+  // 2. Ensure we have the Admin User in imPersonal table
+  let adminUser = await prisma.user.findFirst({
     where: { email: "admin@uep.gov.ar" }
   });
 
   if (!adminUser) {
+    const maxUser = await prisma.user.findFirst({
+      orderBy: { id: "desc" }
+    });
+    const nextId = Math.max(10000, (maxUser?.id || 0) + 1);
+
     adminUser = await prisma.user.create({
       data: {
-        id: 9999,
+        id: nextId,
         email: "admin@uep.gov.ar",
         password: hashedPassword,
         name: "Admin UEP",
         role: "1", // ADMIN role in imRoles
         operador: "admin",
-        matricula: 9999,
+        matricula: nextId,
         emailVerified: true,
         hospitalId: prov1.id,
       },
@@ -75,19 +68,24 @@ async function main() {
   }
 
   // Also ensure the existing admin@medicenter.com has an account link if needed
-  let medicenterUser = await prisma.user.findUnique({
+  let medicenterUser = await prisma.user.findFirst({
     where: { email: "admin@medicenter.com" }
   });
   if (!medicenterUser) {
+    const maxUser = await prisma.user.findFirst({
+      orderBy: { id: "desc" }
+    });
+    const nextId = Math.max(10000, (maxUser?.id || 0) + 1);
+
     medicenterUser = await prisma.user.create({
       data: {
-        id: 9998,
+        id: nextId,
         email: "admin@medicenter.com",
         password: hashedPassword,
         name: "Admin Medicenter",
         role: "1", // ADMIN role
         operador: "admin_medi",
-        matricula: 9998,
+        matricula: nextId,
         emailVerified: true,
         hospitalId: prov1.id,
       }
@@ -113,7 +111,7 @@ async function main() {
     console.log("Linked credentials account for admin@medicenter.com.");
   }
 
-  // 4. Ensure we have an active period in Periodos_IVA (e.g. June 2026)
+  // 3. Ensure we have an active period in Periodos_IVA (e.g. June 2026)
   let activePeriod = await prisma.periodoIVA.findFirst({
     where: { anio: 2026, mes: 6, iva: "V" }
   });
@@ -137,7 +135,7 @@ async function main() {
     console.log("Period 2026/06 Ventas ensured open.");
   }
 
-  // 5. Create SISPER Agents by inserting directly into imPersonal (User model)
+  // 4. Create SISPER Agents by inserting directly into imPersonal (User model)
   const agentsData = [
     {
       id: 201,
@@ -177,7 +175,14 @@ async function main() {
   ];
 
   for (const ag of agentsData) {
-    const existing = await prisma.user.findUnique({ where: { id: ag.id } });
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: ag.id },
+          { email: `agent${ag.id}@uep.gov.ar` }
+        ]
+      }
+    });
     if (!existing) {
       await prisma.user.create({
         data: {
@@ -213,7 +218,7 @@ async function main() {
     console.log("Mock CParametro seeded.");
   }
 
-  console.log("Seeding completed successfully!");
+  console.log("Seeding completed successfully without deleting any existing data!");
 }
 
 main()

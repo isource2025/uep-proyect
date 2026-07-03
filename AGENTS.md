@@ -7,12 +7,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 # Project Context & Workflow (UEP Proyect)
 
 ## Database Configuration
-- **DBMS**: MariaDB / MySQL
-- **Database Name**: `uep-proyect`
-- **Default Port**: 3306
-- **Connection String**: `mysql://facundofernandez@localhost:3306/uep-proyect` (No password required for local connection)
+- **DBMS**: SQL Server (MSSQL)
+- **Database Name**: `UEP`
+- **Default Port**: 1433
+- **Connection String**: `sqlserver://181.98.96.200:1433;database=UEP;user=sa;password=isource;encrypt=false;trustServerCertificate=true`
 - **ORM**: Prisma (using `@prisma/client` and `prisma`)
-- **Connection Adapter**: Instantiated using `@prisma/adapter-mariadb` via `/tmp/mysql.sock` socket.
+- **Connection Adapter**: Instantiated using `@prisma/adapter-mssql` (PrismaMssql).
 
 ## Functional Modules
 1. **Module 1**: User Management, Security & Configuration (Login, Pass recovery, user/hospital/period management)

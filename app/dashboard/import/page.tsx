@@ -3,39 +3,76 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Database, UploadCloud, CheckCircle, RefreshCw, FileSpreadsheet, AlertCircle, Users } from "lucide-react";
+import { Database, UploadCloud, CheckCircle, RefreshCw, FileSpreadsheet, AlertCircle, Info, Landmark } from "lucide-react";
+
+interface ErpStatusData {
+  fcCount: number;
+  rcCount: number;
+  appliesCount: number;
+  purchasesCount: number;
+}
+
+interface SisperImportResult {
+  createdCount: number;
+  updatedCount: number;
+  totalCount: number;
+}
 
 export default function ImportPage() {
   const [erpLoading, setErpLoading] = useState(false);
-  const [erpSuccess, setErpSuccess] = useState(false);
+  const [erpStatus, setErpStatus] = useState<ErpStatusData | null>(null);
+  const [erpError, setErpError] = useState("");
+
   const [sisperLoading, setSisperLoading] = useState(false);
-  const [sisperSuccess, setSisperSuccess] = useState(false);
+  const [sisperResult, setSisperResult] = useState<SisperImportResult | null>(null);
+  const [sisperError, setSisperError] = useState("");
   const [fileName, setFileName] = useState("");
 
-  const triggerErpImport = async () => {
+  const triggerErpSync = async () => {
     setErpLoading(true);
-    setErpSuccess(false);
-    
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    
-    setErpLoading(false);
-    setErpSuccess(true);
+    setErpStatus(null);
+    setErpError("");
+
+    try {
+      const res = await fetch("/api/import/erp-status");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al sincronizar");
+      
+      setErpStatus(data);
+    } catch (e: any) {
+      setErpError(e.message || "Error al conectar con la base de datos SQL Server");
+    } finally {
+      setErpLoading(false);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     setFileName(file.name);
     setSisperLoading(true);
-    setSisperSuccess(false);
+    setSisperResult(null);
+    setSisperError("");
 
-    // Simulate file reading and DB import
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    const formData = new FormData();
+    formData.append("file", file);
 
-    setSisperLoading(false);
-    setSisperSuccess(true);
+    try {
+      const res = await fetch("/api/import/sisper", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al importar");
+
+      setSisperResult(data);
+    } catch (e: any) {
+      setSisperError(e.message || "Error de red al procesar el archivo");
+    } finally {
+      setSisperLoading(false);
+    }
   };
 
   return (
@@ -55,42 +92,69 @@ export default function ImportPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 mb-2">
               <Database className="h-5 w-5" />
             </div>
-            <CardTitle className="text-foreground text-lg font-bold">Importación ERP de Facturas & Recibos</CardTitle>
+            <CardTitle className="text-foreground text-lg font-bold">Conexión ERP en Tiempo Real</CardTitle>
             <CardDescription className="text-muted-foreground text-xs mt-1 leading-relaxed">
-              Sincroniza el sistema con las tablas externas del ERP de facturación y pagos (CBTES, CBTES_APLICA y COMPRAS).
+              Verifica el estado y consulta la cantidad de registros activos directamente en el ERP de facturación y compras.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 flex-1 flex flex-col justify-between">
             <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
-              <h3 className="text-xs font-bold text-foreground">Tablas ERP involucradas:</h3>
+              <h3 className="text-xs font-bold text-foreground">Esquema Contable ERP:</h3>
               <ul className="text-xs text-muted-foreground space-y-2 list-disc pl-4">
-                <li><strong className="text-foreground">CBTES</strong>: Facturas de Venta (FC) y Recibos de Cobro (RC).</li>
-                <li><strong className="text-foreground">CBTES_APLICA</strong>: Relación de imputación entre cobros y ventas.</li>
-                <li><strong className="text-foreground">COMPRAS</strong>: Comprobantes emitidos por Hospitales y CAPS.</li>
+                <li><strong className="text-foreground">CBTES</strong>: Facturas de Venta (FC) y Recibos (RC).</li>
+                <li><strong className="text-foreground">CBTES_APLICA</strong>: Imputaciones contables del ERP.</li>
+                <li><strong className="text-foreground">COMPRAS</strong>: Comprobantes de Hospitales cargados.</li>
               </ul>
             </div>
 
-            {erpSuccess && (
-              <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 text-sm text-emerald-600 dark:text-emerald-400 animate-fade-in">
-                <CheckCircle className="h-4.5 w-4.5 shrink-0" />
-                <p>Sincronización exitosa. Comprobantes y relaciones ERP actualizados en MariaDB.</p>
+            {erpStatus && (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-3 animate-fade-in">
+                <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 font-bold">
+                  <CheckCircle className="h-4.5 w-4.5" />
+                  <span>Conexión de Lectura Establecida</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs border-t border-border/40 pt-2.5">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Facturas (FC):</span>
+                    <span className="font-semibold text-foreground">{erpStatus.fcCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Recibos (RC):</span>
+                    <span className="font-semibold text-foreground">{erpStatus.rcCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Imputaciones:</span>
+                    <span className="font-semibold text-foreground">{erpStatus.appliesCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Compras:</span>
+                    <span className="font-semibold text-foreground">{erpStatus.purchasesCount}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {erpError && (
+              <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600 dark:text-red-400">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <p>{erpError}</p>
               </div>
             )}
 
             <Button
-              onClick={triggerErpImport}
+              onClick={triggerErpSync}
               disabled={erpLoading}
               className="w-full mt-4 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-11 cursor-pointer"
             >
               {erpLoading ? (
                 <>
                   <RefreshCw className="mr-2 h-4.5 w-4.5 animate-spin" />
-                  Sincronizando con ERP...
+                  Consultando ERP...
                 </>
               ) : (
                 <>
                   <RefreshCw className="mr-2 h-4.5 w-4.5" />
-                  Sincronizar ahora
+                  Verificar Conexión ERP
                 </>
               )}
             </Button>
@@ -105,7 +169,7 @@ export default function ImportPage() {
             </div>
             <CardTitle className="text-foreground text-lg font-bold">Importación SISPER (Excel)</CardTitle>
             <CardDescription className="text-muted-foreground text-xs mt-1 leading-relaxed">
-              Carga la planilla de nómina médica del personal de los Hospitales y CAPS para habilitar la distribución.
+              Sube la nómina médica de los establecimientos de salud para guardarlos directamente en la tabla `imPersonal`.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 flex-1 flex flex-col justify-between">
@@ -135,19 +199,30 @@ export default function ImportPage() {
               </div>
             )}
 
-            {sisperSuccess && (
+            {sisperResult && (
               <div className="flex items-start gap-2.5 rounded-lg bg-teal-500/10 border border-teal-500/20 p-3 text-sm text-teal-650 dark:text-teal-400 animate-fade-in">
                 <CheckCircle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold">Nómina importada correctamente</p>
-                  <p className="text-xs text-teal-600 dark:text-teal-500 mt-0.5">Se actualizaron 5 profesionales y cargos en la base de datos.</p>
+                  <p className="font-bold">Nómina importada con éxito</p>
+                  <div className="text-xs text-muted-foreground space-y-0.5 mt-1 font-mono">
+                    <div>Procesados: {sisperResult.totalCount}</div>
+                    <div>Creados en imPersonal: <span className="text-emerald-600 dark:text-emerald-400 font-bold">{sisperResult.createdCount}</span></div>
+                    <div>Actualizados: <span className="text-teal-600 dark:text-teal-400 font-bold">{sisperResult.updatedCount}</span></div>
+                  </div>
                 </div>
               </div>
             )}
 
+            {sisperError && (
+              <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600 dark:text-red-400">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <p>{sisperError}</p>
+              </div>
+            )}
+
             <div className="flex items-center gap-2 text-[10px] text-muted-foreground border-t border-border pt-4">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span>El archivo debe contener las columnas obligatorias: DNI, CUIL, Nombre, Cargo, Establecimiento, Hospital.</span>
+              <Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span>El Excel debe tener las columnas: CUIL, Nombre, Cargo, Establecimiento, Hospital.</span>
             </div>
           </CardContent>
         </Card>

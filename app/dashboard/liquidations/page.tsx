@@ -3,20 +3,23 @@ import { revalidatePath } from "next/cache";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Calculator, Receipt, Calendar, Building, DollarSign, Eye, Settings2, FileText, CheckCircle2 } from "lucide-react";
+import { Calculator, Receipt, Eye, Settings2, CheckCircle2, Coins, Landmark } from "lucide-react";
 
 export const revalidate = 0;
 
 export default async function LiquidationsPage() {
-  // 1. Fetch generated liquidations
+  // 1. Fetch generated liquidations with nested details and hospital purchases mapping
   const liquidations = await prisma.liquidation.findMany({
     include: {
       period: true,
@@ -29,6 +32,24 @@ export default async function LiquidationsPage() {
     },
     orderBy: { createdAt: "desc" },
   });
+
+  // For each liquidation, find the hospital name dynamically by looking up the Compra corresponding to the first detail's fcVentaId
+  const liquidationsWithHospital = await Promise.all(
+    liquidations.map(async (liq) => {
+      let hospitalName = "No Asignado";
+      if (liq.details.length > 0) {
+        const firstDetail = liq.details[0];
+        const purchase = await prisma.compra.findFirst({
+          where: { fcVentaId: firstDetail.fcVentaId },
+          include: { hospital: true },
+        });
+        if (purchase?.hospital?.nombre) {
+          hospitalName = purchase.hospital.nombre;
+        }
+      }
+      return { ...liq, hospitalName };
+    })
+  );
 
   // 2. Fetch RCs that DO NOT have a liquidation yet (Pending calculation)
   const generatedRcIds = liquidations.map((l) => l.rcId);
@@ -98,6 +119,35 @@ export default async function LiquidationsPage() {
       revalidatePath("/dashboard/liquidations");
     } catch (e) {
       console.error("Error generating liquidation:", e);
+    }
+  };
+
+  // Server Action to save adjustments & status updates
+  const handleUpdateLiquidation = async (formData: FormData) => {
+    "use server";
+    const id = formData.get("id") as string;
+    const creditos = parseFloat(formData.get("creditos") as string) || 0;
+    const debitos = parseFloat(formData.get("debitos") as string) || 0;
+    const ajustes = parseFloat(formData.get("ajustes") as string) || 0;
+    const recuperos = parseFloat(formData.get("recuperos") as string) || 0;
+    const pendientes = parseFloat(formData.get("pendientes") as string) || 0;
+    const status = formData.get("status") as string;
+
+    try {
+      await prisma.liquidation.update({
+        where: { id },
+        data: {
+          creditos,
+          debitos,
+          ajustes,
+          recuperos,
+          pendientes,
+          status,
+        },
+      });
+      revalidatePath("/dashboard/liquidations");
+    } catch (e) {
+      console.error("Error updating liquidation adjustments:", e);
     }
   };
 
@@ -189,18 +239,19 @@ export default async function LiquidationsPage() {
               <TableHeader className="bg-muted/50 text-muted-foreground">
                 <TableRow className="hover:bg-transparent border-border">
                   <TableHead className="font-semibold text-xs py-3">Código Liquidación</TableHead>
+                  <TableHead className="font-semibold text-xs">Hospital / Efector</TableHead>
                   <TableHead className="font-semibold text-xs">Período</TableHead>
                   <TableHead className="font-semibold text-xs">Recibo (RC)</TableHead>
-                  <TableHead className="font-semibold text-xs text-right">Facturado</TableHead>
                   <TableHead className="font-semibold text-xs text-right">Neto Inicial</TableHead>
+                  <TableHead className="font-semibold text-xs text-right">Neto Final</TableHead>
                   <TableHead className="font-semibold text-xs">Estado</TableHead>
                   <TableHead className="font-semibold text-xs text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {liquidations.length === 0 ? (
+                {liquidationsWithHospital.length === 0 ? (
                   <TableRow className="border-border">
-                    <TableCell colSpan={7} className="text-center text-muted-foreground text-sm py-12">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground text-sm py-12">
                       <div className="flex flex-col items-center gap-2">
                         <Receipt className="h-8 w-8 text-muted-foreground animate-pulse" />
                         <p>No se han generado liquidaciones en este período.</p>
@@ -208,86 +259,172 @@ export default async function LiquidationsPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  liquidations.map((liq) => (
-                    <TableRow key={liq.id} className="hover:bg-muted/40 border-border text-foreground">
-                      <TableCell className="font-mono text-xs text-foreground py-3.5">
-                        LIQ-{liq.id.substring(0, 8).toUpperCase()}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {getMonthName(liq.period.mes)} {liq.period.anio}
-                      </TableCell>
-                      <TableCell className="text-xs font-mono">
-                        {liq.rc.puntoVenta}-{liq.rc.numero}
-                      </TableCell>
-                      <TableCell className="text-right text-xs">
-                        {formatCurrency(liq.totalFacturado)}
-                      </TableCell>
-                      <TableCell className="text-right text-xs font-semibold text-foreground">
-                        {formatCurrency(liq.netoInicial)}
-                      </TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-3xs font-semibold border ${
-                          liq.status === "PENDIENTE"
-                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
-                            : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
-                        }`}>
-                          {liq.status}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button size="sm" variant="ghost" className="text-xs gap-1.5 h-8 border border-border hover:bg-muted cursor-pointer">
-                              <Eye className="h-3.5 w-3.5" />
-                              Ver Detalle
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="border-border bg-card text-card-foreground max-w-xl">
-                            <DialogHeader>
-                              <DialogTitle className="text-foreground font-bold">Detalle de Liquidación LIQ-{liq.id.substring(0, 8).toUpperCase()}</DialogTitle>
-                            </DialogHeader>
-                            
-                            <div className="space-y-4 py-2">
-                              {/* Summary info */}
-                              <div className="grid grid-cols-2 gap-4 rounded-lg bg-muted/30 p-4 border border-border">
-                                <div className="space-y-0.5">
-                                  <span className="text-[10px] text-muted-foreground uppercase font-semibold">Total Neto Inicial:</span>
-                                  <p className="text-xl font-bold text-foreground">{formatCurrency(liq.netoInicial)}</p>
-                                </div>
-                                <div className="space-y-0.5">
-                                  <span className="text-[10px] text-muted-foreground uppercase font-semibold">Facturado Imputado:</span>
-                                  <p className="text-xl font-bold text-foreground">{formatCurrency(liq.totalFacturado)}</p>
-                                </div>
-                              </div>
+                  liquidationsWithHospital.map((liq) => {
+                    const netoFinal =
+                      Number(liq.netoInicial) +
+                      Number(liq.creditos) -
+                      Number(liq.debitos) +
+                      Number(liq.ajustes) +
+                      Number(liq.recuperos) -
+                      Number(liq.pendientes);
 
-                              {/* Details list */}
-                              <div className="space-y-2">
-                                <h4 className="text-xs font-bold text-foreground">Facturas de Venta Imputadas:</h4>
-                                <div className="rounded-lg border border-border overflow-hidden bg-muted/20">
-                                  <Table>
-                                    <TableHeader className="bg-muted/50">
-                                      <TableRow className="hover:bg-transparent border-border">
-                                        <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground">ID Factura</TableHead>
-                                        <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Importe Imputado</TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {liq.details.map((detail) => (
-                                        <TableRow key={detail.id} className="hover:bg-transparent border-border">
-                                          <TableCell className="py-2 text-xs font-mono">FC-{detail.fcVentaId}</TableCell>
-                                          <TableCell className="py-2 text-xs text-right text-foreground font-semibold">{formatCurrency(detail.amount)}</TableCell>
-                                        </TableRow>
-                                      ))}
-                                    </TableBody>
-                                  </Table>
+                    return (
+                      <TableRow key={liq.id} className="hover:bg-muted/40 border-border text-foreground">
+                        <TableCell className="font-mono text-xs text-foreground py-3.5">
+                          LIQ-{liq.id.substring(0, 8).toUpperCase()}
+                        </TableCell>
+                        <TableCell className="text-xs font-semibold">
+                          {liq.hospitalName}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {getMonthName(liq.period.mes)} {liq.period.anio}
+                        </TableCell>
+                        <TableCell className="text-xs font-mono">
+                          {liq.rc.puntoVenta}-{liq.rc.numero}
+                        </TableCell>
+                        <TableCell className="text-right text-xs">
+                          {formatCurrency(liq.netoInicial)}
+                        </TableCell>
+                        <TableCell className="text-right text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(netoFinal)}
+                        </TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-3xs font-semibold border ${
+                            liq.status === "PENDIENTE"
+                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
+                              : liq.status === "EN_PROCESO"
+                              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25"
+                              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
+                          }`}>
+                            {liq.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button size="sm" variant="ghost" className="text-xs gap-1.5 h-8 border border-border hover:bg-muted cursor-pointer">
+                                <Eye className="h-3.5 w-3.5" />
+                                Detalle & Ajustes
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="border-border bg-card text-card-foreground max-w-xl">
+                              <DialogHeader>
+                                <DialogTitle className="text-foreground font-bold">Liquidación LIQ-{liq.id.substring(0, 8).toUpperCase()}</DialogTitle>
+                                <DialogDescription className="text-muted-foreground text-xs">
+                                  {liq.hospitalName} &bull; Recibo {liq.rc.puntoVenta}-{liq.rc.numero}
+                                </DialogDescription>
+                              </DialogHeader>
+                              
+                              <form action={handleUpdateLiquidation} className="space-y-6 py-2">
+                                <input type="hidden" name="id" value={liq.id} />
+                                
+                                {/* Totals calculation overview */}
+                                <div className="grid grid-cols-3 gap-3 rounded-lg bg-muted/40 p-4 border border-border text-center">
+                                  <div className="space-y-0.5">
+                                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Neto Inicial</span>
+                                    <p className="text-sm font-semibold text-foreground">{formatCurrency(liq.netoInicial)}</p>
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Ajustes Netos</span>
+                                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                                      {formatCurrency(Number(liq.creditos) - Number(liq.debitos) + Number(liq.ajustes) + Number(liq.recuperos) - Number(liq.pendientes))}
+                                    </p>
+                                  </div>
+                                  <div className="space-y-0.5">
+                                    <span className="text-[10px] text-emerald-500 uppercase font-bold">Neto Final</span>
+                                    <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(netoFinal)}</p>
+                                  </div>
                                 </div>
-                              </div>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      </TableCell>
-                    </TableRow>
-                  ))
+
+                                {/* Form controls for adjustments */}
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-1.5">
+                                    <Label htmlFor="creditos" className="text-xs text-foreground">Créditos (+)</Label>
+                                    <Input
+                                      id="creditos"
+                                      name="creditos"
+                                      type="number"
+                                      step="0.01"
+                                      defaultValue={Number(liq.creditos)}
+                                      className="bg-muted/40 border-border text-foreground focus-visible:ring-emerald-500 h-9 text-xs"
+                                    />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label htmlFor="debitos" className="text-xs text-foreground">Débitos (-)</Label>
+                                    <Input
+                                      id="debitos"
+                                      name="debitos"
+                                      type="number"
+                                      step="0.01"
+                                      defaultValue={Number(liq.debitos)}
+                                      className="bg-muted/40 border-border text-foreground focus-visible:ring-emerald-500 h-9 text-xs"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-4">
+                                  <div className="space-y-1.5">
+                                    <Label htmlFor="ajustes" className="text-xs text-foreground">Ajustes (+)</Label>
+                                    <Input
+                                      id="ajustes"
+                                      name="ajustes"
+                                      type="number"
+                                      step="0.01"
+                                      defaultValue={Number(liq.ajustes)}
+                                      className="bg-muted/40 border-border text-foreground focus-visible:ring-emerald-500 h-9 text-xs"
+                                    />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label htmlFor="recuperos" className="text-xs text-foreground">Recuperos (+)</Label>
+                                    <Input
+                                      id="recuperos"
+                                      name="recuperos"
+                                      type="number"
+                                      step="0.01"
+                                      defaultValue={Number(liq.recuperos)}
+                                      className="bg-muted/40 border-border text-foreground focus-visible:ring-emerald-500 h-9 text-xs"
+                                    />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label htmlFor="pendientes" className="text-xs text-foreground">Pendientes (-)</Label>
+                                    <Input
+                                      id="pendientes"
+                                      name="pendientes"
+                                      type="number"
+                                      step="0.01"
+                                      defaultValue={Number(liq.pendientes)}
+                                      className="bg-muted/40 border-border text-foreground focus-visible:ring-emerald-500 h-9 text-xs"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                  <Label htmlFor="status" className="text-xs text-foreground">Estado de Liquidación</Label>
+                                  <select
+                                    id="status"
+                                    name="status"
+                                    defaultValue={liq.status}
+                                    className="flex h-9 w-full rounded-md border border-input bg-muted/40 text-foreground px-3 py-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+                                  >
+                                    <option value="PENDIENTE" className="bg-card text-foreground">PENDIENTE</option>
+                                    <option value="EN_PROCESO" className="bg-card text-foreground">EN_PROCESO</option>
+                                    <option value="CONSOLIDADA" className="bg-card text-foreground">CONSOLIDADA</option>
+                                    <option value="CERRADA" className="bg-card text-foreground">CERRADA</option>
+                                  </select>
+                                </div>
+
+                                <DialogFooter className="pt-2">
+                                  <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-10 cursor-pointer">
+                                    Guardar Cambios
+                                  </Button>
+                                </DialogFooter>
+                              </form>
+                            </DialogContent>
+                          </Dialog>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

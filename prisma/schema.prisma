@@ -16,27 +16,25 @@ datasource db {
 // ==========================================
 
 model User {
-  id            Int       @id @default(autoincrement())
-  email         String    @unique
-  password      String
-  firstName     String
-  lastName      String
-  dni           String
-  isAdmin       Boolean?  @map("isAdmin")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime? @updatedAt @map("updatedAt")
-
-  // Additional fields needed by better-auth or custom role logic
+  id            Int       @id @map("Valor")
+  email         String?   @unique @map("email")
+  password      String?   @map("Password")
+  name          String    @map("ApellidoNombre")
+  role          String?   @map("Rol")
+  operador      String?   @map("Operador")
+  matricula     Int?      @map("Matricula")
+  cuit          String?   @map("CUIT")
   emailVerified Boolean   @default(false)
   image         String?
-  role          String    @default("OPERATOR") // ADMIN, HOSPITAL_USER, OPERATOR
-  hospitalId    Int?      // Links to their hospital (Proveedor IDPROVEEDOR)
-  hospital      Proveedor? @relation(fields: [hospitalId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime? @updatedAt
+  hospitalId    Int?      @map("hospitalId")
+  hospital      Proveedor? @relation(fields: [hospitalId], references: [id], map: "User_hospitalId_fkey")
 
   sessions      Session[]
   accounts      Account[]
 
-  @@map("Users")
+  @@map("imPersonal")
 }
 
 model Session {
@@ -117,10 +115,11 @@ model Cliente {
 }
 
 model Proveedor {
-  id     Int      @id @map("IDPROVEEDOR")
-  nombre String?  @map("DESCRIPCION")
-  cuit   Decimal? @map("NRO_CUIT")
-  code   String?  @map("NOMBRE_FANTASIA")
+  id         Int      @id @map("IDPROVEEDOR")
+  nombre     String?  @map("DESCRIPCION")
+  cuit       Decimal? @map("NRO_CUIT")
+  code       String?  @map("NOMBRE_FANTASIA")
+  categoryId Int?     @map("IDTIPO_PROV_CATEG") @db.SmallInt
 
   // Relationships previously on Hospital
   users     User[]
@@ -176,15 +175,16 @@ model Compra {
 // ==========================================
 
 model Agent {
-  id              String         @id @default(cuid())
-  dni             String         @unique
-  cuil            String         @unique
+  id              Int            @id
+  cuil            String?
   nombre          String
-  cargo           String
-  establecimiento String
-  hospitalId      Int
-  hospital        Proveedor      @relation(fields: [hospitalId], references: [id])
+  cargo           String?
+  establecimiento String?
+  hospitalId      Int?
+  hospital        Proveedor?     @relation(fields: [hospitalId], references: [id], map: "Agent_hospitalId_fkey")
   distributions   Distribution[]
+
+  @@map("Agent")
 }
 
 model Liquidation {
@@ -227,7 +227,7 @@ model Distribution {
   id               String      @id @default(cuid())
   liquidationId    String
   liquidation      Liquidation @relation(fields: [liquidationId], references: [id], onDelete: Cascade)
-  agentId          String
+  agentId          Int
   agent            Agent       @relation(fields: [agentId], references: [id])
   
   honorarios       Decimal     @default(0) @db.Decimal(15, 2)
@@ -245,4 +245,28 @@ model Attachment {
   fileName      String
   fileUrl       String
   createdAt     DateTime    @default(now())
+}
+
+model ImRol {
+  id          Int      @id @map("IdRol")
+  nombre      String   @map("Nombre")
+  descripcion String?  @map("Descripcion")
+  nivel       Int      @map("Nivel") @db.TinyInt
+  activo      Boolean  @map("Activo")
+  fechaCreacion DateTime @map("FechaCreacion")
+
+  @@map("imRoles")
+}
+
+model CParametro {
+  id          String   @id @map("IdParametro") @db.Char(20)
+  descripcion String   @map("Descripcion") @db.Char(30)
+  idEmpresa   Int      @map("IdEmpresa") @db.SmallInt
+  idSucursal  Int      @map("IdSucursal") @db.SmallInt
+  idCentroCosto Int    @map("IdCentro_Costo")
+  idCuenta    Decimal  @map("IdCuenta") @db.Decimal(15, 2)
+  ejercicio   Int      @map("Ejercicio") @db.SmallInt
+  observaciones String? @map("Observaciones") @db.VarChar(4000)
+
+  @@map("CParametros")
 }

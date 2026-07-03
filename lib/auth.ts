@@ -17,10 +17,14 @@ export const auth = betterAuth({
     additionalFields: {
       role: {
         type: "string",
-        defaultValue: "OPERATOR",
+        defaultValue: "4",
       },
       hospitalId: {
         type: "number",
+        required: false,
+      },
+      operador: {
+        type: "string",
         required: false,
       },
     },

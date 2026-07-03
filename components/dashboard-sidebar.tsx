@@ -10,38 +10,64 @@ import {
   UploadCloud,
   Receipt,
   ShieldAlert,
+  Users,
+  Settings,
 } from "lucide-react";
+
+import { authClient } from "@/lib/auth-client";
 
 export function DashboardSidebar() {
   const pathname = usePathname();
+  const { data: session } = authClient.useSession();
+  const user = session?.user as any;
 
-  const menuItems = [
-    {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: LayoutDashboard,
-    },
-    {
-      name: "Hospitales",
-      href: "/dashboard/hospitals",
-      icon: Building2,
-    },
-    {
-      name: "Períodos",
-      href: "/dashboard/periods",
-      icon: CalendarRange,
-    },
-    {
-      name: "Importar Datos",
-      href: "/dashboard/import",
-      icon: UploadCloud,
-    },
-    {
-      name: "Liquidaciones",
-      href: "/dashboard/liquidations",
-      icon: Receipt,
-    },
-  ];
+  const isHospitalUser = user?.hospitalId !== undefined && user?.hospitalId !== null;
+
+  const menuItems = isHospitalUser
+    ? [
+        {
+          name: "Portal Hospital",
+          href: "/dashboard/hospital-portal",
+          icon: Building2,
+        },
+      ]
+    : [
+        {
+          name: "Dashboard",
+          href: "/dashboard",
+          icon: LayoutDashboard,
+        },
+        {
+          name: "Hospitales",
+          href: "/dashboard/hospitals",
+          icon: Building2,
+        },
+        {
+          name: "Períodos",
+          href: "/dashboard/periods",
+          icon: CalendarRange,
+        },
+        {
+          name: "Importar Datos",
+          href: "/dashboard/import",
+          icon: UploadCloud,
+        },
+        {
+          name: "Liquidaciones",
+          href: "/dashboard/liquidations",
+          icon: Receipt,
+        },
+        {
+          name: "Usuarios",
+          href: "/dashboard/users",
+          icon: Users,
+        },
+        {
+          name: "Configuración",
+          href: "/dashboard/settings",
+          icon: Settings,
+        },
+      ];
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-card text-muted-foreground">

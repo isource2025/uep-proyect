@@ -37,7 +37,7 @@ async function main() {
   const prov2 = providers[1] || prov1;
   const prov3 = providers[2] || prov1;
 
-  // 3. Ensure we have the Admin User in Users table
+  // 3. Ensure we have the Admin User in imPersonal table
   let adminUser = await prisma.user.findUnique({
     where: { email: "admin@uep.gov.ar" }
   });
@@ -45,14 +45,14 @@ async function main() {
   if (!adminUser) {
     adminUser = await prisma.user.create({
       data: {
+        id: 9999,
         email: "admin@uep.gov.ar",
         password: hashedPassword,
-        firstName: "Admin",
-        lastName: "UEP",
-        dni: "00000001",
-        isAdmin: true,
+        name: "Admin UEP",
+        role: "1", // ADMIN role in imRoles
+        operador: "admin",
+        matricula: 9999,
         emailVerified: true,
-        role: "ADMIN",
         hospitalId: prov1.id,
       },
     });
@@ -75,27 +75,42 @@ async function main() {
   }
 
   // Also ensure the existing admin@medicenter.com has an account link if needed
-  const medicenterUser = await prisma.user.findUnique({
+  let medicenterUser = await prisma.user.findUnique({
     where: { email: "admin@medicenter.com" }
   });
-  if (medicenterUser) {
-    const accountExists = await prisma.account.findFirst({
-      where: { userId: medicenterUser.id }
+  if (!medicenterUser) {
+    medicenterUser = await prisma.user.create({
+      data: {
+        id: 9998,
+        email: "admin@medicenter.com",
+        password: hashedPassword,
+        name: "Admin Medicenter",
+        role: "1", // ADMIN role
+        operador: "admin_medi",
+        matricula: 9998,
+        emailVerified: true,
+        hospitalId: prov1.id,
+      }
     });
-    if (!accountExists) {
-      await prisma.account.create({
-        data: {
-          id: "medicenter-account-id",
-          accountId: "admin@medicenter.com",
-          providerId: "credential",
-          userId: medicenterUser.id,
-          password: medicenterUser.password, // Keep the bcrypt hash already in table
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }
-      });
-      console.log("Linked credentials account for admin@medicenter.com.");
-    }
+    console.log("Admin user admin@medicenter.com created in imPersonal.");
+  }
+
+  const accountExists = await prisma.account.findFirst({
+    where: { userId: medicenterUser.id }
+  });
+  if (!accountExists) {
+    await prisma.account.create({
+      data: {
+        id: "medicenter-account-id",
+        accountId: "admin@medicenter.com",
+        providerId: "credential",
+        userId: medicenterUser.id,
+        password: medicenterUser.password || hashedPassword,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
+    });
+    console.log("Linked credentials account for admin@medicenter.com.");
   }
 
   // 4. Ensure we have an active period in Periodos_IVA (e.g. June 2026)
@@ -122,61 +137,81 @@ async function main() {
     console.log("Period 2026/06 Ventas ensured open.");
   }
 
-  // 5. Create SISPER Agents linking to our providers
-  await prisma.agent.createMany({
-    data: [
-      {
-        dni: "20.123.456",
-        cuil: "20-20123456-9",
-        nombre: "Dr. Juan Pérez",
-        cargo: "Médico de Guardia",
-        establecimiento: prov1.nombre || "HOSPITAL VIDAL",
-        hospitalId: prov1.id,
-      },
-      {
-        dni: "27.234.567",
-        cuil: "27-27234567-4",
-        nombre: "Dra. María González",
-        cargo: "Jefa de Pediatría",
-        establecimiento: prov1.nombre || "HOSPITAL VIDAL",
-        hospitalId: prov1.id,
-      },
-      {
-        dni: "20.345.678",
-        cuil: "20-20345678-2",
-        nombre: "Dr. Carlos Rodríguez",
-        cargo: "Cirujano General",
-        establecimiento: prov2.nombre || "HOSPITAL ESCUELA",
-        hospitalId: prov2.id,
-      },
-      {
-        dni: "27.456.789",
-        cuil: "27-27456789-9",
-        nombre: "Lic. Ana Martínez",
-        cargo: "Enfermera Jefa",
-        establecimiento: prov2.nombre || "HOSPITAL ESCUELA",
-        hospitalId: prov2.id,
-      },
-      {
-        dni: "20.567.890",
-        cuil: "20-20567890-5",
-        nombre: "Dr. Luis Silva",
-        cargo: "Cardiólogo",
-        establecimiento: prov3.nombre || "HOSPITAL SAN JOSE",
-        hospitalId: prov3.id,
-      },
-    ],
-  });
-  console.log("SISPER Agents seeded.");
+  // 5. Create SISPER Agents by inserting directly into imPersonal (User model)
+  const agentsData = [
+    {
+      id: 201,
+      cuil: "20-20123456-9",
+      nombre: "Dr. Juan Pérez",
+      cargo: "2", // MEDICO role
+      hospitalId: prov1.id,
+    },
+    {
+      id: 202,
+      cuil: "27-27234567-4",
+      nombre: "Dra. María González",
+      cargo: "2", // MEDICO role
+      hospitalId: prov1.id,
+    },
+    {
+      id: 203,
+      cuil: "20-20345678-2",
+      nombre: "Dr. Carlos Rodríguez",
+      cargo: "2", // MEDICO role
+      hospitalId: prov2.id,
+    },
+    {
+      id: 204,
+      cuil: "27-27456789-9",
+      nombre: "Lic. Ana Martínez",
+      cargo: "3", // ENFERMERO role
+      hospitalId: prov2.id,
+    },
+    {
+      id: 205,
+      cuil: "20-20567890-5",
+      nombre: "Dr. Luis Silva",
+      cargo: "2", // MEDICO role
+      hospitalId: prov3.id,
+    },
+  ];
 
-  // 6. Create System Configs
-  await prisma.systemConfig.createMany({
-    data: [
-      { key: "system_name", value: "Unidad Ejecutora Provincial (UEP)" },
-      { key: "tax_id", value: "30-71112223-4" },
-    ],
-  });
-  console.log("System configs seeded.");
+  for (const ag of agentsData) {
+    const existing = await prisma.user.findUnique({ where: { id: ag.id } });
+    if (!existing) {
+      await prisma.user.create({
+        data: {
+          id: ag.id,
+          name: ag.nombre,
+          email: `agent${ag.id}@uep.gov.ar`,
+          password: hashedPassword,
+          role: ag.cargo,
+          hospitalId: ag.hospitalId,
+          operador: `agent${ag.id}`,
+          matricula: ag.id,
+        }
+      });
+    }
+  }
+  console.log("SISPER Agents seeded in imPersonal.");
+
+  // Ensure we have at least one system parameter in CParametros
+  const paramCount = await prisma.cParametro.count();
+  if (paramCount === 0) {
+    await prisma.cParametro.create({
+      data: {
+        id: "UEP_CONFIG_GEN",
+        descripcion: "Configuración General Portal",
+        idEmpresa: 1,
+        idSucursal: 1,
+        idCentroCosto: 101,
+        idCuenta: 1110101,
+        ejercicio: 2026,
+        observaciones: "Configuración global inicial del portal UEP.",
+      }
+    });
+    console.log("Mock CParametro seeded.");
+  }
 
   console.log("Seeding completed successfully!");
 }

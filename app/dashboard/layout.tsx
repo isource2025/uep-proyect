@@ -27,7 +27,7 @@ export default async function DashboardLayout({
           user={{
             name: session.user.name,
             email: session.user.email,
-            role: session.user.role || "OPERATOR",
+            role: (session.user as any).role === "1" ? "ADMIN" : (session.user as any).role === "2" ? "MEDICO" : "OPERATOR",
           }}
         />
         <main className="flex-1 overflow-y-auto bg-background p-8">

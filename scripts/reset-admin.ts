@@ -20,8 +20,7 @@ async function main() {
     data: {
       password: hashedPassword,
       emailVerified: true,
-      role: "ADMIN",
-      isAdmin: true,
+      role: "1",
     },
   });
 

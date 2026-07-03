@@ -29,6 +29,7 @@ export default async function HospitalsPage({
   // Fetch providers (hospitals) from DB based on search query
   const hospitals = await prisma.proveedor.findMany({
     where: {
+      categoryId: 18,
       OR: [
         { nombre: { contains: query } },
         { code: { contains: query } },
@@ -58,6 +59,7 @@ export default async function HospitalsPage({
           nombre: name.toUpperCase(),
           code: code.toUpperCase().replace(/\s+/g, "_"),
           cuit: cuitStr ? parseFloat(cuitStr) : null,
+          categoryId: 18,
         },
       });
       revalidatePath("/dashboard/hospitals");

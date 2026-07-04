@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Database, UploadCloud, CheckCircle, RefreshCw, FileSpreadsheet, AlertCircle, Info, Landmark } from "lucide-react";
 
 interface ErpStatusData {
@@ -27,6 +28,7 @@ export default function ImportPage() {
   const [sisperResult, setSisperResult] = useState<SisperImportResult | null>(null);
   const [sisperError, setSisperError] = useState("");
   const [fileName, setFileName] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
 
   const triggerErpSync = async () => {
     setErpLoading(true);
@@ -174,19 +176,45 @@ export default function ImportPage() {
           </CardHeader>
           <CardContent className="space-y-6 flex-1 flex flex-col justify-between">
             {/* File Upload Area */}
-            <div className="relative rounded-lg border-2 border-dashed border-border bg-muted/20 px-6 py-8 text-center hover:border-zinc-400 dark:hover:border-zinc-700 transition-all cursor-pointer">
+            <div
+              onDragEnter={() => setIsDragging(true)}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={() => setIsDragging(false)}
+              className={cn(
+                "relative rounded-lg border-2 border-dashed px-6 py-8 text-center transition-all duration-300 cursor-pointer overflow-hidden",
+                sisperLoading
+                  ? "bg-muted/10 border-border cursor-not-allowed opacity-75"
+                  : isDragging
+                  ? "border-emerald-500 bg-emerald-500/10 scale-[1.02] shadow-lg shadow-emerald-500/10 text-foreground"
+                  : "border-white bg-muted/20 hover:border-zinc-400 dark:hover:border-zinc-700"
+              )}
+            >
               <input
                 type="file"
                 accept=".xlsx,.xls"
                 onChange={handleFileUpload}
                 disabled={sisperLoading}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
               />
-              <UploadCloud className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
-              <div className="text-xs text-muted-foreground">
-                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Haz clic para subir</span> o arrastra y suelta
-                <p className="text-muted-foreground mt-1 text-[11px]">Planilla Excel de SISPER (.xlsx)</p>
-              </div>
+              {sisperLoading ? (
+                <div className="space-y-3 py-2">
+                  <RefreshCw className="mx-auto h-8 w-8 text-emerald-500 animate-spin" />
+                  <div className="text-xs font-semibold text-foreground">Procesando y validando planilla...</div>
+                  <p className="text-[10px] text-muted-foreground">Actualizando agentes en la base de datos UEP.</p>
+                </div>
+              ) : (
+                <>
+                  <UploadCloud className={cn(
+                    "mx-auto h-8 w-8 mb-3 transition-colors duration-300",
+                    isDragging ? "text-emerald-500 animate-bounce" : "text-muted-foreground"
+                  )} />
+                  <div className="text-xs text-muted-foreground">
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Haz clic para subir</span> o arrastra y suelta
+                    <p className="text-muted-foreground mt-1 text-[11px]">Planilla Excel de SISPER (.xlsx)</p>
+                  </div>
+                </>
+              )}
             </div>
 
             {fileName && (

@@ -42,51 +42,32 @@ export async function POST(req: NextRequest) {
 
       const hospitalId = matchingHospital ? matchingHospital.id : null;
 
-      // Check if user already exists in imPersonal by CUIT
-      const existingUser = await prisma.user.findFirst({
-        where: { cuit: cuil },
+      // Check if agent already exists by CUIL
+      const existingAgent = await prisma.agent.findFirst({
+        where: { cuil },
       });
 
-      if (existingUser) {
+      if (existingAgent) {
         // Update establishment and hospital ID
-        await prisma.user.update({
-          where: { id: existingUser.id },
+        await prisma.agent.update({
+          where: { id: existingAgent.id },
           data: {
             hospitalId,
-            name: nombre,
+            nombre,
+            cargo,
+            establecimiento,
           },
         });
         updatedCount++;
       } else {
-        // Create new user in imPersonal
-        const maxVal = await prisma.user.aggregate({
-          _max: { id: true }
-        });
-        const nextId = (maxVal._max.id || 0) + 1;
-
-        // Default role: MEDICO (2) if Cargo contains medico/doctor, else ENFERMERO (3) or ADMINISTRATIVO (4)
-        let role = "2"; // Default MEDICO
-        const cargoUpper = cargo.toUpperCase();
-        if (cargoUpper.includes("ENFERM") || cargoUpper.includes("LIC")) {
-          role = "3"; // ENFERMERO
-        } else if (cargoUpper.includes("ADMIN") || cargoUpper.includes("CONTAB")) {
-          role = "4"; // ADMINISTRATIVO
-        }
-
-        const generatedEmail = `${cuil}@uep.gov.ar`;
-        const generatedOperador = `ag_${cuil.substring(cuil.length - 6)}`;
-
-        await prisma.user.create({
+        // Create new agent in physical Agent table (ID is auto-incremented in DB)
+        await prisma.agent.create({
           data: {
-            id: nextId,
-            name: nombre,
-            email: generatedEmail,
-            cuit: cuil,
-            role,
-            operador: generatedOperador,
+            cuil,
+            nombre,
+            cargo,
+            establecimiento,
             hospitalId,
-            matricula: nextId,
-            emailVerified: false,
           },
         });
         createdCount++;

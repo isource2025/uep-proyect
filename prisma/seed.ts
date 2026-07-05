@@ -175,25 +175,17 @@ async function main() {
   ];
 
   for (const ag of agentsData) {
-    const existing = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { id: ag.id },
-          { email: `agent${ag.id}@uep.gov.ar` }
-        ]
-      }
+    const existing = await prisma.agent.findFirst({
+      where: { cuil: ag.cuil }
     });
     if (!existing) {
-      await prisma.user.create({
+      await prisma.agent.create({
         data: {
-          id: ag.id,
-          name: ag.nombre,
-          email: `agent${ag.id}@uep.gov.ar`,
-          password: hashedPassword,
-          role: ag.cargo,
+          cuil: ag.cuil,
+          nombre: ag.nombre,
+          cargo: ag.cargo,
           hospitalId: ag.hospitalId,
-          operador: `agent${ag.id}`,
-          matricula: ag.id,
+          establecimiento: "Establecimiento Test",
         }
       });
     }

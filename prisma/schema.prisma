@@ -169,12 +169,12 @@ model Compra {
 // ==========================================
 
 model Agent {
-  id              Int            @id
-  cuil            String?
-  nombre          String
-  cargo           String?
-  establecimiento String?
-  hospitalId      Int?
+  id              Int            @id @default(autoincrement()) @map("id")
+  cuil            String?        @map("cuil")
+  nombre          String         @map("nombre")
+  cargo           String?        @map("cargo")
+  establecimiento String?        @map("establecimiento")
+  hospitalId      Int?           @map("hospitalId")
   hospital        Proveedor?     @relation(fields: [hospitalId], references: [id], map: "Agent_hospitalId_fkey")
   distributions   Distribution[]
 

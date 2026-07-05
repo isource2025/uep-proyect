@@ -48,10 +48,7 @@ export default function ImportPage() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processFile = async (file: File) => {
     setFileName(file.name);
     setSisperLoading(true);
     setSisperResult(null);
@@ -75,6 +72,18 @@ export default function ImportPage() {
     } finally {
       setSisperLoading(false);
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+  };
+
+  const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processFile(file);
   };
 
   return (
@@ -180,7 +189,7 @@ export default function ImportPage() {
               onDragEnter={() => setIsDragging(true)}
               onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
               onDragLeave={() => setIsDragging(false)}
-              onDrop={() => setIsDragging(false)}
+              onDrop={handleFileDrop}
               className={cn(
                 "relative rounded-lg border-2 border-dashed px-6 py-8 text-center transition-all duration-300 cursor-pointer overflow-hidden",
                 sisperLoading

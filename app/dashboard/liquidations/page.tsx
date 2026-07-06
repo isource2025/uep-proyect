@@ -1,5 +1,7 @@
-import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
+"use client";
+
+import { useState, useEffect } from "react";
+import { fetchLiquidationData, calculateLiquidation, updateLiquidation } from "./actions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -14,117 +16,60 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Calculator, Receipt, Eye, Settings2, CheckCircle2, Coins, Landmark } from "lucide-react";
+import { Calculator, Receipt, Eye, CheckCircle2, RefreshCw, AlertCircle } from "lucide-react";
 
-export const revalidate = 0;
+export default function LiquidationsPage() {
+  const [data, setData] = useState<{ liquidations: any[]; pendingRcs: any[] } | null>(null);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [calculatingRcId, setCalculatingRcId] = useState<number | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [dialogOpenId, setDialogOpenId] = useState<string | null>(null);
 
-export default async function LiquidationsPage() {
-  // 1. Fetch generated liquidations with nested details and hospital purchases mapping
-  const liquidations = await prisma.liquidation.findMany({
-    include: {
-      period: true,
-      rc: {
-        include: {
-          cliente: true,
-        },
-      },
-      details: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  // For each liquidation, find the hospital name dynamically by looking up the Compra corresponding to the first detail's fcVentaId
-  const liquidationsWithHospital = await Promise.all(
-    liquidations.map(async (liq) => {
-      let hospitalName = "No Asignado";
-      if (liq.details.length > 0) {
-        const firstDetail = liq.details[0];
-        const purchase = await prisma.compra.findFirst({
-          where: { fcVentaId: firstDetail.fcVentaId },
-          include: { hospital: true },
-        });
-        if (purchase?.hospital?.nombre) {
-          hospitalName = purchase.hospital.nombre;
-        }
-      }
-      return { ...liq, hospitalName };
-    })
-  );
-
-  // 2. Fetch RCs that DO NOT have a liquidation yet (Pending calculation)
-  const generatedRcIds = liquidations.map((l) => l.rcId);
-  const pendingRcs = await prisma.cbte.findMany({
-    where: {
-      type: "RC",
-      id: { notIn: generatedRcIds },
-    },
-    include: {
-      cliente: true,
-      appliedAsRc: {
-        include: {
-          fc: true,
-        },
-      },
-    },
-  });
-
-  // Server Action to calculate a liquidation
-  const handleCalculateLiquidation = async (rcId: string | number) => {
-    "use server";
+  // Load initial data
+  const loadData = async () => {
     try {
-      const rcIdNum = typeof rcId === "number" ? rcId : parseInt(rcId, 10);
-      if (isNaN(rcIdNum)) return;
-
-      const rc = await prisma.cbte.findUnique({
-        where: { id: rcIdNum },
-      });
-      if (!rc) return;
-
-      const activePeriod = await prisma.periodoIVA.findFirst({
-        where: { fechaCierre: null },
-      });
-      if (!activePeriod) return;
-
-      // Find applied sales invoices (FC)
-      const applications = await prisma.cbteAplica.findMany({
-        where: { rcId: rcIdNum },
-      });
-
-      const totalFacturado = applications.reduce((sum, app) => sum + Number(app.importe), 0);
-      const netoInicial = Number(rc.importe);
-
-      // Create liquidation
-      const liquidation = await prisma.liquidation.create({
-        data: {
-          periodAnio: activePeriod.anio,
-          periodMes: activePeriod.mes,
-          rcId: rcIdNum,
-          totalFacturado,
-          netoInicial,
-          status: "PENDIENTE",
-        },
-      });
-
-      // Create details
-      for (const app of applications) {
-        await prisma.liquidationDetail.create({
-          data: {
-            liquidationId: liquidation.id,
-            fcVentaId: app.fcId,
-            amount: app.importe,
-          },
-        });
-      }
-
-      revalidatePath("/dashboard/liquidations");
-    } catch (e) {
-      console.error("Error generating liquidation:", e);
+      const res = await fetchLiquidationData();
+      setData(res);
+    } catch (e: any) {
+      setErrorMsg("Error al conectar con la base de datos.");
+    } finally {
+      setPageLoading(false);
     }
   };
 
-  // Server Action to save adjustments & status updates
-  const handleUpdateLiquidation = async (formData: FormData) => {
-    "use server";
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleRunCalculate = async (rcId: number) => {
+    setCalculatingRcId(rcId);
+    setErrorMsg("");
+    try {
+      const res = await calculateLiquidation(rcId);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      // Re-fetch data
+      await loadData();
+
+      // Scroll to the bottom of the page once generated to see result
+      setTimeout(() => {
+        window.scrollTo({
+          top: document.body.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 300);
+    } catch (e: any) {
+      setErrorMsg("Error de red al calcular la liquidación.");
+    } finally {
+      setCalculatingRcId(null);
+    }
+  };
+
+  const handleSaveAdjustments = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
     const id = formData.get("id") as string;
     const creditos = parseFloat(formData.get("creditos") as string) || 0;
     const debitos = parseFloat(formData.get("debitos") as string) || 0;
@@ -134,24 +79,18 @@ export default async function LiquidationsPage() {
     const status = formData.get("status") as string;
 
     try {
-      await prisma.liquidation.update({
-        where: { id },
-        data: {
-          creditos,
-          debitos,
-          ajustes,
-          recuperos,
-          pendientes,
-          status,
-        },
-      });
-      revalidatePath("/dashboard/liquidations");
+      const res = await updateLiquidation(id, creditos, debitos, ajustes, recuperos, pendientes, status);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      setDialogOpenId(null);
+      await loadData();
     } catch (e) {
-      console.error("Error updating liquidation adjustments:", e);
+      setErrorMsg("Error al guardar ajustes.");
     }
   };
 
-  // Format currency helper
   const formatCurrency = (val: any) => {
     const num = Number(val || 0);
     return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(num);
@@ -165,6 +104,18 @@ export default async function LiquidationsPage() {
     return months[monthNum - 1] || `Mes ${monthNum}`;
   };
 
+  if (pageLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center text-muted-foreground animate-pulse gap-2">
+        <RefreshCw className="h-6 w-6 animate-spin text-emerald-500" />
+        <span className="text-sm">Cargando módulo de liquidaciones...</span>
+      </div>
+    );
+  }
+
+  const pendingRcs = data?.pendingRcs || [];
+  const liquidations = data?.liquidations || [];
+
   return (
     <div className="space-y-6 text-foreground">
       {/* Header */}
@@ -174,6 +125,13 @@ export default async function LiquidationsPage() {
           Módulo 3: Construcción automática de liquidaciones basada en la secuencia CBTES &rarr; CBTES_APLICA &rarr; COMPRAS.
         </p>
       </div>
+
+      {errorMsg && (
+        <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600 dark:text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <p>{errorMsg}</p>
+        </div>
+      )}
 
       {/* Pending Calculations Card */}
       {pendingRcs.length > 0 ? (
@@ -189,32 +147,47 @@ export default async function LiquidationsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {pendingRcs.map((rc) => (
-                <div key={rc.id} className="flex flex-col gap-4 rounded-xl border border-emerald-500/20 bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-3xs font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
-                        {rc.type}
-                      </span>
-                      <code className="text-xs font-mono font-bold text-foreground">{rc.puntoVenta}-{rc.numero}</code>
-                      <span className="text-xs text-muted-foreground">| Obra Social: <strong className="text-foreground">{rc.cliente.nombre}</strong></span>
+              {pendingRcs.map((rc) => {
+                const isThisCalculating = calculatingRcId === rc.id;
+                return (
+                  <div key={rc.id} className="flex flex-col gap-4 rounded-xl border border-emerald-500/20 bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-3xs font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                          {rc.type}
+                        </span>
+                        <code className="text-xs font-mono font-bold text-foreground">{rc.puntoVenta}-{rc.numero}</code>
+                        <span className="text-xs text-muted-foreground">| Obra Social: <strong className="text-foreground">{rc.cliente.nombre}</strong></span>
+                      </div>
+                      <p className="text-2xs text-muted-foreground">
+                        Fecha: {new Date(rc.fecha).toLocaleDateString("es-AR")} &bull; Importe Cobrado: <strong className="text-foreground">{formatCurrency(rc.importe)}</strong>
+                      </p>
+                      <div className="text-[10px] text-muted-foreground">
+                        Cancela Facturas: {rc.appliedAsRc.map((app: any) => `${app.fc.puntoVenta}-${app.fc.numero} (${formatCurrency(app.importe)})`).join(", ")}
+                      </div>
                     </div>
-                    <p className="text-2xs text-muted-foreground">
-                      Fecha: {new Date(rc.fecha).toLocaleDateString("es-AR")} &bull; Importe Cobrado: <strong className="text-foreground">{formatCurrency(rc.importe)}</strong>
-                    </p>
-                    <div className="text-[10px] text-muted-foreground">
-                      Cancela Facturas: {rc.appliedAsRc.map((app) => `${app.fc.puntoVenta}-${app.fc.numero} (${formatCurrency(app.importe)})`).join(", ")}
-                    </div>
-                  </div>
-                  
-                  <form action={handleCalculateLiquidation.bind(null, rc.id)}>
-                    <Button type="submit" size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold gap-1 h-9 transition-all cursor-pointer">
-                      <Calculator className="h-4 w-4" />
-                      Calcular Liquidación
+                    
+                    <Button
+                      onClick={() => handleRunCalculate(rc.id)}
+                      disabled={calculatingRcId !== null}
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold gap-1 h-9 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isThisCalculating ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          Generando...
+                        </>
+                      ) : (
+                        <>
+                          <Calculator className="h-4 w-4" />
+                          Calcular Liquidación
+                        </>
+                      )}
                     </Button>
-                  </form>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -249,17 +222,17 @@ export default async function LiquidationsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {liquidationsWithHospital.length === 0 ? (
+                {liquidations.length === 0 ? (
                   <TableRow className="border-border">
                     <TableCell colSpan={8} className="text-center text-muted-foreground text-sm py-12">
                       <div className="flex flex-col items-center gap-2">
-                        <Receipt className="h-8 w-8 text-muted-foreground animate-pulse" />
+                        <Receipt className="h-8 w-8 text-muted-foreground" />
                         <p>No se han generado liquidaciones en este período.</p>
                       </div>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  liquidationsWithHospital.map((liq) => {
+                  liquidations.map((liq) => {
                     const netoFinal =
                       Number(liq.netoInicial) +
                       Number(liq.creditos) -
@@ -267,6 +240,8 @@ export default async function LiquidationsPage() {
                       Number(liq.ajustes) +
                       Number(liq.recuperos) -
                       Number(liq.pendientes);
+
+                    const isOpen = dialogOpenId === liq.id;
 
                     return (
                       <TableRow key={liq.id} className="hover:bg-muted/40 border-border text-foreground">
@@ -300,7 +275,7 @@ export default async function LiquidationsPage() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Dialog>
+                          <Dialog open={isOpen} onOpenChange={(open) => setDialogOpenId(open ? liq.id : null)}>
                             <DialogTrigger asChild>
                               <Button size="sm" variant="ghost" className="text-xs gap-1.5 h-8 border border-border hover:bg-muted cursor-pointer">
                                 <Eye className="h-3.5 w-3.5" />
@@ -315,7 +290,7 @@ export default async function LiquidationsPage() {
                                 </DialogDescription>
                               </DialogHeader>
                               
-                              <form action={handleUpdateLiquidation} className="space-y-6 py-2">
+                              <form onSubmit={handleSaveAdjustments} className="space-y-6 py-2">
                                 <input type="hidden" name="id" value={liq.id} />
                                 
                                 {/* Totals calculation overview */}

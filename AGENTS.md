@@ -5,7 +5,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 <!-- END:nextjs-agent-rules -->
 
 # Project Context & Workflow (UEP Proyect)
-
+ 
 ## Database Configuration
 - **DBMS**: SQL Server (MSSQL)
 - **Database Name**: `UEP`

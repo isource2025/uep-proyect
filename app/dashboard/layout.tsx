@@ -30,7 +30,7 @@ export default async function DashboardLayout({
             role: (session.user as any).role === "1" ? "ADMIN" : (session.user as any).role === "2" ? "MEDICO" : "OPERATOR",
           }}
         />
-        <main className="flex-1 overflow-y-auto bg-background p-8">
+        <main className="flex-1 overflow-y-auto bg-background p-8 dark:bg-[#171717]">
           {children}
         </main>
       </div>

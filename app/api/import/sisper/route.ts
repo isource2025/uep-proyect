@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     // Get all public hospitals to match
     const hospitals = await prisma.proveedor.findMany({
-      where: { categoryId: 18 },
+      where: { tipoProvId: 18 },
     });
 
     for (const row of rows) {

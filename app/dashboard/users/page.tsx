@@ -51,7 +51,7 @@ export default async function UsersPage({
 
   // Fetch public hospitals/providers
   const hospitals = await prisma.proveedor.findMany({
-    where: { categoryId: 18 },
+    where: { tipoProvId: 18 },
     orderBy: { nombre: "asc" },
   });
 

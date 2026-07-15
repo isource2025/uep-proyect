@@ -113,7 +113,7 @@ model Proveedor {
   nombre     String?  @map("DESCRIPCION")
   cuit       Decimal? @map("NRO_CUIT")
   code       String?  @map("NOMBRE_FANTASIA")
-  categoryId Int?     @map("IDTIPO_PROV_CATEG") @db.SmallInt
+  tipoProvId Int?     @map("IDTIPO_PROV") @db.SmallInt
 
   // Relationships previously on Hospital
   users     User[]

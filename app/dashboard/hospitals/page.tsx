@@ -26,10 +26,10 @@ export default async function HospitalsPage({
   const resolvedSearchParams = await searchParams;
   const query = resolvedSearchParams.query || "";
 
-  // Fetch providers (hospitals) from DB based on search query
+  // Efectores públicos: PROVEEDORES.IDTIPO_PROV = 18 (TIPOS_PROVEEDORES)
   const hospitals = await prisma.proveedor.findMany({
     where: {
-      categoryId: 18,
+      tipoProvId: 18,
       OR: [
         { nombre: { contains: query } },
         { code: { contains: query } },
@@ -59,7 +59,7 @@ export default async function HospitalsPage({
           nombre: name.toUpperCase(),
           code: code.toUpperCase().replace(/\s+/g, "_"),
           cuit: cuitStr ? parseFloat(cuitStr) : null,
-          categoryId: 18,
+          tipoProvId: 18,
         },
       });
       revalidatePath("/dashboard/hospitals");
@@ -75,7 +75,7 @@ export default async function HospitalsPage({
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Gestión de Hospitales</h1>
           <p className="text-sm text-muted-foreground">
-            Administración y consulta de centros médicos y CAPS registrados en el sistema ERP.
+            Efectores públicos (PROVEEDORES con IDTIPO_PROV = 18): hospitales, CAPS y establecimientos de salud.
           </p>
         </div>
 

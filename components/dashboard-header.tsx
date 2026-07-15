@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import {
@@ -25,6 +26,27 @@ interface DashboardHeaderProps {
 export function DashboardHeader({ user }: DashboardHeaderProps) {
   const router = useRouter();
 
+  // #region agent log
+  useEffect(() => {
+    fetch("http://127.0.0.1:7512/ingest/356f6776-4866-47b5-9aec-f04790f78e37", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "86b1be" },
+      body: JSON.stringify({
+        sessionId: "86b1be",
+        runId: "header-bg-fix",
+        hypothesisId: "H-HDR",
+        location: "dashboard-header.tsx:useEffect",
+        message: "Header mounted with dark bg #171717",
+        data: {
+          isDark: document.documentElement.classList.contains("dark"),
+          headerClass: "bg-background dark:bg-[#171717]",
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+  }, []);
+  // #endregion
+
   const handleLogout = async () => {
     try {
       await authClient.signOut();
@@ -36,7 +58,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-card/60 px-6 backdrop-blur-md">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-6 dark:bg-[#171717]">
       {/* Current Active Period Widget */}
       <div className="flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/25 px-3 py-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
         <Calendar className="h-3.5 w-3.5" />
@@ -47,7 +69,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
       {/* User Actions */}
       <div className="flex items-center gap-4">
         <ThemeToggle />
-        
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

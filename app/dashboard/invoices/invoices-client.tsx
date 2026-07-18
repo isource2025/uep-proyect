@@ -35,6 +35,7 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [pendingSearchQuery, setPendingSearchQuery] = useState("");
+  const [modalSearchQuery, setModalSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -122,6 +123,7 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
         return;
       }
       setSelectedInvoiceDetails(res);
+      setModalSearchQuery("");
       setDialogOpen(true);
     } catch (e) {
       setErrorMsg("Error de red al consultar el desglose.");
@@ -528,8 +530,8 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
 
       {/* Invoice Breakdown dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="border-border bg-card text-card-foreground max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="border-border bg-card text-card-foreground sm:max-w-5xl w-[92vw] max-h-[88vh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0 pb-2 border-b border-border">
             <DialogTitle className="text-foreground font-bold flex items-center gap-2">
               <FileText className="h-5 w-5 text-emerald-500" />
               Desglose de Factura Unificada
@@ -540,15 +542,15 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
           </DialogHeader>
 
           {selectedInvoiceDetails && (
-            <div className="space-y-5">
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 py-2">
               {/* Header Box */}
-              <div className="grid grid-cols-2 gap-4 rounded-xl border border-border bg-muted/20 p-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-border bg-muted/20 p-4 text-xs">
                 <div className="space-y-1">
                   <span className="text-[10px] text-muted-foreground uppercase font-bold">Obra Social (Cliente)</span>
                   <p className="font-bold text-foreground">{selectedInvoiceDetails.cbte.cliente.nombre}</p>
                   <p className="text-[11px] text-muted-foreground">CUIT: {selectedInvoiceDetails.cbte.cliente.cuit}</p>
                 </div>
-                <div className="space-y-1 text-right">
+                <div className="space-y-1 sm:text-right">
                   <span className="text-[10px] text-muted-foreground uppercase font-bold">Nro. de Factura Consolidada</span>
                   <p className="font-mono font-bold text-foreground text-sm">
                     {selectedInvoiceDetails.cbte.puntoVenta}-{String(selectedInvoiceDetails.cbte.numero).padStart(8, "0")}
@@ -561,10 +563,22 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
 
               {/* Breakdown List */}
               <div className="space-y-2.5">
-                <h4 className="text-xs font-bold text-foreground">Facturas de Hospitales Incluidas:</h4>
-                <div className="max-h-60 overflow-y-auto border border-border rounded-lg">
-                  <Table>
-                    <TableHeader className="bg-muted/30 text-muted-foreground sticky top-0">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-xs font-bold text-foreground">
+                    Facturas de Hospitales ({selectedInvoiceDetails.purchases.length}):
+                  </h4>
+                  <Input
+                    type="text"
+                    placeholder="Filtrar por hospital o número de factura..."
+                    value={modalSearchQuery}
+                    onChange={(e) => setModalSearchQuery(e.target.value)}
+                    className="text-2xs h-7 w-64 bg-muted/20 border-border focus-visible:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="w-full max-h-[380px] overflow-y-auto border border-border rounded-lg">
+                  <Table className="w-full">
+                    <TableHeader className="bg-muted/50 text-muted-foreground sticky top-0 z-10">
                       <TableRow className="hover:bg-transparent border-border">
                         <TableHead className="font-semibold text-2xs py-2">Hospital (Proveedor)</TableHead>
                         <TableHead className="font-semibold text-2xs">Factura Nro.</TableHead>
@@ -573,29 +587,45 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {selectedInvoiceDetails.purchases.length === 0 ? (
+                      {selectedInvoiceDetails.purchases.filter((comp: any) => {
+                        if (!modalSearchQuery.trim()) return true;
+                        const q = modalSearchQuery.toLowerCase();
+                        return (
+                          (comp.hospital?.nombre && comp.hospital.nombre.toLowerCase().includes(q)) ||
+                          (comp.numero && String(comp.numero).includes(q))
+                        );
+                      }).length === 0 ? (
                         <TableRow className="border-border">
                           <TableCell colSpan={4} className="text-center text-muted-foreground text-xs py-8">
-                            No se encontraron comprobantes relacionados.
+                            No se encontraron comprobantes relacionados con la búsqueda.
                           </TableCell>
                         </TableRow>
                       ) : (
-                        selectedInvoiceDetails.purchases.map((comp: any) => (
-                          <TableRow key={comp.id} className="hover:bg-muted/20 border-border text-foreground">
-                            <TableCell className="text-xs font-semibold py-2.5">
-                              {comp.hospital?.nombre || "Hospital Desconocido"}
-                            </TableCell>
-                            <TableCell className="text-xs font-mono">
-                              {String(comp.numero).padStart(8, "0")}
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              {new Date(comp.fecha).toLocaleDateString("es-AR")}
-                            </TableCell>
-                            <TableCell className="text-right text-xs font-bold text-foreground">
-                              {formatCurrency(comp.importe)}
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        selectedInvoiceDetails.purchases
+                          .filter((comp: any) => {
+                            if (!modalSearchQuery.trim()) return true;
+                            const q = modalSearchQuery.toLowerCase();
+                            return (
+                              (comp.hospital?.nombre && comp.hospital.nombre.toLowerCase().includes(q)) ||
+                              (comp.numero && String(comp.numero).includes(q))
+                            );
+                          })
+                          .map((comp: any) => (
+                            <TableRow key={comp.id} className="hover:bg-muted/20 border-border text-foreground">
+                              <TableCell className="text-xs font-semibold py-2.5">
+                                {comp.hospital?.nombre || "Hospital Desconocido"}
+                              </TableCell>
+                              <TableCell className="text-xs font-mono">
+                                {String(comp.numero).padStart(8, "0")}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {new Date(comp.fecha).toLocaleDateString("es-AR")}
+                              </TableCell>
+                              <TableCell className="text-right text-xs font-bold text-foreground">
+                                {formatCurrency(comp.importe)}
+                              </TableCell>
+                            </TableRow>
+                          ))
                       )}
                     </TableBody>
                   </Table>
@@ -604,8 +634,8 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
             </div>
           )}
 
-          <DialogFooter>
-            <Button onClick={() => setDialogOpen(false)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-10 cursor-pointer">
+          <DialogFooter className="shrink-0 pt-2 border-t border-border">
+            <Button onClick={() => setDialogOpen(false)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-9 cursor-pointer">
               Cerrar Vista
             </Button>
           </DialogFooter>

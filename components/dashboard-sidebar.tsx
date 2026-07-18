@@ -9,6 +9,7 @@ import {
   CalendarRange,
   UploadCloud,
   Receipt,
+  Layers,
   Users,
   Settings,
 } from "lucide-react";
@@ -56,6 +57,11 @@ export function DashboardSidebar() {
           name: "Liquidaciones",
           href: "/dashboard/liquidations",
           icon: Receipt,
+        },
+        {
+          name: "Facturación",
+          href: "/dashboard/invoices",
+          icon: Layers,
         },
         {
           name: "Usuarios",

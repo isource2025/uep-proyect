@@ -36,4 +36,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Database Safety & Integrity**: 
   - **NUNCA** borrar datos de la base de datos (operaciones como `deleteMany`, `DELETE`, `TRUNCATE` o `DROP` están terminantemente prohibidas en seeds o scripts generales).
   - La base de datos de producción (`iSource`) es estrictamente de **sólo lectura/inspección**. No realizar modificaciones de esquema ni agregar registros en ella para mantener la paridad estructural idéntica con desarrollo.
+- **Consolidación e Intermediación de Facturación**:
+  - Los comprobantes individuales emitidos por hospitales se almacenan en la tabla `Compras`.
+  - La unificación por Obra Social (`IdCliente`) crea una factura de venta consolidada en la tabla `Cbtes` (con `TipoCbte: 'FC'` y `Letra_Cbte: 'A'`).
+  - La relación transaccional se establece vinculando cada `Compra` a su factura unificada mediante `IdTransaccionFacturaVta` (`fcVentaId`).
+  - El campo clave primaria `IdTransaccion` en `Cbtes` y `idtransaccion` en `Compras` no poseen autoincremento (identity) nativo. Cada inserción manual en estas tablas requiere calcular `maxId + 1` de forma segura.
 

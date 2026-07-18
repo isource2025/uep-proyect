@@ -100,10 +100,11 @@ model PeriodoIVA {
 // ==========================================
 
 model Cliente {
-  id     Int     @id @map("IdCliente")
-  nombre String  @map("Razon_Social")
-  cuit   Decimal @map("Nro_CUIT")
-  cbtes  Cbte[]
+  id        Int      @id @map("IdCliente")
+  nombre    String   @map("Razon_Social")
+  cuit      Decimal  @map("Nro_CUIT")
+  cbtes     Cbte[]
+  purchases Compra[]
 
   @@map("Clientes")
 }
@@ -158,7 +159,9 @@ model Compra {
   fecha      DateTime   @map("Fecha")
   importe    Decimal    @map("ImporteTotal") @db.Decimal(15, 2)
   hospitalId Int?       @map("IdProveedor")
-  hospital   Proveedor? @relation(fields: [hospitalId], references: [id])
+  hospital   Proveedor? @relation(fields: [hospitalId], references: [id], map: "Compras_IdProveedor_fkey")
+  clienteId  Int?       @map("IdCliente")
+  cliente    Cliente?   @relation(fields: [clienteId], references: [id], map: "Compras_IdCliente_fkey")
   fcVentaId  Int?       @map("IdTransaccionFacturaVta")
 
   @@map("Compras")

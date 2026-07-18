@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { fetchPendingUnifications, fetchUnifiedInvoices, fetchInvoiceDetails, unifyInvoicesForClient } from "./actions";
+import { fetchPendingUnifications, fetchUnifiedInvoices, fetchInvoiceDetails, fetchPendingInvoiceDetails, unifyInvoicesForClient } from "./actions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -31,11 +31,15 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
   // Loaders & Interaction States
   const [unifyingClientId, setUnifyingClientId] = useState<number | null>(null);
   const [loadingDetailsId, setLoadingDetailsId] = useState<number | null>(null);
+  const [loadingPendingDetailsId, setLoadingPendingDetailsId] = useState<number | null>(null);
   const [selectedInvoiceDetails, setSelectedInvoiceDetails] = useState<any | null>(null);
+  const [selectedPendingDetails, setSelectedPendingDetails] = useState<any | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [pendingDialogOpen, setPendingDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [pendingSearchQuery, setPendingSearchQuery] = useState("");
   const [modalSearchQuery, setModalSearchQuery] = useState("");
+  const [pendingModalSearchQuery, setPendingModalSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -129,6 +133,25 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
       setErrorMsg("Error de red al consultar el desglose.");
     } finally {
       setLoadingDetailsId(null);
+    }
+  };
+
+  const handleViewPendingDetails = async (clienteId: number) => {
+    setLoadingPendingDetailsId(clienteId);
+    setErrorMsg("");
+    try {
+      const res = await fetchPendingInvoiceDetails(clienteId);
+      if (!res) {
+        setErrorMsg("No se pudieron cargar los detalles pendientes.");
+        return;
+      }
+      setSelectedPendingDetails(res);
+      setPendingModalSearchQuery("");
+      setPendingDialogOpen(true);
+    } catch (e) {
+      setErrorMsg("Error de red al consultar el desglose pendiente.");
+    } finally {
+      setLoadingPendingDetailsId(null);
     }
   };
 
@@ -262,23 +285,40 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
                             </p>
                           </div>
                           
-                          <Button
-                            onClick={() => handleUnify(item.clienteId, item.cliente.nombre)}
-                            disabled={unifyingClientId !== null}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1 px-4 h-9 cursor-pointer transition-all disabled:opacity-50"
-                          >
-                            {isUnifying ? (
-                              <>
-                                <RefreshCw className="h-4 w-4 animate-spin" />
-                                Agrupando...
-                              </>
-                            ) : (
-                              <>
-                                <Layers className="h-4 w-4" />
-                                Consolidar
-                              </>
-                            )}
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              onClick={() => handleViewPendingDetails(item.clienteId)}
+                              disabled={loadingPendingDetailsId !== null}
+                              size="sm"
+                              variant="ghost"
+                              className="text-xs gap-1 h-9 border border-border hover:bg-muted cursor-pointer"
+                            >
+                              {loadingPendingDetailsId === item.clienteId ? (
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                              ) : (
+                                <Eye className="h-3.5 w-3.5" />
+                              )}
+                              Ver Desglose
+                            </Button>
+
+                            <Button
+                              onClick={() => handleUnify(item.clienteId, item.cliente.nombre)}
+                              disabled={unifyingClientId !== null}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1 px-4 h-9 cursor-pointer transition-all disabled:opacity-50"
+                            >
+                              {isUnifying ? (
+                                <>
+                                  <RefreshCw className="h-4 w-4 animate-spin" />
+                                  Agrupando...
+                                </>
+                              ) : (
+                                <>
+                                  <Layers className="h-4 w-4" />
+                                  Consolidar
+                                </>
+                              )}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -638,6 +678,130 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
             <Button onClick={() => setDialogOpen(false)} className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-9 cursor-pointer">
               Cerrar Vista
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pending Pre-consolidation Breakdown dialog */}
+      <Dialog open={pendingDialogOpen} onOpenChange={setPendingDialogOpen}>
+        <DialogContent className="border-border bg-card text-card-foreground sm:max-w-5xl w-[92vw] max-h-[88vh] flex flex-col overflow-hidden">
+          <DialogHeader className="shrink-0 pb-2 border-b border-border">
+            <DialogTitle className="text-foreground font-bold flex items-center gap-2">
+              <Eye className="h-5 w-5 text-emerald-500" />
+              Vista Previa de Comprobantes a Consolidar
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground text-xs">
+              Examine los comprobantes individuales de hospitales pendientes de unificación para esta Obra Social antes de generar la factura.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedPendingDetails && (
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 py-2">
+              {/* Header Box */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-border bg-muted/20 p-4 text-xs">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold">Obra Social (Cliente)</span>
+                  <p className="font-bold text-foreground">{selectedPendingDetails.cliente.nombre}</p>
+                  <p className="text-[11px] text-muted-foreground">CUIT: {selectedPendingDetails.cliente.cuit}</p>
+                </div>
+                <div className="space-y-1 sm:text-right">
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold">Total Pendiente a Consolidar</span>
+                  <p className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">
+                    {formatCurrency(selectedPendingDetails.total)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Breakdown List */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-xs font-bold text-foreground">
+                    Facturas de Hospitales Pendientes ({selectedPendingDetails.purchases.length}):
+                  </h4>
+                  <Input
+                    type="text"
+                    placeholder="Filtrar por hospital o número de factura..."
+                    value={pendingModalSearchQuery}
+                    onChange={(e) => setPendingModalSearchQuery(e.target.value)}
+                    className="text-2xs h-7 w-64 bg-muted/20 border-border focus-visible:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="w-full max-h-[380px] overflow-y-auto border border-border rounded-lg">
+                  <Table className="w-full">
+                    <TableHeader className="bg-muted/50 text-muted-foreground sticky top-0 z-10">
+                      <TableRow className="hover:bg-transparent border-border">
+                        <TableHead className="font-semibold text-2xs py-2">Hospital (Proveedor)</TableHead>
+                        <TableHead className="font-semibold text-2xs">Factura Nro.</TableHead>
+                        <TableHead className="font-semibold text-2xs">Fecha Emisión</TableHead>
+                        <TableHead className="font-semibold text-2xs text-right">Importe</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedPendingDetails.purchases.filter((comp: any) => {
+                        if (!pendingModalSearchQuery.trim()) return true;
+                        const q = pendingModalSearchQuery.toLowerCase();
+                        return (
+                          (comp.hospital?.nombre && comp.hospital.nombre.toLowerCase().includes(q)) ||
+                          (comp.numero && String(comp.numero).includes(q))
+                        );
+                      }).length === 0 ? (
+                        <TableRow className="border-border">
+                          <TableCell colSpan={4} className="text-center text-muted-foreground text-xs py-8">
+                            No se encontraron comprobantes pendientes con la búsqueda.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        selectedPendingDetails.purchases
+                          .filter((comp: any) => {
+                            if (!pendingModalSearchQuery.trim()) return true;
+                            const q = pendingModalSearchQuery.toLowerCase();
+                            return (
+                              (comp.hospital?.nombre && comp.hospital.nombre.toLowerCase().includes(q)) ||
+                              (comp.numero && String(comp.numero).includes(q))
+                            );
+                          })
+                          .map((comp: any) => (
+                            <TableRow key={comp.id} className="hover:bg-muted/20 border-border text-foreground">
+                              <TableCell className="text-xs font-semibold py-2.5">
+                                {comp.hospital?.nombre || "Hospital Desconocido"}
+                              </TableCell>
+                              <TableCell className="text-xs font-mono">
+                                {String(comp.numero).padStart(8, "0")}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {new Date(comp.fecha).toLocaleDateString("es-AR")}
+                              </TableCell>
+                              <TableCell className="text-right text-xs font-bold text-foreground">
+                                {formatCurrency(comp.importe)}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="shrink-0 pt-2 border-t border-border flex flex-col sm:flex-row gap-2">
+            <Button variant="ghost" onClick={() => setPendingDialogOpen(false)} className="border border-border cursor-pointer text-xs h-9">
+              Cerrar Vista
+            </Button>
+            {selectedPendingDetails && (
+              <Button
+                onClick={async () => {
+                  setPendingDialogOpen(false);
+                  await handleUnify(selectedPendingDetails.cliente.id, selectedPendingDetails.cliente.nombre);
+                }}
+                disabled={unifyingClientId !== null}
+                className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1 text-xs h-9 cursor-pointer"
+              >
+                <Layers className="h-4 w-4" />
+                Consolidar Ahora
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

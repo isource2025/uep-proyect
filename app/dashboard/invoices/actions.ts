@@ -169,7 +169,37 @@ export async function fetchInvoiceDetails(cbteId: number) {
   };
 }
 
-// 4. Create transactional unification (consolidate Compras for an Obra Social)
+// 4. Fetch detailed pending Compras for a specific Obra Social before unification
+export async function fetchPendingInvoiceDetails(clienteId: number) {
+  const cliente = await prisma.cliente.findUnique({
+    where: { id: clienteId },
+  });
+
+  if (!cliente) return null;
+
+  const purchases = await prisma.compra.findMany({
+    where: {
+      clienteId,
+      fcVentaId: null,
+    },
+    include: {
+      hospital: true,
+    },
+    orderBy: {
+      fecha: "desc",
+    },
+  });
+
+  const total = purchases.reduce((sum, p) => sum + toNum(p.importe), 0);
+
+  return {
+    cliente: sanitizeCliente(cliente),
+    total,
+    purchases: purchases.map(sanitizeCompra),
+  };
+}
+
+// 5. Create transactional unification (consolidate Compras for an Obra Social)
 export async function unifyInvoicesForClient(clienteId: number) {
   try {
     // Check pending Compras

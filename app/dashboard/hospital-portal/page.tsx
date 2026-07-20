@@ -64,17 +64,23 @@ export default async function HospitalPortalPage() {
     orderBy: { createdAt: "desc" },
   });
 
-  // Filter liquidations: keep only those where at least one detail is linked to a Compra from this hospital
+  // Filter liquidations: keep only those where at least one detail belongs to this hospital
   const hospitalLiquidations = [];
   for (const liq of allLiquidations) {
     let belongsToHospital = false;
     for (const detail of liq.details) {
-      const purchase = await prisma.compra.findFirst({
-        where: { fcVentaId: detail.fcVentaId },
-      });
-      if (purchase && purchase.hospitalId === hospitalId) {
+      if (detail.hospitalId === hospitalId) {
         belongsToHospital = true;
         break;
+      }
+      if (detail.compraId) {
+        const purchase = await prisma.compra.findFirst({
+          where: { id: detail.compraId },
+        });
+        if (purchase && purchase.hospitalId === hospitalId) {
+          belongsToHospital = true;
+          break;
+        }
       }
     }
     if (belongsToHospital) {
@@ -91,30 +97,25 @@ export default async function HospitalPortalPage() {
   // Server Action to save a distribution
   const handleSaveDistribution = async (formData: FormData) => {
     "use server";
-    const liquidationId = formData.get("liquidationId") as string;
+    const liquidationIdStr = formData.get("liquidationId") as string;
     const agentIdStr = formData.get("agentId") as string;
     const honorarios = parseFloat(formData.get("honorarios") as string) || 0;
     const sobreasignaciones = parseFloat(formData.get("sobreasignaciones") as string) || 0;
     const gastos = parseFloat(formData.get("gastos") as string) || 0;
 
-    if (!liquidationId || !agentIdStr) return;
+    if (!liquidationIdStr || !agentIdStr) return;
+    const liquidationId = parseInt(liquidationIdStr, 10);
     const agentId = parseInt(agentIdStr, 10);
 
     try {
       // Find liquidation to check totals
       const liq = await prisma.liquidation.findUnique({
         where: { id: liquidationId },
-        include: { distributions: true },
+        include: { distributions: true, details: true },
       });
       if (!liq) return;
 
-      const netoFinal =
-        Number(liq.netoInicial) +
-        Number(liq.creditos) -
-        Number(liq.debitos) +
-        Number(liq.ajustes) +
-        Number(liq.recuperos) -
-        Number(liq.pendientes);
+      const netoFinal = liq.details.reduce((sum, d) => sum + Number(d.netoAPagar), 0);
 
       // Calculate current total distributed excluding this agent (if they exist)
       const otherDistributionsTotal = liq.distributions
@@ -160,11 +161,12 @@ export default async function HospitalPortalPage() {
   // Server Action to add a mock attachment (URL link)
   const handleAddAttachment = async (formData: FormData) => {
     "use server";
-    const liquidationId = formData.get("liquidationId") as string;
+    const liquidationIdStr = formData.get("liquidationId") as string;
     const fileName = formData.get("fileName") as string;
     const fileUrl = formData.get("fileUrl") as string;
 
-    if (!liquidationId || !fileName || !fileUrl) return;
+    if (!liquidationIdStr || !fileName || !fileUrl) return;
+    const liquidationId = parseInt(liquidationIdStr, 10);
 
     try {
       await prisma.attachment.create({
@@ -238,13 +240,8 @@ export default async function HospitalPortalPage() {
                   </TableRow>
                 ) : (
                   hospitalLiquidations.map((liq) => {
-                    const netoFinal =
-                      Number(liq.netoInicial) +
-                      Number(liq.creditos) -
-                      Number(liq.debitos) +
-                      Number(liq.ajustes) +
-                      Number(liq.recuperos) -
-                      Number(liq.pendientes);
+                    const totalFacturado = liq.details.reduce((sum, d) => sum + Number(d.totalFacturado), 0);
+                    const netoFinal = liq.details.reduce((sum, d) => sum + Number(d.netoAPagar), 0);
 
                     const totalDistributed = liq.distributions.reduce(
                       (sum, d) => sum + Number(d.honorarios) + Number(d.sobreasignaciones) + Number(d.gastos),
@@ -256,16 +253,16 @@ export default async function HospitalPortalPage() {
                     return (
                       <TableRow key={liq.id} className="hover:bg-muted/40 border-border text-foreground">
                         <TableCell className="font-mono text-xs text-foreground py-3.5">
-                          LIQ-{liq.id.substring(0, 8).toUpperCase()}
+                          LIQ-{String(liq.id).padStart(4, "0")}
                         </TableCell>
                         <TableCell className="text-xs">
-                          {getMonthName(liq.period.mes)} {liq.period.anio}
+                          {liq.mesCarga || `${getMonthName(liq.period.mes)} ${liq.period.anio}`}
                         </TableCell>
                         <TableCell className="text-xs font-mono">
                           {liq.rc.puntoVenta}-{liq.rc.numero}
                         </TableCell>
                         <TableCell className="text-right text-xs">
-                          {formatCurrency(liq.netoInicial)}
+                          {formatCurrency(totalFacturado)}
                         </TableCell>
                         <TableCell className="text-right text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                           {formatCurrency(netoFinal)}
@@ -296,7 +293,7 @@ export default async function HospitalPortalPage() {
                               <DialogHeader>
                                 <DialogTitle className="text-foreground font-bold">Distribución y Adjuntos</DialogTitle>
                                 <DialogDescription className="text-muted-foreground text-xs">
-                                  Liquidación LIQ-{liq.id.substring(0, 8).toUpperCase()} &bull; Neto Final: <strong className="text-foreground">{formatCurrency(netoFinal)}</strong>
+                                  Liquidación LIQ-{String(liq.id).padStart(4, "0")} &bull; Neto Final: <strong className="text-foreground">{formatCurrency(netoFinal)}</strong>
                                 </DialogDescription>
                               </DialogHeader>
 

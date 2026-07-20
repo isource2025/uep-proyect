@@ -42,3 +42,19 @@ This version has breaking changes — APIs, conventions, and file structure may 
   - La relación transaccional se establece vinculando cada `Compra` a su factura unificada mediante `IdTransaccionFacturaVta` (`fcVentaId`).
   - El campo clave primaria `IdTransaccion` en `Cbtes` y `idtransaccion` en `Compras` no poseen autoincremento (identity) nativo. Cada inserción manual en estas tablas requiere calcular `maxId + 1` de forma segura.
 
+## Especificaciones Oficiales del Sistema (Pliego Funcional)
+- **1. Importación SISPER (Nómina de Agentes)**:
+  - Estructura: `DNI`, `CUIL`, `APELLIDO Y NOMBRE`, `PUESTO LABORAL`, `ESTABLECIMIENTO SANITARIO` (Hospital), `CONCEPTO` (*Honorarios Médicos*, *Sobreasignación al Personal*), `OBRA SOCIAL`, `MES`, `AÑO`, `IMPORTE`.
+  - Destino: Se guarda en la tabla `Agent` (médicos/agentes del MSP), **sin relación con operadores de login (`User` / `imPersonal`)**.
+- **2. Rol Operador (Liquidaciones y Débitos)**:
+  - Búsqueda por comprobantes UEP (`FC N° UEP` o `RECIBO UEP`) trayendo todas las `Compras` de hospitales incluidas.
+  - Campos de liquidación editables por operador: `CREDITOS`, `DEBITOS`, `AJUSTES O.S.`, `PENDIENTES DE COBRO`, `BRUTO A PAGAR`, `GA` (Gastos Administrativos), `AJUSTE POR RECUPERO` y `NETO A PAGAR`.
+  - Módulo para adjuntar el escaneado en PDF/Documento de débitos enviado por la Obra Social.
+- **3. Portal del Hospital & Distribución**:
+  - Notificación automática por email a cada hospital al generar su liquidación.
+  - Cada hospital ingresa a su portal antes de la fecha límite y realiza la distribución del `NETO A PAGAR` por Obra Social en: `HONORARIOS`, `SOBREASIGNACION` y `GASTOS`.
+- **4. Consolidación Final SISPER y Tesorería**:
+  - **Exportación SISPER**: Al vencer la fecha límite, el sistema consolida todos los agentes de todos los hospitales con sus montos asignados en una sola planilla exportable para los recibos de haberes.
+  - **Reporte de Tesorería**: Genera el informe de `GASTOS` a transferir por Obra Social a cada Hospital para transferencias bancarias.
+
+

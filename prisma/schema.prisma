@@ -100,11 +100,12 @@ model PeriodoIVA {
 // ==========================================
 
 model Cliente {
-  id        Int      @id @map("IdCliente")
-  nombre    String   @map("Razon_Social")
-  cuit      Decimal  @map("Nro_CUIT")
-  cbtes     Cbte[]
-  purchases Compra[]
+  id                 Int                 @id @map("IdCliente")
+  nombre             String              @map("Razon_Social")
+  cuit               Decimal             @map("Nro_CUIT")
+  cbtes              Cbte[]
+  purchases          Compra[]
+  liquidationDetails LiquidationDetail[]
 
   @@map("Clientes")
 }
@@ -117,9 +118,10 @@ model Proveedor {
   tipoProvId Int?     @map("IDTIPO_PROV") @db.SmallInt
 
   // Relationships previously on Hospital
-  users     User[]
-  agents    Agent[]
-  purchases Compra[]
+  users              User[]
+  agents             Agent[]
+  purchases          Compra[]
+  liquidationDetails LiquidationDetail[]
 
   @@map("PROVEEDORES")
 }
@@ -154,15 +156,16 @@ model CbteAplica {
 }
 
 model Compra {
-  id         Int        @id @map("idtransaccion")
-  numero     Decimal    @map("NroCbte")
-  fecha      DateTime   @map("Fecha")
-  importe    Decimal    @map("ImporteTotal") @db.Decimal(15, 2)
-  hospitalId Int?       @map("IdProveedor")
-  hospital   Proveedor? @relation(fields: [hospitalId], references: [id], map: "Compras_IdProveedor_fkey")
-  clienteId  Int?       @map("IdCliente")
-  cliente    Cliente?   @relation(fields: [clienteId], references: [id], map: "Compras_IdCliente_fkey")
-  fcVentaId  Int?       @map("IdTransaccionFacturaVta")
+  id                 Int                 @id @map("idtransaccion")
+  numero             Decimal             @map("NroCbte")
+  fecha              DateTime            @map("Fecha")
+  importe            Decimal             @map("ImporteTotal") @db.Decimal(15, 2)
+  hospitalId         Int?                @map("IdProveedor")
+  hospital           Proveedor?          @relation(fields: [hospitalId], references: [id], map: "Compras_IdProveedor_fkey")
+  clienteId          Int?                @map("IdCliente")
+  cliente            Cliente?            @relation(fields: [clienteId], references: [id], map: "Compras_IdCliente_fkey")
+  fcVentaId          Int?                @map("IdTransaccionFacturaVta")
+  liquidationDetails LiquidationDetail[]
 
   @@map("Compras")
 }
@@ -185,7 +188,7 @@ model Agent {
 }
 
 model Liquidation {
-  id             String              @id @default(cuid())
+  id             Int                 @id @default(autoincrement())
   periodAnio     Int                 @db.SmallInt
   periodMes      Int                 @db.SmallInt
   periodIva      String              @default("V") @db.Char(1)
@@ -193,17 +196,11 @@ model Liquidation {
   rcId           Int
   rc             Cbte                @relation(fields: [rcId], references: [id])
   
-  totalFacturado Decimal             @db.Decimal(15, 2)
-  netoInicial    Decimal             @db.Decimal(15, 2)
+  mesCarga       String?             // e.g. "oct 25"
+  debitsFileUrl  String?             // Local path to scanned PDF of debits sent by Obra Social
+  debitsFileName String?             // Original filename of debits PDF
   
-  // Operator adjustments (Module 3)
-  creditos       Decimal             @default(0) @db.Decimal(15, 2)
-  debitos        Decimal             @default(0) @db.Decimal(15, 2)
-  ajustes        Decimal             @default(0) @db.Decimal(15, 2)
-  recuperos      Decimal             @default(0) @db.Decimal(15, 2)
-  pendientes     Decimal             @default(0) @db.Decimal(15, 2)
-  
-  status         String              @default("PENDIENTE") // PENDIENTE, EN_PROCESO, CONSOLIDADA, CERRADA
+  status         String              @default("PENDIENTE") // PENDIENTE, EN_PROCESO, NOTIFICADO, CERRADA
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   
@@ -213,16 +210,39 @@ model Liquidation {
 }
 
 model LiquidationDetail {
-  id            String      @id @default(cuid())
-  liquidationId String
-  liquidation   Liquidation @relation(fields: [liquidationId], references: [id], onDelete: Cascade)
-  fcVentaId     Int
-  amount        Decimal     @db.Decimal(15, 2)
+  id              String      @id @default(cuid())
+  liquidationId   Int
+  liquidation     Liquidation @relation(fields: [liquidationId], references: [id], onDelete: Cascade)
+  
+  compraId        Int?
+  compra          Compra?     @relation(fields: [compraId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  hospitalId      Int?
+  hospital        Proveedor?  @relation(fields: [hospitalId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  clienteId       Int?
+  cliente         Cliente?    @relation(fields: [clienteId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  periodo         String?     // e.g. "oct-25"
+  cuit            String?
+  prestadorNombre String?
+  localidad       String?
+  fcHospital      String?     // Invoice number of hospital, e.g. FC-C-0008-00004795
+  
+  totalFacturado  Decimal     @default(0) @db.Decimal(15, 2)
+  creditos        Decimal     @default(0) @db.Decimal(15, 2)
+  debitos         Decimal     @default(0) @db.Decimal(15, 2)
+  ajustesOs       Decimal     @default(0) @db.Decimal(15, 2)
+  pendientesCobro Decimal     @default(0) @db.Decimal(15, 2)
+  brutoAPagar     Decimal     @default(0) @db.Decimal(15, 2)
+  ga              Decimal     @default(0) @db.Decimal(15, 2)
+  ajusteRecupero  Decimal     @default(0) @db.Decimal(15, 2)
+  netoAPagar      Decimal     @default(0) @db.Decimal(15, 2)
 }
 
 model Distribution {
   id               String      @id @default(cuid())
-  liquidationId    String
+  liquidationId    Int
   liquidation      Liquidation @relation(fields: [liquidationId], references: [id], onDelete: Cascade)
   agentId          Int
   agent            Agent       @relation(fields: [agentId], references: [id])
@@ -237,7 +257,7 @@ model Distribution {
 
 model Attachment {
   id            String      @id @default(cuid())
-  liquidationId String
+  liquidationId Int
   liquidation   Liquidation @relation(fields: [liquidationId], references: [id], onDelete: Cascade)
   fileName      String
   fileUrl       String

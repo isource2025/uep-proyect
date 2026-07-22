@@ -1,11 +1,17 @@
+import "dotenv/config";
 import { prisma } from "../lib/prisma";
 import { auth } from "../lib/auth";
 
 async function main() {
   console.log("Starting non-destructive seeding on SQL Server...");
   
+  const seedPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (!seedPassword) {
+    throw new Error("❌ SEED_ADMIN_PASSWORD environment variable is not defined in .env!");
+  }
+  
   const authContext = await auth.$context;
-  const hashedPassword = await authContext.password.hash("admin123");
+  const hashedPassword = await authContext.password.hash(seedPassword);
 
   // 1. Ensure we have at least some Providers (Hospitals)
   let providers = await prisma.proveedor.findMany({ take: 3 });

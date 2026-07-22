@@ -45,7 +45,7 @@ export default async function HospitalPortalPage() {
 
   // 3. Find liquidations that belong to this hospital
   // (We check detail fcVentaId -> Compra -> hospitalId = hospitalId)
-  const allLiquidations = await prisma.liquidation.findMany({
+  const allLiquidations = await prisma.liquidacion.findMany({
     include: {
       period: true,
       rc: {
@@ -89,7 +89,7 @@ export default async function HospitalPortalPage() {
   }
 
   // 4. Fetch agents belonging to this hospital for fee distribution
-  const agents = await prisma.agent.findMany({
+  const agents = await prisma.agente.findMany({
     where: { hospitalId },
     orderBy: { nombre: "asc" },
   });
@@ -109,7 +109,7 @@ export default async function HospitalPortalPage() {
 
     try {
       // Find liquidation to check totals
-      const liq = await prisma.liquidation.findUnique({
+      const liq = await prisma.liquidacion.findUnique({
         where: { id: liquidationId },
         include: { distributions: true, details: true },
       });
@@ -132,7 +132,7 @@ export default async function HospitalPortalPage() {
       // Upsert distribution
       const existingDist = liq.distributions.find((d) => d.agentId === agentId);
       if (existingDist) {
-        await prisma.distribution.update({
+        await prisma.distribucion.update({
           where: { id: existingDist.id },
           data: {
             honorarios,
@@ -141,7 +141,7 @@ export default async function HospitalPortalPage() {
           },
         });
       } else {
-        await prisma.distribution.create({
+        await prisma.distribucion.create({
           data: {
             liquidationId,
             agentId,
@@ -169,7 +169,7 @@ export default async function HospitalPortalPage() {
     const liquidationId = parseInt(liquidationIdStr, 10);
 
     try {
-      await prisma.attachment.create({
+      await prisma.adjunto.create({
         data: {
           liquidationId,
           fileName,

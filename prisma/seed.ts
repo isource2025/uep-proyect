@@ -181,11 +181,11 @@ async function main() {
   ];
 
   for (const ag of agentsData) {
-    const existing = await prisma.agent.findFirst({
+    const existing = await prisma.agente.findFirst({
       where: { cuil: ag.cuil }
     });
     if (!existing) {
-      await prisma.agent.create({
+      await prisma.agente.create({
         data: {
           cuil: ag.cuil,
           nombre: ag.nombre,

@@ -41,7 +41,7 @@ function sanitizeCbte(c: any) {
   };
 }
 
-function sanitizeLiquidationDetail(d: any) {
+function sanitizarLiquidacionDetalle(d: any) {
   if (!d) return null;
   return {
     ...d,
@@ -59,9 +59,9 @@ function sanitizeLiquidationDetail(d: any) {
   };
 }
 
-function sanitizeLiquidationHeader(liq: any) {
+function sanitizarLiquidacionCabecera(liq: any) {
   if (!liq) return null;
-  const details = (liq.details || []).map(sanitizeLiquidationDetail);
+  const details = (liq.details || []).map(sanitizarLiquidacionDetalle);
 
   // Compute aggregate totals across all hospital rows for UI display
   const totalFacturado = details.reduce((sum: number, d: any) => sum + d.totalFacturado, 0);
@@ -92,7 +92,7 @@ function sanitizeLiquidationHeader(liq: any) {
 
 // 1. Fetch generated liquidations with nested details
 export async function fetchLiquidationData() {
-  const liquidations = await prisma.liquidation.findMany({
+  const liquidations = await prisma.liquidacion.findMany({
     include: {
       period: true,
       rc: {
@@ -110,7 +110,7 @@ export async function fetchLiquidationData() {
     orderBy: { createdAt: "desc" },
   });
 
-  const sanitizedLiquidations = liquidations.map(sanitizeLiquidationHeader);
+  const sanitizedLiquidations = liquidations.map(sanitizarLiquidacionCabecera);
 
   // Fetch pending Recibos de Cobro (RC) not yet liquidated
   const generatedRcIds = liquidations.map((l) => l.rcId);
@@ -194,7 +194,7 @@ export async function calculateLiquidation(rcId: number) {
     const monthStr = `${activePeriod.mes.toString().padStart(2, "0")}/${activePeriod.anio}`;
 
     // Create Liquidation Header record
-    const liquidation = await prisma.liquidation.create({
+    const liquidation = await prisma.liquidacion.create({
       data: {
         periodAnio: activePeriod.anio,
         periodMes: activePeriod.mes,
@@ -210,7 +210,7 @@ export async function calculateLiquidation(rcId: number) {
         const total = toNum(comp.importe);
         const fcNumStr = comp.numero ? `FC-${comp.hospital?.code || "C"}-${String(comp.numero).padStart(8, "0")}` : `FC-${comp.id}`;
         
-        await prisma.liquidationDetail.create({
+        await prisma.liquidacionDetalle.create({
           data: {
             liquidationId: liquidation.id,
             compraId: comp.id,
@@ -236,7 +236,7 @@ export async function calculateLiquidation(rcId: number) {
     } else {
       // Create at least 1 default detail row from RC applied invoice if no Compras
       const total = toNum(rc.importe);
-      await prisma.liquidationDetail.create({
+      await prisma.liquidacionDetalle.create({
         data: {
           liquidationId: liquidation.id,
           clienteId: rc.clienteId,
@@ -282,7 +282,7 @@ export async function updateLiquidationDetails(
 ) {
   try {
     for (const d of details) {
-      const detailRecord = await prisma.liquidationDetail.findUnique({
+      const detailRecord = await prisma.liquidacionDetalle.findUnique({
         where: { id: d.id },
       });
       if (!detailRecord) continue;
@@ -291,7 +291,7 @@ export async function updateLiquidationDetails(
       const brutoAPagar = totalFacturado + d.creditos - d.debitos + d.ajustesOs - d.pendientesCobro;
       const netoAPagar = brutoAPagar - d.ga + d.ajusteRecupero;
 
-      await prisma.liquidationDetail.update({
+      await prisma.liquidacionDetalle.update({
         where: { id: d.id },
         data: {
           creditos: d.creditos,
@@ -307,7 +307,7 @@ export async function updateLiquidationDetails(
     }
 
     if (status) {
-      await prisma.liquidation.update({
+      await prisma.liquidacion.update({
         where: { id: liquidationId },
         data: { status },
       });
@@ -342,7 +342,7 @@ export async function uploadDebitsFile(formData: FormData) {
     await writeFile(uploadPath, buffer);
     const fileUrl = `/uploads/debits/${filename}`;
 
-    await prisma.liquidation.update({
+    await prisma.liquidacion.update({
       where: { id: liquidationId },
       data: {
         debitsFileUrl: fileUrl,

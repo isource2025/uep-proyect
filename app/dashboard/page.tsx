@@ -10,7 +10,7 @@ export const revalidate = 0; // Force dynamic rendering so database updates show
 export default async function DashboardPage() {
   // Fetch summary stats from DB
   const hospitalCount = await prisma.proveedor.count({ where: { tipoProvId: 18 } });
-  const agentCount = await prisma.agent.count();
+  const agentCount = await prisma.agente.count();
   const fcCount = await prisma.cbte.count({ where: { type: "FC" } });
   const rcCount = await prisma.cbte.count({ where: { type: "RC" } });
 

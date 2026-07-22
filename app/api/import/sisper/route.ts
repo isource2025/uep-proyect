@@ -43,13 +43,13 @@ export async function POST(req: NextRequest) {
       const hospitalId = matchingHospital ? matchingHospital.id : null;
 
       // Check if agent already exists by CUIL
-      const existingAgent = await prisma.agent.findFirst({
+      const existingAgent = await prisma.agente.findFirst({
         where: { cuil },
       });
 
       if (existingAgent) {
         // Update establishment and hospital ID
-        await prisma.agent.update({
+        await prisma.agente.update({
           where: { id: existingAgent.id },
           data: {
             hospitalId,
@@ -60,8 +60,8 @@ export async function POST(req: NextRequest) {
         });
         updatedCount++;
       } else {
-        // Create new agent in physical Agent table (ID is auto-incremented in DB)
-        await prisma.agent.create({
+        // Create new agent in physical Agente table (ID is auto-incremented in DB)
+        await prisma.agente.create({
           data: {
             cuil,
             nombre,

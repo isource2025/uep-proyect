@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Building2, Receipt, Users, Plus, ShieldCheck, Mail, Paperclip, FileText, CheckCircle } from "lucide-react";
 import { PrintButton } from "./print-button";
+import DistributionGrid from "./distribution-grid";
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -301,7 +302,7 @@ export default async function HospitalPortalPage() {
                                   Distribuir Fondos
                                 </Button>
                               </DialogTrigger>
-                              <DialogContent className="border-border bg-card text-card-foreground max-w-2xl overflow-y-auto max-h-[85vh]">
+                              <DialogContent className="border-border bg-card text-card-foreground max-w-5xl w-[92vw] overflow-y-auto max-h-[85vh]">
                                 <DialogHeader>
                                   <DialogTitle className="text-foreground font-bold">Distribución y Adjuntos</DialogTitle>
                                   <DialogDescription className="text-muted-foreground text-xs">
@@ -309,88 +310,18 @@ export default async function HospitalPortalPage() {
                                   </DialogDescription>
                                 </DialogHeader>
 
-                                {/* Summary calculations */}
-                                <div className="grid grid-cols-2 gap-4 rounded-lg bg-muted/40 p-4 border border-border text-center">
-                                  <div className="space-y-0.5">
-                                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Total Asignado</span>
-                                    <p className="text-sm font-semibold text-foreground">{formatCurrency(totalDistributed)}</p>
-                                  </div>
-                                  <div className="space-y-0.5">
-                                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Saldo Remanente</span>
-                                    <p className={`text-sm font-bold ${remaining < 0 ? "text-red-500" : "text-emerald-500"}`}>
-                                      {formatCurrency(remaining)}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                {/* Save distribution Form */}
-                                {liq.status !== "CERRADA" && (
-                                  <form action={handleSaveDistribution} className="space-y-4 border-b border-border pb-6">
-                                    <input type="hidden" name="liquidationId" value={liq.id} />
-                                    <h4 className="text-xs font-bold text-foreground">Asignar Monto a Profesional:</h4>
-                                    <div className="grid grid-cols-2 gap-4">
-                                      <div className="space-y-1.5">
-                                        <Label htmlFor="agentId" className="text-xs">Profesional de Salud</Label>
-                                        <select
-                                          id="agentId"
-                                          name="agentId"
-                                          required
-                                          className="flex h-9 w-full rounded-md border border-input bg-muted/40 text-foreground px-3 py-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
-                                        >
-                                          <option value="" className="bg-card text-foreground">Seleccionar profesional...</option>
-                                          {agents.map((a) => (
-                                            <option key={a.id} value={a.id} className="bg-card text-foreground">
-                                              {a.nombre} (CUIL: {a.cuil})
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </div>
-                                      <div className="space-y-1.5">
-                                        <Label htmlFor="honorarios" className="text-xs">Honorarios ($)</Label>
-                                        <Input
-                                          id="honorarios"
-                                          name="honorarios"
-                                          type="number"
-                                          step="0.01"
-                                          required
-                                          placeholder="0.00"
-                                          className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
-                                        />
-                                      </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                      <div className="space-y-1.5">
-                                        <Label htmlFor="sobreasignaciones" className="text-xs">Sobreasignaciones ($)</Label>
-                                        <Input
-                                          id="sobreasignaciones"
-                                          name="sobreasignaciones"
-                                          type="number"
-                                          step="0.01"
-                                          placeholder="0.00"
-                                          className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
-                                        />
-                                      </div>
-                                      <div className="space-y-1.5">
-                                        <Label htmlFor="gastos" className="text-xs">Gastos de Funcionamiento ($)</Label>
-                                        <Input
-                                          id="gastos"
-                                          name="gastos"
-                                          type="number"
-                                          step="0.01"
-                                          placeholder="0.00"
-                                          className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
-                                        />
-                                      </div>
-                                    </div>
-                                    <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-9 text-xs cursor-pointer">
-                                      Confirmar Asignación
-                                    </Button>
-                                  </form>
-                                )}
+                                {/* Distribution Grid Spreadsheet Component */}
+                                <DistributionGrid
+                                  liquidationId={liq.id}
+                                  hospitalId={hospitalId}
+                                  netoFinalLimit={netoFinal}
+                                  agents={agents}
+                                  initialDistributions={liq.distributions}
+                                />
 
                                 {/* Upload mock Attachment */}
                                 {liq.status !== "CERRADA" && (
-                                  <form action={handleAddAttachment} className="space-y-4 border-b border-border pb-6">
+                                  <form action={handleAddAttachment} className="space-y-4 border-t border-b border-border py-4 my-2">
                                     <input type="hidden" name="liquidationId" value={liq.id} />
                                     <h4 className="text-xs font-bold text-foreground">Adjuntar Documento PDF (Comprobante / Acta):</h4>
                                     <div className="grid grid-cols-2 gap-4">
@@ -420,41 +351,6 @@ export default async function HospitalPortalPage() {
                                     </Button>
                                   </form>
                                 )}
-
-                                {/* Current distribution list */}
-                                <div className="space-y-3">
-                                  <h4 className="text-xs font-bold text-foreground">Distribución Actual:</h4>
-                                  <div className="rounded-lg border border-border overflow-hidden bg-muted/20">
-                                    <Table>
-                                      <TableHeader className="bg-muted/50">
-                                        <TableRow className="hover:bg-transparent border-border">
-                                          <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground">Profesional</TableHead>
-                                          <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Honorarios</TableHead>
-                                          <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Sobreasig.</TableHead>
-                                          <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Gastos</TableHead>
-                                        </TableRow>
-                                      </TableHeader>
-                                      <TableBody>
-                                        {liq.distributions.length === 0 ? (
-                                          <TableRow className="border-border">
-                                            <TableCell colSpan={4} className="text-center text-muted-foreground text-xs py-4">
-                                              No se han cargado distribuciones de fondos.
-                                            </TableCell>
-                                          </TableRow>
-                                        ) : (
-                                          liq.distributions.map((d) => (
-                                            <TableRow key={d.id} className="hover:bg-transparent border-border text-foreground text-xs">
-                                              <TableCell className="py-2 text-xs font-semibold">{d.agent.nombre}</TableCell>
-                                              <TableCell className="py-2 text-xs text-right">{formatCurrency(d.honorarios)}</TableCell>
-                                              <TableCell className="py-2 text-xs text-right">{formatCurrency(d.sobreasignaciones)}</TableCell>
-                                              <TableCell className="py-2 text-xs text-right font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(d.gastos)}</TableCell>
-                                            </TableRow>
-                                          ))
-                                        )}
-                                      </TableBody>
-                                    </Table>
-                                  </div>
-                                </div>
 
                                 {/* Attachments list */}
                                 <div className="space-y-3 pt-2">

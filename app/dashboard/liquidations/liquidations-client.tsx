@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { fetchLiquidationData, calculateLiquidation, updateLiquidationDetails, uploadDebitsFile } from "./actions";
+import { fetchLiquidationData, calculateLiquidation, updateLiquidationDetails, uploadDebitsFile, notifyHospital } from "./actions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -28,10 +28,31 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
   const [data, setData] = useState(initialData);
   const [calculatingRcId, setCalculatingRcId] = useState<number | null>(null);
   const [savingLiqId, setSavingLiqId] = useState<number | null>(null);
+  const [notifyingLiqId, setNotifyingLiqId] = useState<number | null>(null);
   const [uploadingLiqId, setUploadingLiqId] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [selectedLiqModal, setSelectedLiqModal] = useState<any | null>(null);
+
+  const handleNotifyHospital = async (liqId: number) => {
+    setNotifyingLiqId(liqId);
+    setErrorMsg("");
+    setSuccessMsg("");
+    try {
+      const res = await notifyHospital(liqId);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      setSuccessMsg("Hospitales notificados y correo simulado enviado con éxito.");
+      await loadData();
+      setSelectedLiqModal(null);
+    } catch (e: any) {
+      setErrorMsg("Error al notificar a los establecimientos.");
+    } finally {
+      setNotifyingLiqId(null);
+    }
+  };
 
   // Editable form state for modal
   const [editableDetails, setEditableDetails] = useState<any[]>([]);
@@ -773,23 +794,45 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                 Cerrar Vista
               </Button>
 
-              <Button
-                onClick={() => handleSaveDetails(selectedLiqModal.id)}
-                disabled={savingLiqId !== null}
-                className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1 px-6 h-9 cursor-pointer"
-              >
-                {savingLiqId === selectedLiqModal.id ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    Guardando Ajustes...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    Guardar Ajustes de Liquidación
-                  </>
+              <div className="flex gap-2">
+                {selectedLiqModal.status !== "NOTIFICADO" && selectedLiqModal.status !== "CERRADA" && (
+                  <Button
+                    onClick={() => handleNotifyHospital(selectedLiqModal.id)}
+                    disabled={notifyingLiqId !== null || savingLiqId !== null}
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1 px-4 h-9 cursor-pointer text-xs"
+                  >
+                    {notifyingLiqId === selectedLiqModal.id ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Notificando...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" />
+                        Notificar Hospital
+                      </>
+                    )}
+                  </Button>
                 )}
-              </Button>
+
+                <Button
+                  onClick={() => handleSaveDetails(selectedLiqModal.id)}
+                  disabled={savingLiqId !== null || notifyingLiqId !== null}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1 px-6 h-9 cursor-pointer text-xs"
+                >
+                  {savingLiqId === selectedLiqModal.id ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Guardando Ajustes...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Guardar Ajustes de Liquidación
+                    </>
+                  )}
+                </Button>
+              </div>
             </DialogFooter>
           </DialogContent>
         </Dialog>

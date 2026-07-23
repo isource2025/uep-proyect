@@ -357,3 +357,101 @@ export async function uploadDebitsFile(formData: FormData) {
     return { error: e.message || "Error al guardar el comprobante escaneado de débitos." };
   }
 }
+
+// 5. Notify hospital by updating liquidation status to NOTIFICADO and writing mock email logs
+export async function notifyHospital(liquidationId: number) {
+  try {
+    const liq = await prisma.liquidacion.findUnique({
+      where: { id: liquidationId },
+      include: {
+        rc: {
+          include: {
+            cliente: true,
+          },
+        },
+        details: {
+          include: {
+            hospital: true,
+          },
+        },
+      },
+    });
+
+    if (!liq) return { error: "Liquidación no encontrada." };
+
+    // Get the hospital names & emails involved
+    const details = liq.details;
+    const hospitalEmails = details
+      .map((d) => d.hospital?.nombre ? `${d.hospital.nombre.toLowerCase().replace(/\s+/g, "")}@uep.gov.ar` : null)
+      .filter((email, index, self) => email !== null && self.indexOf(email) === index) as string[];
+
+    const hospitalNames = details
+      .map((d) => d.hospital?.nombre || "Hospital Prestador")
+      .filter((name, index, self) => self.indexOf(name) === index);
+
+    // Update status to NOTIFICADO
+    await prisma.liquidacion.update({
+      where: { id: liquidationId },
+      data: { status: "NOTIFICADO" },
+    });
+
+    // Calculate total net final to display in email
+    const totalNet = details.reduce((sum, d) => sum + toNum(d.netoAPagar), 0);
+
+    // Format local date
+    const formattedDate = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
+
+    // Build the mock email contents
+    const emailLog = `
+=========================================
+📧 NOTIFICACIÓN DE LIQUIDACIÓN DE OBRA SOCIAL
+=========================================
+Fecha de Envío: ${formattedDate}
+De: liquidaciones@uep.gov.ar (Mesa de Liquidaciones UEP)
+Para: ${hospitalEmails.length > 0 ? hospitalEmails.join(", ") : "sin-correo@uep.gov.ar"}
+Destinatarios: ${hospitalNames.join(", ")}
+Asunto: Nueva Liquidación Disponible - Período: ${liq.mesCarga || "N/A"} - LIQ-${String(liq.id).padStart(4, "0")}
+
+Estimado Director / Administrador de Establecimiento de Salud,
+
+Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha generado y procesado una nueva liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}.
+
+Detalles de la Liquidación:
+- Nro de Liquidación UEP: LIQ-${String(liq.id).padStart(4, "0")}
+- Obra Social: ${liq.rc.cliente?.nombre || "N/A"} (CUIT: ${liq.rc.cliente?.cuit ? toNum(liq.rc.cliente.cuit) : "N/A"})
+- Recibo UEP de Cobro (RC): ${liq.rc.puntoVenta || "0000"}-${liq.rc.numero || 0}
+- Importe Neto Total a Distribuir: $${totalNet.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+
+Por favor, ingrese al Portal del Hospital antes de la fecha límite establecida para realizar la distribución de fondos obligatoria correspondientes a los conceptos de:
+1. Honorarios Médicos
+2. Sobreasignaciones al Personal
+3. Gastos de Funcionamiento
+
+Para acceder, ingrese con sus credenciales autorizadas a la sección del Portal del Hospital correspondiente.
+
+Atentamente,
+Unidad Ejecutora Provincial (UEP)
+Provincia de Corrientes
+=========================================
+`;
+
+    // Ensure directory public/uploads exists
+    const fs = require("fs");
+    const notificationsDir = path.join(process.cwd(), "public", "uploads");
+    if (!fs.existsSync(notificationsDir)) {
+      fs.mkdirSync(notificationsDir, { recursive: true });
+    }
+
+    const logPath = path.join(notificationsDir, "notifications-log.txt");
+    // Append notification log
+    await fs.promises.appendFile(logPath, emailLog + "\n\n");
+    console.log(`[MOCK EMAIL] Saved email notification in public/uploads/notifications-log.txt for LIQ-${liq.id}`);
+
+    revalidatePath("/dashboard/liquidations");
+    return { success: true };
+  } catch (e: any) {
+    console.error("Error notifying hospital:", e);
+    return { error: e.message || "Error al notificar al hospital." };
+  }
+}
+

@@ -18,6 +18,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Building2, Receipt, Users, Plus, ShieldCheck, Mail, Paperclip, FileText, CheckCircle } from "lucide-react";
+import { PrintButton } from "./print-button";
+
+function toNum(val: any): number {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === "object" && typeof val.toNumber === "function") {
+    return val.toNumber();
+  }
+  const parsed = Number(val);
+  return isNaN(parsed) ? 0 : parsed;
+}
 
 export const revalidate = 0;
 
@@ -282,193 +292,333 @@ export default async function HospitalPortalPage() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold gap-1.5 h-8 text-xs cursor-pointer">
-                                <Plus className="h-3.5 w-3.5" />
-                                Distribuir Fondos
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="border-border bg-card text-card-foreground max-w-2xl overflow-y-auto max-h-[85vh]">
-                              <DialogHeader>
-                                <DialogTitle className="text-foreground font-bold">Distribución y Adjuntos</DialogTitle>
-                                <DialogDescription className="text-muted-foreground text-xs">
-                                  Liquidación LIQ-{String(liq.id).padStart(4, "0")} &bull; Neto Final: <strong className="text-foreground">{formatCurrency(netoFinal)}</strong>
-                                </DialogDescription>
-                              </DialogHeader>
+                          <div className="flex justify-end gap-2">
+                            {/* 1. Distribute Funds Dialog */}
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold gap-1.5 h-8 text-xs cursor-pointer">
+                                  <Plus className="h-3.5 w-3.5" />
+                                  Distribuir Fondos
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="border-border bg-card text-card-foreground max-w-2xl overflow-y-auto max-h-[85vh]">
+                                <DialogHeader>
+                                  <DialogTitle className="text-foreground font-bold">Distribución y Adjuntos</DialogTitle>
+                                  <DialogDescription className="text-muted-foreground text-xs">
+                                    Liquidación LIQ-{String(liq.id).padStart(4, "0")} &bull; Neto Final: <strong className="text-foreground">{formatCurrency(netoFinal)}</strong>
+                                  </DialogDescription>
+                                </DialogHeader>
 
-                              {/* Summary calculations */}
-                              <div className="grid grid-cols-2 gap-4 rounded-lg bg-muted/40 p-4 border border-border text-center">
-                                <div className="space-y-0.5">
-                                  <span className="text-[10px] text-muted-foreground uppercase font-bold">Total Asignado</span>
-                                  <p className="text-sm font-semibold text-foreground">{formatCurrency(totalDistributed)}</p>
-                                </div>
-                                <div className="space-y-0.5">
-                                  <span className="text-[10px] text-muted-foreground uppercase font-bold">Saldo Remanente</span>
-                                  <p className={`text-sm font-bold ${remaining < 0 ? "text-red-500" : "text-emerald-500"}`}>
-                                    {formatCurrency(remaining)}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Save distribution Form */}
-                              {liq.status !== "CERRADA" && (
-                                <form action={handleSaveDistribution} className="space-y-4 border-b border-border pb-6">
-                                  <input type="hidden" name="liquidationId" value={liq.id} />
-                                  <h4 className="text-xs font-bold text-foreground">Asignar Monto a Profesional:</h4>
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-1.5">
-                                      <Label htmlFor="agentId" className="text-xs">Profesional de Salud</Label>
-                                      <select
-                                        id="agentId"
-                                        name="agentId"
-                                        required
-                                        className="flex h-9 w-full rounded-md border border-input bg-muted/40 text-foreground px-3 py-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
-                                      >
-                                        <option value="" className="bg-card text-foreground">Seleccionar profesional...</option>
-                                        {agents.map((a) => (
-                                          <option key={a.id} value={a.id} className="bg-card text-foreground">
-                                            {a.nombre} (CUIL: {a.cuil})
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                      <Label htmlFor="honorarios" className="text-xs">Honorarios ($)</Label>
-                                      <Input
-                                        id="honorarios"
-                                        name="honorarios"
-                                        type="number"
-                                        step="0.01"
-                                        required
-                                        placeholder="0.00"
-                                        className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
-                                      />
-                                    </div>
+                                {/* Summary calculations */}
+                                <div className="grid grid-cols-2 gap-4 rounded-lg bg-muted/40 p-4 border border-border text-center">
+                                  <div className="space-y-0.5">
+                                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Total Asignado</span>
+                                    <p className="text-sm font-semibold text-foreground">{formatCurrency(totalDistributed)}</p>
                                   </div>
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-1.5">
-                                      <Label htmlFor="sobreasignaciones" className="text-xs">Sobreasignaciones ($)</Label>
-                                      <Input
-                                        id="sobreasignaciones"
-                                        name="sobreasignaciones"
-                                        type="number"
-                                        step="0.01"
-                                        placeholder="0.00"
-                                        className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
-                                      />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                      <Label htmlFor="gastos" className="text-xs">Gastos de Funcionamiento ($)</Label>
-                                      <Input
-                                        id="gastos"
-                                        name="gastos"
-                                        type="number"
-                                        step="0.01"
-                                        placeholder="0.00"
-                                        className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
-                                      />
-                                    </div>
-                                  </div>
-                                  <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-9 text-xs cursor-pointer">
-                                    Confirmar Asignación
-                                  </Button>
-                                </form>
-                              )}
-
-                              {/* Upload mock Attachment */}
-                              {liq.status !== "CERRADA" && (
-                                <form action={handleAddAttachment} className="space-y-4 border-b border-border pb-6">
-                                  <input type="hidden" name="liquidationId" value={liq.id} />
-                                  <h4 className="text-xs font-bold text-foreground">Adjuntar Documento PDF (Comprobante / Acta):</h4>
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-1.5">
-                                      <Label htmlFor="fileName" className="text-xs">Nombre del Archivo</Label>
-                                      <Input
-                                        id="fileName"
-                                        name="fileName"
-                                        required
-                                        placeholder="Comprobante_Pago.pdf"
-                                        className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
-                                      />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                      <Label htmlFor="fileUrl" className="text-xs">Enlace / URL del PDF</Label>
-                                      <Input
-                                        id="fileUrl"
-                                        name="fileUrl"
-                                        required
-                                        placeholder="https://drive.google.com/..."
-                                        className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
-                                      />
-                                    </div>
-                                  </div>
-                                  <Button type="submit" className="w-full bg-teal-600 hover:bg-teal-500 text-zinc-950 font-semibold h-9 text-xs cursor-pointer">
-                                    Subir Adjunto
-                                  </Button>
-                                </form>
-                              )}
-
-                              {/* Current distribution list */}
-                              <div className="space-y-3">
-                                <h4 className="text-xs font-bold text-foreground">Distribución Actual:</h4>
-                                <div className="rounded-lg border border-border overflow-hidden bg-muted/20">
-                                  <Table>
-                                    <TableHeader className="bg-muted/50">
-                                      <TableRow className="hover:bg-transparent border-border">
-                                        <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground">Profesional</TableHead>
-                                        <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Honorarios</TableHead>
-                                        <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Sobreasig.</TableHead>
-                                        <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Gastos</TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {liq.distributions.length === 0 ? (
-                                        <TableRow className="border-border">
-                                          <TableCell colSpan={4} className="text-center text-muted-foreground text-xs py-4">
-                                            No se han cargado distribuciones de fondos.
-                                          </TableCell>
-                                        </TableRow>
-                                      ) : (
-                                        liq.distributions.map((d) => (
-                                          <TableRow key={d.id} className="hover:bg-transparent border-border text-foreground">
-                                            <TableCell className="py-2 text-xs font-semibold">{d.agent.nombre}</TableCell>
-                                            <TableCell className="py-2 text-xs text-right">{formatCurrency(d.honorarios)}</TableCell>
-                                            <TableCell className="py-2 text-xs text-right">{formatCurrency(d.sobreasignaciones)}</TableCell>
-                                            <TableCell className="py-2 text-xs text-right font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(d.gastos)}</TableCell>
-                                          </TableRow>
-                                        ))
-                                      )}
-                                    </TableBody>
-                                  </Table>
-                                </div>
-                              </div>
-
-                              {/* Attachments list */}
-                              <div className="space-y-3 pt-2">
-                                <h4 className="text-xs font-bold text-foreground">Documentos Adjuntos:</h4>
-                                <div className="space-y-2">
-                                  {liq.attachments.length === 0 ? (
-                                    <p className="text-xs text-muted-foreground text-center py-2 border border-dashed border-border rounded-lg">
-                                      No hay documentos adjuntos.
+                                  <div className="space-y-0.5">
+                                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Saldo Remanente</span>
+                                    <p className={`text-sm font-bold ${remaining < 0 ? "text-red-500" : "text-emerald-500"}`}>
+                                      {formatCurrency(remaining)}
                                     </p>
-                                  ) : (
-                                    liq.attachments.map((at) => (
-                                      <div key={at.id} className="flex items-center justify-between p-2 border border-border rounded-lg bg-muted/20 text-xs">
-                                        <div className="flex items-center gap-2">
-                                          <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-                                          <span className="font-semibold">{at.fileName}</span>
-                                        </div>
-                                        <a href={at.fileUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:underline">
-                                          Descargar
-                                        </a>
-                                      </div>
-                                    ))
-                                  )}
+                                  </div>
                                 </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
+
+                                {/* Save distribution Form */}
+                                {liq.status !== "CERRADA" && (
+                                  <form action={handleSaveDistribution} className="space-y-4 border-b border-border pb-6">
+                                    <input type="hidden" name="liquidationId" value={liq.id} />
+                                    <h4 className="text-xs font-bold text-foreground">Asignar Monto a Profesional:</h4>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="space-y-1.5">
+                                        <Label htmlFor="agentId" className="text-xs">Profesional de Salud</Label>
+                                        <select
+                                          id="agentId"
+                                          name="agentId"
+                                          required
+                                          className="flex h-9 w-full rounded-md border border-input bg-muted/40 text-foreground px-3 py-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+                                        >
+                                          <option value="" className="bg-card text-foreground">Seleccionar profesional...</option>
+                                          {agents.map((a) => (
+                                            <option key={a.id} value={a.id} className="bg-card text-foreground">
+                                              {a.nombre} (CUIL: {a.cuil})
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <Label htmlFor="honorarios" className="text-xs">Honorarios ($)</Label>
+                                        <Input
+                                          id="honorarios"
+                                          name="honorarios"
+                                          type="number"
+                                          step="0.01"
+                                          required
+                                          placeholder="0.00"
+                                          className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="space-y-1.5">
+                                        <Label htmlFor="sobreasignaciones" className="text-xs">Sobreasignaciones ($)</Label>
+                                        <Input
+                                          id="sobreasignaciones"
+                                          name="sobreasignaciones"
+                                          type="number"
+                                          step="0.01"
+                                          placeholder="0.00"
+                                          className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
+                                        />
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <Label htmlFor="gastos" className="text-xs">Gastos de Funcionamiento ($)</Label>
+                                        <Input
+                                          id="gastos"
+                                          name="gastos"
+                                          type="number"
+                                          step="0.01"
+                                          placeholder="0.00"
+                                          className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
+                                        />
+                                      </div>
+                                    </div>
+                                    <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-9 text-xs cursor-pointer">
+                                      Confirmar Asignación
+                                    </Button>
+                                  </form>
+                                )}
+
+                                {/* Upload mock Attachment */}
+                                {liq.status !== "CERRADA" && (
+                                  <form action={handleAddAttachment} className="space-y-4 border-b border-border pb-6">
+                                    <input type="hidden" name="liquidationId" value={liq.id} />
+                                    <h4 className="text-xs font-bold text-foreground">Adjuntar Documento PDF (Comprobante / Acta):</h4>
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="space-y-1.5">
+                                        <Label htmlFor="fileName" className="text-xs">Nombre del Archivo</Label>
+                                        <Input
+                                          id="fileName"
+                                          name="fileName"
+                                          required
+                                          placeholder="Comprobante_Pago.pdf"
+                                          className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
+                                        />
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <Label htmlFor="fileUrl" className="text-xs">Enlace / URL del PDF</Label>
+                                        <Input
+                                          id="fileUrl"
+                                          name="fileUrl"
+                                          required
+                                          placeholder="https://drive.google.com/..."
+                                          className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500 h-9 text-xs"
+                                        />
+                                      </div>
+                                    </div>
+                                    <Button type="submit" className="w-full bg-teal-600 hover:bg-teal-500 text-zinc-950 font-semibold h-9 text-xs cursor-pointer">
+                                      Subir Adjunto
+                                    </Button>
+                                  </form>
+                                )}
+
+                                {/* Current distribution list */}
+                                <div className="space-y-3">
+                                  <h4 className="text-xs font-bold text-foreground">Distribución Actual:</h4>
+                                  <div className="rounded-lg border border-border overflow-hidden bg-muted/20">
+                                    <Table>
+                                      <TableHeader className="bg-muted/50">
+                                        <TableRow className="hover:bg-transparent border-border">
+                                          <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground">Profesional</TableHead>
+                                          <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Honorarios</TableHead>
+                                          <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Sobreasig.</TableHead>
+                                          <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Gastos</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {liq.distributions.length === 0 ? (
+                                          <TableRow className="border-border">
+                                            <TableCell colSpan={4} className="text-center text-muted-foreground text-xs py-4">
+                                              No se han cargado distribuciones de fondos.
+                                            </TableCell>
+                                          </TableRow>
+                                        ) : (
+                                          liq.distributions.map((d) => (
+                                            <TableRow key={d.id} className="hover:bg-transparent border-border text-foreground text-xs">
+                                              <TableCell className="py-2 text-xs font-semibold">{d.agent.nombre}</TableCell>
+                                              <TableCell className="py-2 text-xs text-right">{formatCurrency(d.honorarios)}</TableCell>
+                                              <TableCell className="py-2 text-xs text-right">{formatCurrency(d.sobreasignaciones)}</TableCell>
+                                              <TableCell className="py-2 text-xs text-right font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(d.gastos)}</TableCell>
+                                            </TableRow>
+                                          ))
+                                        )}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                </div>
+
+                                {/* Attachments list */}
+                                <div className="space-y-3 pt-2">
+                                  <h4 className="text-xs font-bold text-foreground">Documentos Adjuntos:</h4>
+                                  <div className="space-y-2">
+                                    {liq.attachments.length === 0 ? (
+                                      <p className="text-xs text-muted-foreground text-center py-2 border border-dashed border-border rounded-lg">
+                                        No hay documentos adjuntos.
+                                      </p>
+                                    ) : (
+                                      liq.attachments.map((at) => (
+                                        <div key={at.id} className="flex items-center justify-between p-2 border border-border rounded-lg bg-muted/20 text-xs">
+                                          <div className="flex items-center gap-2">
+                                            <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+                                            <span className="font-semibold">{at.fileName}</span>
+                                          </div>
+                                          <a href={at.fileUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-500 hover:underline">
+                                            Descargar
+                                          </a>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+
+                            {/* 2. Official Printable Report Dialog */}
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="border-border text-foreground hover:bg-muted font-semibold gap-1.5 h-8 text-xs cursor-pointer">
+                                  <FileText className="h-3.5 w-3.5" />
+                                  Ver Reporte
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="border-border bg-card text-card-foreground max-w-4xl overflow-y-auto max-h-[90vh]">
+                                <DialogHeader className="flex flex-row items-center justify-between border-b border-border pb-3">
+                                  <div>
+                                    <DialogTitle className="text-foreground text-lg font-bold">Reporte Oficial de Liquidación UEP</DialogTitle>
+                                    <DialogDescription className="text-muted-foreground text-xs">
+                                      Establecimiento: {hospital.nombre} &bull; Liquidación UEP Nro: LIQ-{String(liq.id).padStart(4, "0")}
+                                    </DialogDescription>
+                                  </div>
+                                  <PrintButton />
+                                </DialogHeader>
+
+                                {/* Printable Area */}
+                                <div className="space-y-6 my-2 text-foreground" id="printable-report-content">
+                                  {/* General Info Header */}
+                                  <div className="grid grid-cols-3 gap-4 border border-border p-4 rounded-lg bg-muted/25 text-xs">
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground text-[10px] uppercase font-bold">Obra Social (Cliente)</p>
+                                      <p className="font-semibold text-foreground">{liq.rc.cliente?.nombre || "N/A"}</p>
+                                      <p className="text-muted-foreground text-[10px]">CUIT: {liq.rc.cliente?.cuit ? toNum(liq.rc.cliente.cuit).toString() : "N/A"}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground text-[10px] uppercase font-bold">Comprobante de Origen</p>
+                                      <p className="font-semibold text-foreground font-mono">RC {liq.rc.puntoVenta || "0000"}-{liq.rc.numero || 0}</p>
+                                      <p className="text-muted-foreground text-[10px]">Fecha: {new Date(liq.rc.fecha).toLocaleDateString("es-AR")}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground text-[10px] uppercase font-bold">Período de Carga</p>
+                                      <p className="font-semibold text-foreground">{liq.mesCarga || "N/A"}</p>
+                                      <p className="text-muted-foreground text-[10px]">Estado: {liq.status}</p>
+                                    </div>
+                                  </div>
+
+                                  {/* Financial breakdown */}
+                                  <div className="space-y-2">
+                                    <h4 className="text-xs font-bold text-foreground">1. Desglose Financiero (Establecimiento CAPS/Hospital)</h4>
+                                    <div className="rounded-lg border border-border overflow-hidden bg-muted/10">
+                                      <Table>
+                                        <TableHeader className="bg-muted/30">
+                                          <TableRow className="hover:bg-transparent border-border">
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground">Prestador (Hospital)</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Facturado</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Créditos</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Débitos OS</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Ajustes OS</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Pend. Cobro</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Bruto</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">G.A.</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Recupero</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right font-bold text-foreground">Neto Final</TableHead>
+                                          </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                          {liq.details.map((d: any) => (
+                                            <TableRow key={d.id} className="hover:bg-transparent border-border text-foreground text-xs">
+                                              <TableCell className="font-semibold py-2 text-foreground">{d.prestadorNombre || hospital.nombre}</TableCell>
+                                              <TableCell className="text-right py-2">{formatCurrency(d.totalFacturado)}</TableCell>
+                                              <TableCell className="text-right py-2 text-emerald-600 dark:text-emerald-400 font-semibold">+{formatCurrency(d.creditos)}</TableCell>
+                                              <TableCell className="text-right py-2 text-red-500">-{formatCurrency(d.debitos)}</TableCell>
+                                              <TableCell className="text-right py-2 text-blue-500">{formatCurrency(d.ajustesOs)}</TableCell>
+                                              <TableCell className="text-right py-2 text-amber-500">-{formatCurrency(d.pendientesCobro)}</TableCell>
+                                              <TableCell className="text-right py-2 font-bold text-foreground">{formatCurrency(d.brutoAPagar)}</TableCell>
+                                              <TableCell className="text-right py-2 text-red-500">-{formatCurrency(d.ga)}</TableCell>
+                                              <TableCell className="text-right py-2 text-emerald-600 dark:text-emerald-400 font-semibold">+{formatCurrency(d.ajusteRecupero)}</TableCell>
+                                              <TableCell className="text-right py-2 font-black text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 rounded">{formatCurrency(d.netoAPagar)}</TableCell>
+                                            </TableRow>
+                                          ))}
+                                        </TableBody>
+                                      </Table>
+                                    </div>
+                                  </div>
+
+                                  {/* Agent base list section (SISPER) */}
+                                  <div className="space-y-2">
+                                    <h4 className="text-xs font-bold text-foreground">2. Base de Agentes de Salud (SISPER) e Importes de Distribución</h4>
+                                    <div className="rounded-lg border border-border overflow-hidden bg-muted/10">
+                                      <Table>
+                                        <TableHeader className="bg-muted/30">
+                                          <TableRow className="hover:bg-transparent border-border">
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground">Apellido y Nombre</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground font-mono">CUIL</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground">Puesto Laboral (Cargo)</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Honorarios</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Sobreasignaciones</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right">Gastos</TableHead>
+                                            <TableHead className="py-2 text-[10px] font-semibold text-muted-foreground text-right font-bold text-foreground">Total Asignado</TableHead>
+                                          </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                          {agents.length === 0 ? (
+                                            <TableRow className="border-border">
+                                              <TableCell colSpan={7} className="text-center text-muted-foreground text-xs py-6">
+                                                No hay agentes registrados en la nómina de SISPER para este hospital.
+                                              </TableCell>
+                                            </TableRow>
+                                          ) : (
+                                            agents.map((agent: any) => {
+                                              const dist = liq.distributions.find((d: any) => d.agentId === agent.id);
+                                              const totalDist = dist ? (Number(dist.honorarios) + Number(dist.sobreasignaciones) + Number(dist.gastos)) : 0;
+                                              const cargoStr = agent.cargo === "1" ? "ADMINISTRATIVO" : agent.cargo === "2" ? "MEDICO" : agent.cargo === "3" ? "ENFERMERO" : agent.cargo || "PROFESIONAL";
+
+                                              return (
+                                                <TableRow key={agent.id} className="hover:bg-transparent border-border text-foreground text-xs">
+                                                  <TableCell className="py-2 font-semibold text-foreground">{agent.nombre}</TableCell>
+                                                  <TableCell className="py-2 font-mono">{agent.cuil}</TableCell>
+                                                  <TableCell className="py-2">{cargoStr}</TableCell>
+                                                  <TableCell className="py-2 text-right">{dist ? formatCurrency(dist.honorarios) : "-"}</TableCell>
+                                                  <TableCell className="py-2 text-right">{dist ? formatCurrency(dist.sobreasignaciones) : "-"}</TableCell>
+                                                  <TableCell className="py-2 text-right">{dist ? formatCurrency(dist.gastos) : "-"}</TableCell>
+                                                  <TableCell className="py-2 text-right font-semibold text-emerald-600 dark:text-emerald-400">
+                                                    {totalDist > 0 ? formatCurrency(totalDist) : "-"}
+                                                  </TableCell>
+                                                </TableRow>
+                                              );
+                                            })
+                                          )}
+                                        </TableBody>
+                                      </Table>
+                                    </div>
+                                  </div>
+
+                                  {/* Print Footer note */}
+                                  <div className="flex justify-between items-center text-[9px] text-muted-foreground border-t border-border pt-3">
+                                    <p>Generado a través del Portal UEP - Sistema de Gestión de Liquidación e Intermediación de Facturación.</p>
+                                    <p className="font-mono">LIQ-{String(liq.id).padStart(4, "0")} / {liq.mesCarga || "N/A"}</p>
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

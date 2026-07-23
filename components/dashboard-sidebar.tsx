@@ -12,6 +12,7 @@ import {
   Layers,
   Users,
   Settings,
+  FileDown,
 } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
@@ -62,6 +63,11 @@ export function DashboardSidebar() {
           name: "Facturación",
           href: "/dashboard/invoices",
           icon: Layers,
+        },
+        {
+          name: "Consolidación",
+          href: "/dashboard/consolidation",
+          icon: FileDown,
         },
         {
           name: "Usuarios",

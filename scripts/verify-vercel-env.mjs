@@ -23,11 +23,8 @@ const APP_URL = process.env.UEP_APP_URL || "https://uep-proyect-w15h.vercel.app"
 const LOG = join(process.cwd(), "debug-86b1be.log");
 
 const EXPECTED = {
-  // Vercel must reach WEBDEV via a PUBLIC IP that forwards to 192.168.1.47:1433
-  // Local uses 192.168.1.47 — never point Vercel at the private LAN IP.
   DATABASE_URL:
-    process.env.UEP_PUBLIC_DATABASE_URL ||
-    "sqlserver://192.168.1.47:1433;database=UEP;user=sa;password=isource;encrypt=false;trustServerCertificate=true",
+    "sqlserver://190.231.14.131:1433;database=UEP;user=sa;password=isource;encrypt=false;trustServerCertificate=true",
   BETTER_AUTH_SECRET:
     "a5baff2d1ad5d3f80ec3e43ae0ae280670c017ffed98a2ed3a747ba7da5e85c6",
   BETTER_AUTH_URL: "https://uep-proyect-w15h.vercel.app",

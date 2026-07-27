@@ -28,19 +28,22 @@ function createPrismaClient(): PrismaClient {
     throw new Error("DATABASE_URL is not set");
   }
 
-  const { server, port, params } = parseSqlServerUrl(url);
+  // Strip accidental quotes if the value was pasted with quotes in Vercel
+  const cleaned = url.trim().replace(/^["']|["']$/g, "");
+  const { server, port, params } = parseSqlServerUrl(cleaned);
+
+  const encryptRaw = (params.encrypt || "false").toLowerCase();
+  const trustRaw = (params.trustServerCertificate || "true").toLowerCase();
 
   const adapter = new PrismaMssql({
     server,
     port,
-    database: params.database || "iSource",
+    database: params.database || "UEP",
     user: params.user || "sa",
-    password: params.password || "isource",
+    password: params.password || "",
     options: {
-      encrypt: params.encrypt === "true" || params.encrypt === undefined,
-      trustServerCertificate:
-        params.trustServerCertificate === "true" ||
-        params.trustServerCertificate === undefined,
+      encrypt: encryptRaw === "true",
+      trustServerCertificate: trustRaw === "true" || trustRaw === "1",
     },
   });
 

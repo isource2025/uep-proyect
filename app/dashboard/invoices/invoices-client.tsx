@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { fetchPendingUnifications, fetchUnifiedInvoices, fetchInvoiceDetails, fetchPendingInvoiceDetails, unifyInvoicesForClient } from "./actions";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -448,7 +449,7 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
                       <TableHead className="font-semibold text-xs text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
+                  <TableBody className={cn(isSearching && "opacity-50 pointer-events-none transition-opacity duration-200")}>
                     {unifiedList.length === 0 ? (
                       <TableRow className="border-border">
                         <TableCell colSpan={6} className="text-center text-muted-foreground text-sm py-12">

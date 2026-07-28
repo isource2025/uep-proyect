@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { fetchLiquidationData, calculateLiquidation, updateLiquidationDetails, uploadDebitsFile, notifyHospital } from "./actions";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
   const [data, setData] = useState(initialData);
   const [totalCount, setTotalCount] = useState(initialData.totalLiquidationsCount);
   const [totalPendingCount, setTotalPendingCount] = useState(initialData.totalPendingRcsCount);
+  const [isLoading, setIsLoading] = useState(false);
 
   const [calculatingRcId, setCalculatingRcId] = useState<number | null>(null);
   const [savingLiqId, setSavingLiqId] = useState<number | null>(null);
@@ -73,6 +75,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
   // Fetch paginated lists from database on page/limits state changes
   useEffect(() => {
     const fetchPageData = async () => {
+      setIsLoading(true);
       try {
         const res = await fetchLiquidationData(currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage);
         setData(res);
@@ -80,12 +83,15 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
         setTotalPendingCount(res.totalPendingRcsCount);
       } catch (e) {
         // silent catch
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchPageData();
   }, [currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage]);
 
   const loadData = async () => {
+    setIsLoading(true);
     try {
       const res = await fetchLiquidationData(currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage);
       setData(res);
@@ -93,6 +99,8 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
       setTotalPendingCount(res.totalPendingRcsCount);
     } catch (e: any) {
       setErrorMsg("Error al actualizar la lista de liquidaciones.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -282,7 +290,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className={cn("space-y-4", isLoading && "opacity-50 pointer-events-none transition-opacity duration-200")}>
               {paginatedPendingRcs.map((rc) => {
                 const isThisCalculating = calculatingRcId === rc.id;
                 return (
@@ -426,7 +434,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                   <TableHead className="font-semibold text-xs text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className={cn(isLoading && "opacity-50 pointer-events-none transition-opacity duration-200")}>
                 {liquidations.length === 0 ? (
                   <TableRow className="border-border">
                     <TableCell colSpan={9} className="text-center text-muted-foreground text-sm py-12">

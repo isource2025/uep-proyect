@@ -83,8 +83,8 @@ export async function fetchPendingUnifications() {
   });
 }
 
-// 2. Fetch all consolidated invoices (Cbtes of type 'FC')
-export async function fetchUnifiedInvoices(searchQuery?: string) {
+// 2. Fetch all consolidated invoices (Cbtes of type 'FC') with pagination
+export async function fetchUnifiedInvoices(searchQuery?: string, page: number = 1, limit: number = 10) {
   const whereClause: any = {
     type: "FC",
   };
@@ -110,19 +110,27 @@ export async function fetchUnifiedInvoices(searchQuery?: string) {
     }
   }
 
-  // Limit to top 100 recent invoices for instantaneous page loading
-  const invoices = await prisma.cbte.findMany({
-    where: whereClause,
-    include: {
-      cliente: true,
-    },
-    orderBy: {
-      fecha: "desc",
-    },
-    take: 100,
-  });
+  const skip = (page - 1) * limit;
 
-  if (invoices.length === 0) return [];
+  // Fetch paginated invoices and count total in parallel
+  const [totalCount, invoices] = await Promise.all([
+    prisma.cbte.count({ where: whereClause }),
+    prisma.cbte.findMany({
+      where: whereClause,
+      include: {
+        cliente: true,
+      },
+      orderBy: {
+        fecha: "desc",
+      },
+      skip,
+      take: limit,
+    })
+  ]);
+
+  if (invoices.length === 0) {
+    return { invoices: [], totalCount };
+  }
 
   const invoiceIds = invoices.map((inv) => inv.id);
 
@@ -139,29 +147,35 @@ export async function fetchUnifiedInvoices(searchQuery?: string) {
 
   const countMap = new Map(compCounts.map((c) => [c.fcVentaId!, c._count.id]));
 
-  return invoices.map((inv) => ({
+  const mappedInvoices = invoices.map((inv) => ({
     ...sanitizeCbte(inv),
     compCount: countMap.get(inv.id) || 0,
   }));
+
+  return {
+    invoices: mappedInvoices,
+    totalCount
+  };
 }
 
 // 3. Fetch detailed individual Compras consolidated inside a unified Cbte
 export async function fetchInvoiceDetails(cbteId: number) {
-  const cbte = await prisma.cbte.findUnique({
-    where: { id: cbteId },
-    include: { cliente: true },
-  });
+  const [cbte, purchases] = await Promise.all([
+    prisma.cbte.findUnique({
+      where: { id: cbteId },
+      include: { cliente: true },
+    }),
+    prisma.compra.findMany({
+      where: {
+        fcVentaId: cbteId,
+      },
+      include: {
+        hospital: true,
+      },
+    })
+  ]);
 
   if (!cbte) return null;
-
-  const purchases = await prisma.compra.findMany({
-    where: {
-      fcVentaId: cbteId,
-    },
-    include: {
-      hospital: true,
-    },
-  });
 
   return {
     cbte: sanitizeCbte(cbte),
@@ -171,24 +185,25 @@ export async function fetchInvoiceDetails(cbteId: number) {
 
 // 4. Fetch detailed pending Compras for a specific Obra Social before unification
 export async function fetchPendingInvoiceDetails(clienteId: number) {
-  const cliente = await prisma.cliente.findUnique({
-    where: { id: clienteId },
-  });
+  const [cliente, purchases] = await Promise.all([
+    prisma.cliente.findUnique({
+      where: { id: clienteId },
+    }),
+    prisma.compra.findMany({
+      where: {
+        clienteId,
+        fcVentaId: null,
+      },
+      include: {
+        hospital: true,
+      },
+      orderBy: {
+        fecha: "desc",
+      },
+    })
+  ]);
 
   if (!cliente) return null;
-
-  const purchases = await prisma.compra.findMany({
-    where: {
-      clienteId,
-      fcVentaId: null,
-    },
-    include: {
-      hospital: true,
-    },
-    orderBy: {
-      fecha: "desc",
-    },
-  });
 
   const total = purchases.reduce((sum, p) => sum + toNum(p.importe), 0);
 

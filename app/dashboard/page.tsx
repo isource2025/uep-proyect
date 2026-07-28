@@ -8,29 +8,25 @@ import Link from "next/link";
 export const revalidate = 0; // Force dynamic rendering so database updates show immediately
 
 export default async function DashboardPage() {
-  // Fetch summary stats from DB
-  const hospitalCount = await prisma.proveedor.count({ where: { tipoProvId: 18 } });
-  const agentCount = await prisma.agente.count();
-  const fcCount = await prisma.cbte.count({ where: { type: "FC" } });
-  const rcCount = await prisma.cbte.count({ where: { type: "RC" } });
-
-  // Get active period (fechaCierre is null)
-  const activePeriod = await prisma.periodoIVA.findFirst({
-    where: { fechaCierre: null, iva: "V" },
-  });
-
-  // Get recent ERP invoices/receipts
-  const recentCbtes = await prisma.cbte.findMany({
-    take: 5,
-    orderBy: { fecha: "desc" },
-    include: { cliente: true },
-  });
-
-  // Calculate total invoice amounts
-  const totalInvoiced = await prisma.cbte.aggregate({
-    _sum: { importe: true },
-    where: { type: "FC" },
-  });
+  // Fetch summary stats, active period, recent cbtes and aggregations in parallel to minimize latency
+  const [hospitalCount, agentCount, fcCount, rcCount, activePeriod, recentCbtes, totalInvoiced] = await Promise.all([
+    prisma.proveedor.count({ where: { tipoProvId: 18 } }),
+    prisma.agente.count(),
+    prisma.cbte.count({ where: { type: "FC" } }),
+    prisma.cbte.count({ where: { type: "RC" } }),
+    prisma.periodoIVA.findFirst({
+      where: { fechaCierre: null, iva: "V" },
+    }),
+    prisma.cbte.findMany({
+      take: 5,
+      orderBy: { fecha: "desc" },
+      include: { cliente: true },
+    }),
+    prisma.cbte.aggregate({
+      _sum: { importe: true },
+      where: { type: "FC" },
+    })
+  ]);
 
   // Format currency helper
   const formatCurrency = (val: any) => {

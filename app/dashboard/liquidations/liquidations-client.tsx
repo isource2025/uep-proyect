@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { fetchLiquidationData, calculateLiquidation, updateLiquidationDetails, uploadDebitsFile, notifyHospital } from "./actions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -20,12 +20,17 @@ import { Calculator, Receipt, Eye, CheckCircle2, RefreshCw, AlertCircle, UploadC
 interface LiquidationsClientPageProps {
   initialData: {
     liquidations: any[];
+    totalLiquidationsCount: number;
     pendingRcs: any[];
+    totalPendingRcsCount: number;
   };
 }
 
 export default function LiquidationsClientPage({ initialData }: LiquidationsClientPageProps) {
   const [data, setData] = useState(initialData);
+  const [totalCount, setTotalCount] = useState(initialData.totalLiquidationsCount);
+  const [totalPendingCount, setTotalPendingCount] = useState(initialData.totalPendingRcsCount);
+
   const [calculatingRcId, setCalculatingRcId] = useState<number | null>(null);
   const [savingLiqId, setSavingLiqId] = useState<number | null>(null);
   const [notifyingLiqId, setNotifyingLiqId] = useState<number | null>(null);
@@ -65,10 +70,27 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
   const [currentPendingPage, setCurrentPendingPage] = useState(1);
   const [pendingItemsPerPage, setPendingItemsPerPage] = useState(5);
 
+  // Fetch paginated lists from database on page/limits state changes
+  useEffect(() => {
+    const fetchPageData = async () => {
+      try {
+        const res = await fetchLiquidationData(currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage);
+        setData(res);
+        setTotalCount(res.totalLiquidationsCount);
+        setTotalPendingCount(res.totalPendingRcsCount);
+      } catch (e) {
+        // silent catch
+      }
+    };
+    fetchPageData();
+  }, [currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage]);
+
   const loadData = async () => {
     try {
-      const res = await fetchLiquidationData();
+      const res = await fetchLiquidationData(currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage);
       setData(res);
+      setTotalCount(res.totalLiquidationsCount);
+      setTotalPendingCount(res.totalPendingRcsCount);
     } catch (e: any) {
       setErrorMsg("Error al actualizar la lista de liquidaciones.");
     }
@@ -196,11 +218,11 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
   const liquidations = data.liquidations;
 
   // Pagination Generated Liquidations Logic
-  const totalItems = liquidations.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const totalItems = totalCount;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
-  const paginatedLiquidations = liquidations.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedLiquidations = liquidations; // Paginated from DB
 
   const handleItemsPerPageChange = (val: number) => {
     setItemsPerPage(val);
@@ -208,12 +230,12 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
   };
 
   // Pagination Pending RCs Logic
-  const totalPendingItems = pendingRcs.length;
-  const totalPendingPages = Math.ceil(totalPendingItems / pendingItemsPerPage);
-  const safePendingPage = Math.min(currentPendingPage, Math.max(1, totalPendingPages));
+  const totalPendingItems = totalPendingCount;
+  const totalPendingPages = Math.max(1, Math.ceil(totalPendingItems / pendingItemsPerPage));
+  const safePendingPage = Math.min(currentPendingPage, totalPendingPages);
   const pendingStartIndex = (safePendingPage - 1) * pendingItemsPerPage;
   const pendingEndIndex = Math.min(pendingStartIndex + pendingItemsPerPage, totalPendingItems);
-  const paginatedPendingRcs = pendingRcs.slice(pendingStartIndex, pendingStartIndex + pendingItemsPerPage);
+  const paginatedPendingRcs = pendingRcs; // Paginated from DB
 
   const handlePendingItemsPerPageChange = (val: number) => {
     setPendingItemsPerPage(val);

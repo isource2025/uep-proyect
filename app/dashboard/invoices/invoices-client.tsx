@@ -21,12 +21,14 @@ import { FileText, Layers, Search, Eye, CheckCircle2, RefreshCw, AlertCircle, Ca
 interface InvoicesClientPageProps {
   initialPending: any[];
   initialUnified: any[];
+  initialUnifiedCount: number;
 }
 
-export default function InvoicesClientPage({ initialPending, initialUnified }: InvoicesClientPageProps) {
+export default function InvoicesClientPage({ initialPending, initialUnified, initialUnifiedCount }: InvoicesClientPageProps) {
   // Lists data
   const [pendingList, setPendingList] = useState(initialPending);
   const [unifiedList, setUnifiedList] = useState(initialUnified);
+  const [totalUnifiedCount, setTotalUnifiedCount] = useState(initialUnifiedCount);
 
   // Loaders & Interaction States
   const [unifyingClientId, setUnifyingClientId] = useState<number | null>(null);
@@ -44,24 +46,6 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  // Live debounced search for unified invoices history
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const res = await fetchUnifiedInvoices(searchQuery);
-        setUnifiedList(res);
-        setUnifiedPage(1);
-      } catch (e) {
-        // silent catch on background live search
-      } finally {
-        setIsSearching(false);
-      }
-    }, 200);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
   // Pagination states
   const [pendingPage, setPendingPage] = useState(1);
   const [pendingItemsPerPage, setPendingItemsPerPage] = useState(5);
@@ -69,13 +53,35 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
   const [unifiedPage, setUnifiedPage] = useState(1);
   const [unifiedItemsPerPage, setUnifiedItemsPerPage] = useState(10);
 
+  // Live debounced search / pagination for unified invoices history
+  useEffect(() => {
+    const fetchPageData = async () => {
+      setIsSearching(true);
+      try {
+        const result = await fetchUnifiedInvoices(searchQuery, unifiedPage, unifiedItemsPerPage);
+        setUnifiedList(result.invoices);
+        setTotalUnifiedCount(result.totalCount);
+      } catch (e) {
+        // silent catch on background live search
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    const timer = setTimeout(fetchPageData, searchQuery ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [searchQuery, unifiedPage, unifiedItemsPerPage]);
+
   // Refresh data from server
   const refreshData = async () => {
     try {
-      const pending = await fetchPendingUnifications();
-      const unified = await fetchUnifiedInvoices(searchQuery);
+      const [pending, unifiedResult] = await Promise.all([
+        fetchPendingUnifications(),
+        fetchUnifiedInvoices(searchQuery, unifiedPage, unifiedItemsPerPage)
+      ]);
       setPendingList(pending);
-      setUnifiedList(unified);
+      setUnifiedList(unifiedResult.invoices);
+      setTotalUnifiedCount(unifiedResult.totalCount);
     } catch (e) {
       setErrorMsg("Error al sincronizar datos.");
     }
@@ -86,8 +92,9 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
     setIsSearching(true);
     setErrorMsg("");
     try {
-      const res = await fetchUnifiedInvoices(searchQuery);
-      setUnifiedList(res);
+      const result = await fetchUnifiedInvoices(searchQuery, 1, unifiedItemsPerPage);
+      setUnifiedList(result.invoices);
+      setTotalUnifiedCount(result.totalCount);
       setUnifiedPage(1);
     } catch (e) {
       setErrorMsg("Error al realizar la búsqueda.");
@@ -179,12 +186,12 @@ export default function InvoicesClientPage({ initialPending, initialUnified }: I
   const paginatedPending = filteredPendingList.slice(pendingStartIndex, pendingStartIndex + pendingItemsPerPage);
 
   // Pagination unified invoices logic
-  const totalUnifiedItems = unifiedList.length;
-  const totalUnifiedPages = Math.ceil(totalUnifiedItems / unifiedItemsPerPage);
-  const safeUnifiedPage = Math.min(unifiedPage, Math.max(1, totalUnifiedPages));
+  const totalUnifiedItems = totalUnifiedCount;
+  const totalUnifiedPages = Math.max(1, Math.ceil(totalUnifiedItems / unifiedItemsPerPage));
+  const safeUnifiedPage = Math.min(unifiedPage, totalUnifiedPages);
   const unifiedStartIndex = (safeUnifiedPage - 1) * unifiedItemsPerPage;
   const unifiedEndIndex = Math.min(unifiedStartIndex + unifiedItemsPerPage, totalUnifiedItems);
-  const paginatedUnified = unifiedList.slice(unifiedStartIndex, unifiedStartIndex + unifiedItemsPerPage);
+  const paginatedUnified = unifiedList; // Already paginated from DB
 
   return (
     <div className="space-y-6 text-foreground">

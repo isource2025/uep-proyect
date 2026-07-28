@@ -90,44 +90,69 @@ function sanitizarLiquidacionCabecera(liq: any) {
   };
 }
 
-// 1. Fetch generated liquidations with nested details
-export async function fetchLiquidationData() {
-  const liquidations = await prisma.liquidacion.findMany({
-    include: {
-      period: true,
-      rc: {
-        include: {
-          cliente: true,
+// 1. Fetch generated liquidations with nested details and support pagination
+export async function fetchLiquidationData(
+  page: number = 1,
+  limit: number = 10,
+  pendingPage: number = 1,
+  pendingLimit: number = 5
+) {
+  const skip = (page - 1) * limit;
+  const pendingSkip = (pendingPage - 1) * pendingLimit;
+
+  // Load all paginated lists and total counts in parallel to maximize query performance
+  const [
+    liquidations,
+    totalLiquidationsCount,
+    pendingRcs,
+    totalPendingRcsCount
+  ] = await Promise.all([
+    prisma.liquidacion.findMany({
+      include: {
+        period: true,
+        rc: {
+          include: {
+            cliente: true,
+          },
+        },
+        details: {
+          include: {
+            hospital: true,
+            cliente: true,
+          },
         },
       },
-      details: {
-        include: {
-          hospital: true,
-          cliente: true,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    prisma.liquidacion.count(),
+    prisma.cbte.findMany({
+      where: {
+        type: "RC",
+        liquidations: { none: {} },
+      },
+      include: {
+        cliente: true,
+        appliedAsRc: {
+          include: {
+            fc: true,
+          },
         },
       },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+      orderBy: { fecha: "desc" },
+      skip: pendingSkip,
+      take: pendingLimit,
+    }),
+    prisma.cbte.count({
+      where: {
+        type: "RC",
+        liquidations: { none: {} },
+      },
+    }),
+  ]);
 
   const sanitizedLiquidations = liquidations.map(sanitizarLiquidacionCabecera);
-
-  // Fetch pending Recibos de Cobro (RC) not yet liquidated
-  const generatedRcIds = liquidations.map((l) => l.rcId);
-  const pendingRcs = await prisma.cbte.findMany({
-    where: {
-      type: "RC",
-      id: { notIn: generatedRcIds },
-    },
-    include: {
-      cliente: true,
-      appliedAsRc: {
-        include: {
-          fc: true,
-        },
-      },
-    },
-  });
 
   const sanitizedPendingRcs = pendingRcs.map((rc) => ({
     ...sanitizeCbte(rc),
@@ -140,7 +165,9 @@ export async function fetchLiquidationData() {
 
   return {
     liquidations: sanitizedLiquidations,
+    totalLiquidationsCount,
     pendingRcs: sanitizedPendingRcs,
+    totalPendingRcsCount,
   };
 }
 

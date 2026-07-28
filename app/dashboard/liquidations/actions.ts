@@ -231,13 +231,13 @@ export async function calculateLiquidation(rcId: number) {
       },
     });
 
-    // Create LiquidationDetail rows for each Hospital
+    // Create LiquidationDetail rows for each Hospital in parallel to avoid server timeout
     if (hospitalPurchases.length > 0) {
-      for (const comp of hospitalPurchases) {
+      const detailPromises = hospitalPurchases.map((comp) => {
         const total = toNum(comp.importe);
         const fcNumStr = comp.numero ? `FC-${comp.hospital?.code || "C"}-${String(comp.numero).padStart(8, "0")}` : `FC-${comp.id}`;
         
-        await prisma.liquidacionDetalle.create({
+        return prisma.liquidacionDetalle.create({
           data: {
             liquidationId: liquidation.id,
             compraId: comp.id,
@@ -259,7 +259,8 @@ export async function calculateLiquidation(rcId: number) {
             netoAPagar: total,
           },
         });
-      }
+      });
+      await Promise.all(detailPromises);
     } else {
       // Create at least 1 default detail row from RC applied invoice if no Compras
       const total = toNum(rc.importe);
@@ -308,17 +309,23 @@ export async function updateLiquidationDetails(
   status?: string
 ) {
   try {
-    for (const d of details) {
-      const detailRecord = await prisma.liquidacionDetalle.findUnique({
-        where: { id: d.id },
-      });
-      if (!detailRecord) continue;
+    const detailIds = details.map((d) => d.id);
+    // Fetch all current details in a single query
+    const currentRecords = await prisma.liquidacionDetalle.findMany({
+      where: { id: { in: detailIds } },
+    });
+    const recordsMap = new Map(currentRecords.map((r) => [r.id, r]));
 
-      const totalFacturado = toNum(detailRecord.totalFacturado);
+    // Perform updates in parallel to prevent Vercel execution timeouts
+    const updatePromises = details.map((d) => {
+      const record = recordsMap.get(d.id);
+      if (!record) return Promise.resolve();
+
+      const totalFacturado = toNum(record.totalFacturado);
       const brutoAPagar = totalFacturado + d.creditos - d.debitos + d.ajustesOs - d.pendientesCobro;
       const netoAPagar = brutoAPagar - d.ga + d.ajusteRecupero;
 
-      await prisma.liquidacionDetalle.update({
+      return prisma.liquidacionDetalle.update({
         where: { id: d.id },
         data: {
           creditos: d.creditos,
@@ -331,7 +338,9 @@ export async function updateLiquidationDetails(
           netoAPagar,
         },
       });
-    }
+    });
+
+    await Promise.all(updatePromises);
 
     if (status) {
       await prisma.liquidacion.update({

@@ -43,6 +43,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
   - La unificación por Obra Social (`IdCliente`) crea una factura de venta consolidada en la tabla `Cbtes` (con `TipoCbte: 'FC'` y `Letra_Cbte: 'A'`).
   - La relación transaccional se establece vinculando cada `Compra` a su factura unificada mediante `IdTransaccionFacturaVta` (`fcVentaId`).
   - El campo clave primaria `IdTransaccion` en `Cbtes` y `idtransaccion` en `Compras` no poseen autoincremento (identity) nativo. Cada inserción manual en estas tablas requiere calcular `maxId + 1` de forma segura.
+- **Evitar Scroll Horizontal**: Queda estrictamente prohibido el uso de scroll horizontal en tablas y grillas del sistema. Utilizar anchos de columna definidos, saltos de línea automáticos (`whitespace-normal` / `break-words`) o truncamiento de texto para asegurar que todas las páginas se ajusten de forma responsiva al viewport.
 - **Seguridad e Información Sensible**:
   - **NUNCA** dejar credenciales, contraseñas, tokens de API o cualquier tipo de información sensible en texto plano dentro del código fuente, carpetas públicas o scripts del proyecto.
   - Cualquier script utilitario temporal que contenga secretos o contraseñas debe ser eliminado inmediatamente tras su ejecución, y en caso de ser necesario conservarlo, se debe requerir la aprobación explícita del usuario informándole la presencia de datos sensibles.

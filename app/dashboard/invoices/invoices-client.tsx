@@ -460,7 +460,7 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
                             <TableCell className="font-mono text-xs text-foreground py-3.5">
                               {inv.puntoVenta}-{String(inv.numero).padStart(8, "0")}
                             </TableCell>
-                            <TableCell className="text-xs font-semibold">{inv.cliente.nombre}</TableCell>
+                            <TableCell className="text-xs font-semibold max-w-[200px] whitespace-normal break-words">{inv.cliente.nombre}</TableCell>
                             <TableCell className="text-xs">{new Date(inv.fecha).toLocaleDateString("es-AR")}</TableCell>
                             <TableCell className="text-center">
                               <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-3xs font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">

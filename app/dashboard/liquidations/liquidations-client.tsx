@@ -360,7 +360,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                 onChange={setPendingSearchQuery}
                 onSubmit={handlePendingSearchSubmit}
                 isLoading={isLoading}
-                className="mb-2 bg-zinc-950/40"
+                className="mb-2"
               />
               {paginatedPendingRcs.length === 0 ? (
                 <div className="text-center py-6 text-xs text-muted-foreground">

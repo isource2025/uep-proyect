@@ -280,10 +280,37 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
   const pendingStartIndex = (safePendingPage - 1) * pendingItemsPerPage;
   const pendingEndIndex = Math.min(pendingStartIndex + pendingItemsPerPage, totalPendingItems);
   const paginatedPendingRcs = pendingRcs; // Paginated from DB
-
   const handlePendingItemsPerPageChange = (val: number) => {
     setPendingItemsPerPage(val);
     setCurrentPendingPage(1);
+  };
+
+  const getPaginationItems = (current: number, total: number) => {
+    const pages: (number | string)[] = [];
+    const maxVisible = 5;
+
+    if (total <= maxVisible) {
+      for (let i = 1; i <= total; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      const start = Math.max(2, current - 1);
+      const end = Math.min(total - 1, current + 1);
+
+      if (start > 2) {
+        pages.push("...");
+      }
+
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+
+      if (end < total - 1) {
+        pages.push("...");
+      }
+
+      pages.push(total);
+    }
+    return pages;
   };
 
   return (
@@ -419,12 +446,19 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                     Anterior
                   </Button>
                   
-                  {[...Array(totalPendingPages)].map((_, index) => {
-                    const pageNum = index + 1;
+                  {getPaginationItems(safePendingPage, totalPendingPages).map((item, index) => {
+                    if (item === "...") {
+                      return (
+                        <span key={`pending-ellipsis-${index}`} className="px-2 text-emerald-600/60 dark:text-emerald-400/60 font-semibold">
+                          ...
+                        </span>
+                      );
+                    }
+                    const pageNum = item as number;
                     const isCurrent = pageNum === safePendingPage;
                     return (
                       <Button
-                        key={pageNum}
+                        key={`pending-page-${pageNum}`}
                         variant={isCurrent ? "default" : "ghost"}
                         size="sm"
                         onClick={() => setCurrentPendingPage(pageNum)}
@@ -598,12 +632,19 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                   Anterior
                 </Button>
                 
-                {[...Array(totalPages)].map((_, index) => {
-                  const pageNum = index + 1;
+                {getPaginationItems(currentPage, totalPages).map((item, index) => {
+                  if (item === "...") {
+                    return (
+                      <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground font-semibold">
+                        ...
+                      </span>
+                    );
+                  }
+                  const pageNum = item as number;
                   const isCurrent = pageNum === currentPage;
                   return (
                     <Button
-                      key={pageNum}
+                      key={`page-${pageNum}`}
                       variant={isCurrent ? "default" : "ghost"}
                       size="sm"
                       onClick={() => setCurrentPage(pageNum)}

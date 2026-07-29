@@ -2,8 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { writeFile } from "fs/promises";
 import path from "path";
+import { put } from "@vercel/blob";
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -470,14 +470,13 @@ export async function uploadDebitsFile(formData: FormData) {
 
     const liquidationId = parseInt(liquidationIdStr, 10);
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
     const filename = `debits-liq-${liquidationId}-${Date.now()}${path.extname(file.name)}`;
-    const uploadPath = path.join(process.cwd(), "public", "uploads", "debits", filename);
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      return { error: "La variable BLOB_READ_WRITE_TOKEN no está configurada en las variables de entorno (.env)." };
+    }
 
-    await writeFile(uploadPath, buffer);
-    const fileUrl = `/uploads/debits/${filename}`;
+    const blob = await put(filename, file, { access: "public" });
+    const fileUrl = blob.url;
 
     await prisma.liquidacion.update({
       where: { id: liquidationId },

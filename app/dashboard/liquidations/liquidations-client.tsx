@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { fetchLiquidationData, calculateLiquidation, updateLiquidationDetails, uploadDebitsFile, notifyHospital } from "./actions";
 import { cn } from "@/lib/utils";
+import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,8 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
   const [totalCount, setTotalCount] = useState(initialData.totalLiquidationsCount);
   const [totalPendingCount, setTotalPendingCount] = useState(initialData.totalPendingRcsCount);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [pendingSearchQuery, setPendingSearchQuery] = useState("");
 
   const [calculatingRcId, setCalculatingRcId] = useState<number | null>(null);
   const [savingLiqId, setSavingLiqId] = useState<number | null>(null);
@@ -72,12 +75,12 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
   const [currentPendingPage, setCurrentPendingPage] = useState(1);
   const [pendingItemsPerPage, setPendingItemsPerPage] = useState(5);
 
-  // Fetch paginated lists from database on page/limits state changes
+  // Fetch paginated lists from database on page/limits/search state changes
   useEffect(() => {
     const fetchPageData = async () => {
       setIsLoading(true);
       try {
-        const res = await fetchLiquidationData(currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage);
+        const res = await fetchLiquidationData(currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage, searchQuery, pendingSearchQuery);
         setData(res);
         setTotalCount(res.totalLiquidationsCount);
         setTotalPendingCount(res.totalPendingRcsCount);
@@ -87,18 +90,51 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
         setIsLoading(false);
       }
     };
-    fetchPageData();
-  }, [currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage]);
+
+    const hasSearch = searchQuery || pendingSearchQuery;
+    const timer = setTimeout(fetchPageData, hasSearch ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage, searchQuery, pendingSearchQuery]);
 
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const res = await fetchLiquidationData(currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage);
+      const res = await fetchLiquidationData(currentPage, itemsPerPage, currentPendingPage, pendingItemsPerPage, searchQuery, pendingSearchQuery);
       setData(res);
       setTotalCount(res.totalLiquidationsCount);
       setTotalPendingCount(res.totalPendingRcsCount);
     } catch (e: any) {
       setErrorMsg("Error al actualizar la lista de liquidaciones.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSearchSubmit = async (e: React.FormEvent) => {
+    setIsLoading(true);
+    try {
+      const res = await fetchLiquidationData(1, itemsPerPage, currentPendingPage, pendingItemsPerPage, searchQuery, pendingSearchQuery);
+      setData(res);
+      setTotalCount(res.totalLiquidationsCount);
+      setTotalPendingCount(res.totalPendingRcsCount);
+      setCurrentPage(1);
+    } catch (e) {
+      setErrorMsg("Error al realizar la búsqueda.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePendingSearchSubmit = async (e: React.FormEvent) => {
+    setIsLoading(true);
+    try {
+      const res = await fetchLiquidationData(currentPage, itemsPerPage, 1, pendingItemsPerPage, searchQuery, pendingSearchQuery);
+      setData(res);
+      setTotalCount(res.totalLiquidationsCount);
+      setTotalPendingCount(res.totalPendingRcsCount);
+      setCurrentPendingPage(1);
+    } catch (e) {
+      setErrorMsg("Error al realizar la búsqueda en recibos pendientes.");
     } finally {
       setIsLoading(false);
     }
@@ -278,7 +314,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
       )}
 
       {/* Pending Calculations Card */}
-      {pendingRcs.length > 0 ? (
+      {(initialData.totalPendingRcsCount > 0 || pendingSearchQuery) ? (
         <Card className="border-emerald-500/25 bg-emerald-500/5 text-foreground">
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
@@ -291,47 +327,61 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
           </CardHeader>
           <CardContent>
             <div className={cn("space-y-4", isLoading && "opacity-50 pointer-events-none transition-opacity duration-200")}>
-              {paginatedPendingRcs.map((rc) => {
-                const isThisCalculating = calculatingRcId === rc.id;
-                return (
-                  <div key={rc.id} className="flex flex-col gap-4 rounded-xl border border-emerald-500/20 bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-3xs font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
-                          {rc.type}
-                        </span>
-                        <code className="text-xs font-mono font-bold text-foreground">{rc.puntoVenta}-{rc.numero}</code>
-                        <span className="text-xs text-muted-foreground">| Obra Social: <strong className="text-foreground">{rc.cliente.nombre}</strong></span>
+              <SearchBar
+                placeholder="Buscar por Obra Social o número de recibo..."
+                value={pendingSearchQuery}
+                onChange={setPendingSearchQuery}
+                onSubmit={handlePendingSearchSubmit}
+                isLoading={isLoading}
+                className="mb-2 bg-zinc-950/40"
+              />
+              {paginatedPendingRcs.length === 0 ? (
+                <div className="text-center py-6 text-xs text-muted-foreground">
+                  No se encontraron recibos de cobro pendientes que coincidan con la búsqueda.
+                </div>
+              ) : (
+                paginatedPendingRcs.map((rc) => {
+                  const isThisCalculating = calculatingRcId === rc.id;
+                  return (
+                    <div key={rc.id} className="flex flex-col gap-4 rounded-xl border border-emerald-500/20 bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-3xs font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                            {rc.type}
+                          </span>
+                          <code className="text-xs font-mono font-bold text-foreground">{rc.puntoVenta}-{rc.numero}</code>
+                          <span className="text-xs text-muted-foreground">| Obra Social: <strong className="text-foreground">{rc.cliente.nombre}</strong></span>
+                        </div>
+                        <p className="text-2xs text-muted-foreground">
+                          Fecha: {new Date(rc.fecha).toLocaleDateString("es-AR")} &bull; Importe Cobrado: <strong className="text-foreground">{formatCurrency(rc.importe)}</strong>
+                        </p>
+                        <div className="text-[10px] text-muted-foreground">
+                          Cancela Facturas: {rc.appliedAsRc.map((app: any) => `${app.fc.puntoVenta}-${app.fc.numero} (${formatCurrency(app.importe)})`).join(", ")}
+                        </div>
                       </div>
-                      <p className="text-2xs text-muted-foreground">
-                        Fecha: {new Date(rc.fecha).toLocaleDateString("es-AR")} &bull; Importe Cobrado: <strong className="text-foreground">{formatCurrency(rc.importe)}</strong>
-                      </p>
-                      <div className="text-[10px] text-muted-foreground">
-                        Cancela Facturas: {rc.appliedAsRc.map((app: any) => `${app.fc.puntoVenta}-${app.fc.numero} (${formatCurrency(app.importe)})`).join(", ")}
-                      </div>
+                      
+                      <Button
+                        onClick={() => handleRunCalculate(rc.id)}
+                        disabled={calculatingRcId !== null}
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold gap-1 h-9 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {isThisCalculating ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                            Generando...
+                          </>
+                        ) : (
+                          <>
+                            <Calculator className="h-4 w-4" />
+                            Calcular Liquidación
+                          </>
+                        )}
+                      </Button>
                     </div>
-                    
-                    <Button
-                      onClick={() => handleRunCalculate(rc.id)}
-                      disabled={calculatingRcId !== null}
-                      size="sm"
-                      className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold gap-1 h-9 transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      {isThisCalculating ? (
-                        <>
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                          Generando...
-                        </>
-                      ) : (
-                        <>
-                          <Calculator className="h-4 w-4" />
-                          Calcular Liquidación
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
 
             {/* Pending Pagination Controls */}
@@ -419,6 +469,14 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <SearchBar
+            placeholder="Buscar por Obra Social, Recibo o Mes..."
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onSubmit={handleSearchSubmit}
+            isLoading={isLoading}
+            className="mb-2"
+          />
           <div className="rounded-lg border border-border overflow-hidden">
             <Table>
               <TableHeader className="bg-muted/50 text-muted-foreground">

@@ -95,10 +95,71 @@ export async function fetchLiquidationData(
   page: number = 1,
   limit: number = 10,
   pendingPage: number = 1,
-  pendingLimit: number = 5
+  pendingLimit: number = 5,
+  searchQuery?: string,
+  pendingSearchQuery?: string
 ) {
   const skip = (page - 1) * limit;
   const pendingSkip = (pendingPage - 1) * pendingLimit;
+
+  const whereClause: any = {};
+  if (searchQuery) {
+    const trimmed = searchQuery.trim();
+    whereClause.OR = [
+      {
+        rc: {
+          cliente: {
+            nombre: {
+              contains: trimmed,
+            },
+          },
+        },
+      },
+      {
+        mesCarga: {
+          contains: trimmed,
+        },
+      },
+    ];
+
+    const num = parseInt(trimmed, 10);
+    if (!isNaN(num)) {
+      whereClause.OR.push({
+        rc: {
+          numero: num,
+        },
+      });
+    }
+  }
+
+  const pendingWhereClause: any = {
+    type: "RC",
+    liquidations: { none: {} },
+  };
+
+  if (pendingSearchQuery) {
+    const trimmed = pendingSearchQuery.trim();
+    pendingWhereClause.AND = [
+      {
+        OR: [
+          {
+            cliente: {
+              nombre: {
+                contains: trimmed,
+              },
+            },
+          },
+        ],
+      },
+    ];
+
+    const num = parseInt(trimmed, 10);
+    if (!isNaN(num)) {
+      pendingWhereClause.AND[0].OR.push({
+        numero: num,
+      });
+    }
+  }
 
   // Load all paginated lists and total counts in parallel to maximize query performance
   const [
@@ -108,6 +169,7 @@ export async function fetchLiquidationData(
     totalPendingRcsCount
   ] = await Promise.all([
     prisma.liquidacion.findMany({
+      where: whereClause,
       include: {
         period: true,
         rc: {
@@ -126,12 +188,9 @@ export async function fetchLiquidationData(
       skip,
       take: limit,
     }),
-    prisma.liquidacion.count(),
+    prisma.liquidacion.count({ where: whereClause }),
     prisma.cbte.findMany({
-      where: {
-        type: "RC",
-        liquidations: { none: {} },
-      },
+      where: pendingWhereClause,
       include: {
         cliente: true,
         appliedAsRc: {
@@ -145,10 +204,7 @@ export async function fetchLiquidationData(
       take: pendingLimit,
     }),
     prisma.cbte.count({
-      where: {
-        type: "RC",
-        liquidations: { none: {} },
-      },
+      where: pendingWhereClause,
     }),
   ]);
 

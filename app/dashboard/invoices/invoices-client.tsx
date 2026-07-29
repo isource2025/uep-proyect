@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { fetchPendingUnifications, fetchUnifiedInvoices, fetchInvoiceDetails, fetchPendingInvoiceDetails, unifyInvoicesForClient } from "./actions";
 import { cn } from "@/lib/utils";
+import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -419,22 +420,14 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Search Bar */}
-              <form onSubmit={handleSearch} className="flex gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Buscar por Obra Social o número de comprobante..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9 bg-muted/20 border-border text-foreground text-xs h-9 focus-visible:ring-emerald-500"
-                  />
-                </div>
-                <Button type="submit" size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-9 px-4 cursor-pointer gap-1">
-                  {isSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                  Buscar
-                </Button>
-              </form>
+              <SearchBar
+                placeholder="Buscar por Obra Social o número de comprobante..."
+                value={searchQuery}
+                onChange={setSearchQuery}
+                onSubmit={handleSearch}
+                isLoading={isSearching}
+                className="mb-2"
+              />
 
               {/* Invoices Table */}
               <div className="rounded-lg border border-border overflow-hidden">

@@ -37,7 +37,7 @@ function sanitizeCbte(c: any) {
   if (!c) return null;
   return {
     ...c,
-    puntoVenta: c.puntoVenta ? String(c.puntoVenta).trim() : "",
+    puntoVenta: c.puntoVenta ? String(c.puntoVenta).padStart(4, "0") : "0000",
     numero: c.numero ? Number(c.numero) : 0,
     importe: toNum(c.importe),
     cliente: sanitizeCliente(c.cliente),
@@ -241,7 +241,7 @@ export async function unifyInvoicesForClient(clienteId: number) {
     const maxNum = await prisma.cbte.aggregate({
       where: {
         type: "FC",
-        puntoVenta: "A",
+        letra: "A",
       },
       _max: { numero: true },
     });
@@ -252,7 +252,8 @@ export async function unifyInvoicesForClient(clienteId: number) {
       data: {
         id: nextId,
         type: "FC",
-        puntoVenta: "A",
+        letra: "A",
+        puntoVenta: 9,
         numero: nextNro,
         fecha: new Date(),
         importe: total,

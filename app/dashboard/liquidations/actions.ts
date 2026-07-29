@@ -34,15 +34,45 @@ function sanitizeCbte(c: any) {
   if (!c) return null;
   return {
     ...c,
-    puntoVenta: c.puntoVenta ? String(c.puntoVenta).trim() : "",
+    puntoVenta: c.puntoVenta ? String(c.puntoVenta).padStart(4, "0") : "0000",
     numero: c.numero ? Number(c.numero) : 0,
     importe: toNum(c.importe),
     cliente: sanitizeCliente(c.cliente),
   };
 }
 
+function sanitizeCompra(comp: any) {
+  if (!comp) return null;
+  return {
+    ...comp,
+    numero: comp.numero ? toNum(comp.numero) : 0,
+    importe: toNum(comp.importe),
+    hospital: sanitizeProveedor(comp.hospital),
+    cliente: sanitizeCliente(comp.cliente),
+  };
+}
+
 function sanitizarLiquidacionDetalle(d: any) {
   if (!d) return null;
+
+  // Extract locality name from hospital description
+  const name = d.prestadorNombre || d.hospital?.nombre;
+  let loc = d.localidad || "CAPITAL";
+  if (name) {
+    const parts = name.split("-");
+    if (parts.length > 1) {
+      loc = parts[parts.length - 1].trim().toUpperCase();
+    }
+  }
+
+  // Format FC Hospital string using point of sale (grupoCbte) if compra relation is loaded
+  let fcNumStr = d.fcHospital;
+  if (d.compra) {
+    const ptoVta = d.compra.grupoCbte ? String(d.compra.grupoCbte).padStart(4, "0") : "0000";
+    const nroCbte = d.compra.numero ? String(d.compra.numero).padStart(8, "0") : "";
+    fcNumStr = d.compra.numero ? `FC-${ptoVta}-${nroCbte}` : `FC-${d.compra.id}`;
+  }
+
   return {
     ...d,
     totalFacturado: toNum(d.totalFacturado),
@@ -54,8 +84,11 @@ function sanitizarLiquidacionDetalle(d: any) {
     ga: toNum(d.ga),
     ajusteRecupero: toNum(d.ajusteRecupero),
     netoAPagar: toNum(d.netoAPagar),
+    localidad: loc,
+    fcHospital: fcNumStr,
     hospital: sanitizeProveedor(d.hospital),
     cliente: sanitizeCliente(d.cliente),
+    compra: sanitizeCompra(d.compra),
   };
 }
 
@@ -181,6 +214,7 @@ export async function fetchLiquidationData(
           include: {
             hospital: true,
             cliente: true,
+            compra: true,
           },
         },
       },
@@ -289,9 +323,20 @@ export async function calculateLiquidation(rcId: number) {
 
     // Create LiquidationDetail rows for each Hospital in parallel to avoid server timeout
     if (hospitalPurchases.length > 0) {
+      const extractLocalidad = (name: string | null | undefined): string => {
+        if (!name) return "CAPITAL";
+        const parts = name.split("-");
+        if (parts.length > 1) {
+          return parts[parts.length - 1].trim().toUpperCase();
+        }
+        return "CAPITAL";
+      };
+
       const detailPromises = hospitalPurchases.map((comp) => {
         const total = toNum(comp.importe);
-        const fcNumStr = comp.numero ? `FC-${comp.hospital?.code || "C"}-${String(comp.numero).padStart(8, "0")}` : `FC-${comp.id}`;
+        const ptoVta = comp.grupoCbte ? String(comp.grupoCbte).padStart(4, "0") : "0000";
+        const nroCbte = comp.numero ? String(comp.numero).padStart(8, "0") : "";
+        const fcNumStr = comp.numero ? `FC-${ptoVta}-${nroCbte}` : `FC-${comp.id}`;
         
         return prisma.liquidacionDetalle.create({
           data: {
@@ -302,7 +347,7 @@ export async function calculateLiquidation(rcId: number) {
             periodo: monthStr,
             cuit: comp.hospital?.cuit ? toNum(comp.hospital.cuit).toString() : rc.cliente?.cuit ? toNum(rc.cliente.cuit).toString() : "",
             prestadorNombre: comp.hospital?.nombre || "Hospital Prestador",
-            localidad: comp.hospital?.code || "CAPITAL",
+            localidad: extractLocalidad(comp.hospital?.nombre),
             fcHospital: fcNumStr,
             totalFacturado: total,
             creditos: 0,
@@ -450,6 +495,24 @@ export async function uploadDebitsFile(formData: FormData) {
   }
 }
 
+export async function deleteDebitsFile(liquidationId: number) {
+  try {
+    await prisma.liquidacion.update({
+      where: { id: liquidationId },
+      data: {
+        debitsFileUrl: null,
+        debitsFileName: null,
+      },
+    });
+
+    revalidatePath("/dashboard/liquidations");
+    return { success: true };
+  } catch (e: any) {
+    console.error("Error deleting debits file:", e);
+    return { error: e.message || "Error al borrar el comprobante escaneado." };
+  }
+}
+
 // 5. Notify hospital by updating liquidation status to NOTIFICADO and writing mock email logs
 export async function notifyHospital(liquidationId: number) {
   try {
@@ -464,6 +527,7 @@ export async function notifyHospital(liquidationId: number) {
         details: {
           include: {
             hospital: true,
+            compra: true,
           },
         },
       },

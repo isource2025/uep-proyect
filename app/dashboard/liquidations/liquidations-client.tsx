@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { fetchLiquidationData, calculateLiquidation, updateLiquidationDetails, uploadDebitsFile, notifyHospital } from "./actions";
+import { fetchLiquidationData, calculateLiquidation, updateLiquidationDetails, uploadDebitsFile, deleteDebitsFile, notifyHospital } from "./actions";
 import { cn } from "@/lib/utils";
 import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -248,6 +248,37 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
       }
     } catch (e: any) {
       setErrorMsg("Error al subir el archivo escaneado.");
+    } finally {
+      setUploadingLiqId(null);
+    }
+  };
+
+  const handleDeleteFile = async (liqId: number) => {
+    if (!confirm("¿Está seguro de que desea eliminar el archivo PDF adjunto?")) return;
+
+    setUploadingLiqId(liqId);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const res = await deleteDebitsFile(liqId);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      setSuccessMsg("Comprobante escaneado de débitos eliminado correctamente.");
+      await loadData();
+
+      // Update local modal if open
+      if (selectedLiqModal && selectedLiqModal.id === liqId) {
+        setSelectedLiqModal((prev: any) => ({
+          ...prev,
+          debitsFileUrl: null,
+          debitsFileName: null,
+        }));
+      }
+    } catch (e: any) {
+      setErrorMsg("Error al eliminar el archivo.");
     } finally {
       setUploadingLiqId(null);
     }
@@ -727,15 +758,25 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                         <FileText className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{selectedLiqModal.debitsFileName || "Ver PDF Escaneado"}</span>
                       </a>
-                      <label className="text-3xs text-muted-foreground hover:text-foreground cursor-pointer underline shrink-0">
-                        Cambiar
-                        <input
-                          type="file"
-                          accept=".pdf"
-                          onChange={(e) => handleFileUpload(selectedLiqModal.id, e)}
-                          className="hidden"
-                        />
-                      </label>
+                      <div className="flex items-center gap-2 shrink-0 text-3xs">
+                        <label className="text-muted-foreground hover:text-foreground cursor-pointer underline">
+                          Cambiar
+                          <input
+                            type="file"
+                            accept=".pdf"
+                            onChange={(e) => handleFileUpload(selectedLiqModal.id, e)}
+                            className="hidden"
+                          />
+                        </label>
+                        <span className="text-muted-foreground">|</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteFile(selectedLiqModal.id)}
+                          className="text-red-500 hover:text-red-400 cursor-pointer underline"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="mt-1">

@@ -651,14 +651,18 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
                               (comp.numero && String(comp.numero).includes(q))
                             );
                           })
-                          .map((comp: any) => (
-                            <TableRow key={comp.id} className="hover:bg-muted/20 border-border text-foreground">
-                              <TableCell className="text-xs font-semibold py-2.5">
-                                {comp.hospital?.nombre || "Hospital Desconocido"}
-                              </TableCell>
-                              <TableCell className="text-xs font-mono">
-                                {String(comp.numero).padStart(8, "0")}
-                              </TableCell>
+                          .map((comp: any) => {
+                            const ptoVta = comp.grupoCbte ? String(comp.grupoCbte).padStart(4, "0") : "0000";
+                            const nroCbte = comp.numero ? String(comp.numero).padStart(8, "0") : "";
+                            const fcHospitalStr = comp.numero ? `FC-${ptoVta}-${nroCbte}` : `FC-${comp.id}`;
+                            return (
+                              <TableRow key={comp.id} className="hover:bg-muted/20 border-border text-foreground">
+                                <TableCell className="text-xs font-semibold py-2.5">
+                                  {comp.hospital?.nombre || "Hospital Desconocido"}
+                                </TableCell>
+                                <TableCell className="text-xs font-mono">
+                                  {fcHospitalStr}
+                                </TableCell>
                               <TableCell className="text-xs">
                                 {new Date(comp.fecha).toLocaleDateString("es-AR")}
                               </TableCell>
@@ -666,7 +670,8 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
                                 {formatCurrency(comp.importe)}
                               </TableCell>
                             </TableRow>
-                          ))
+                          );
+                        })
                       )}
                     </TableBody>
                   </Table>
@@ -762,22 +767,27 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
                               (comp.numero && String(comp.numero).includes(q))
                             );
                           })
-                          .map((comp: any) => (
-                            <TableRow key={comp.id} className="hover:bg-muted/20 border-border text-foreground">
-                              <TableCell className="text-xs font-semibold py-2.5">
-                                {comp.hospital?.nombre || "Hospital Desconocido"}
-                              </TableCell>
-                              <TableCell className="text-xs font-mono">
-                                {String(comp.numero).padStart(8, "0")}
-                              </TableCell>
-                              <TableCell className="text-xs">
-                                {new Date(comp.fecha).toLocaleDateString("es-AR")}
-                              </TableCell>
-                              <TableCell className="text-right text-xs font-bold text-foreground">
-                                {formatCurrency(comp.importe)}
-                              </TableCell>
-                            </TableRow>
-                          ))
+                          .map((comp: any) => {
+                            const ptoVta = comp.grupoCbte ? String(comp.grupoCbte).padStart(4, "0") : "0000";
+                            const nroCbte = comp.numero ? String(comp.numero).padStart(8, "0") : "";
+                            const fcHospitalStr = comp.numero ? `FC-${ptoVta}-${nroCbte}` : `FC-${comp.id}`;
+                            return (
+                              <TableRow key={comp.id} className="hover:bg-muted/20 border-border text-foreground">
+                                <TableCell className="text-xs font-semibold py-2.5">
+                                  {comp.hospital?.nombre || "Hospital Desconocido"}
+                                </TableCell>
+                                <TableCell className="text-xs font-mono">
+                                  {fcHospitalStr}
+                                </TableCell>
+                                <TableCell className="text-xs">
+                                  {new Date(comp.fecha).toLocaleDateString("es-AR")}
+                                </TableCell>
+                                <TableCell className="text-right text-xs font-bold text-foreground">
+                                  {formatCurrency(comp.importe)}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
                       )}
                     </TableBody>
                   </Table>

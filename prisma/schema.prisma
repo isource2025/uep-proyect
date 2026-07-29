@@ -129,7 +129,8 @@ model Proveedor {
 model Cbte {
   id             Int           @id @map("IdTransaccion")
   type           String        @map("TipoCbte")
-  puntoVenta     String?       @map("Letra_Cbte")
+  puntoVenta     Int?          @map("GrupoCbte")
+  letra          String?       @map("Letra_Cbte")
   numero         Int?          @map("NroCbte")
   fecha          DateTime      @map("Fecha")
   importe        Decimal       @map("ImporteTotal") @db.Decimal(15, 2)
@@ -157,6 +158,9 @@ model CbteAplica {
 
 model Compra {
   id                 Int                 @id @map("idtransaccion")
+  tipoCbte           String?             @map("TipoCbte")
+  letraCbte          String?             @map("Letra_Cbte")
+  grupoCbte          Int?                @map("GrupoCbte")
   numero             Decimal             @map("NroCbte")
   fecha              DateTime            @map("Fecha")
   importe            Decimal             @map("ImporteTotal") @db.Decimal(15, 2)

@@ -34,6 +34,11 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  const getInputDisplayValue = (val: any) => {
+    if (val === 0 || val === "0" || val === "") return "";
+    return val;
+  };
+
   // Store current liquidation state locally to dynamically display updates
   const [liq, setLiq] = useState(liquidation);
 
@@ -51,11 +56,24 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
     }))
   );
 
-  const handleDetailInputChange = (id: string, field: string, value: number) => {
-    // Prevent negative numbers (0 is the minimum)
-    const clampedValue = Math.max(0, value);
+  const handleDetailInputChange = (id: string, field: string, value: string) => {
+    if (value === "") {
+      setEditableDetails((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, [field]: "" } : item))
+      );
+      return;
+    }
+
+    const num = Number(value);
+    if (num < 0) {
+      setEditableDetails((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, [field]: 0 } : item))
+      );
+      return;
+    }
+
     setEditableDetails((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: clampedValue } : item))
+      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
     );
   };
 
@@ -64,7 +82,18 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
-      const res = await updateLiquidationDetails(liq.id, editableDetails);
+      const parsedDetails = editableDetails.map((item) => ({
+        ...item,
+        totalFacturado: Number(item.totalFacturado || 0),
+        creditos: Number(item.creditos || 0),
+        debitos: Number(item.debitos || 0),
+        ajustesOs: Number(item.ajustesOs || 0),
+        pendientesCobro: Number(item.pendientesCobro || 0),
+        ga: Number(item.ga || 0),
+        ajusteRecupero: Number(item.ajusteRecupero || 0),
+      }));
+
+      const res = await updateLiquidationDetails(liq.id, parsedDetails);
       if (res.error) {
         setErrorMsg(res.error);
         return;
@@ -378,9 +407,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
-                        value={editState.creditos}
-                        onChange={(e) => handleDetailInputChange(detail.id, "creditos", Number(e.target.value))}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500"
+                        value={getInputDisplayValue(editState.creditos)}
+                        onChange={(e) => handleDetailInputChange(detail.id, "creditos", e.target.value)}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
 
@@ -391,9 +420,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
-                        value={editState.debitos}
-                        onChange={(e) => handleDetailInputChange(detail.id, "debitos", Number(e.target.value))}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500"
+                        value={getInputDisplayValue(editState.debitos)}
+                        onChange={(e) => handleDetailInputChange(detail.id, "debitos", e.target.value)}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
 
@@ -404,9 +433,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
-                        value={editState.ajustesOs}
-                        onChange={(e) => handleDetailInputChange(detail.id, "ajustesOs", Number(e.target.value))}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-amber-600 focus-visible:ring-emerald-500"
+                        value={getInputDisplayValue(editState.ajustesOs)}
+                        onChange={(e) => handleDetailInputChange(detail.id, "ajustesOs", e.target.value)}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-amber-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
 
@@ -417,9 +446,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
-                        value={editState.pendientesCobro}
-                        onChange={(e) => handleDetailInputChange(detail.id, "pendientesCobro", Number(e.target.value))}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-orange-600 focus-visible:ring-emerald-500"
+                        value={getInputDisplayValue(editState.pendientesCobro)}
+                        onChange={(e) => handleDetailInputChange(detail.id, "pendientesCobro", e.target.value)}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-orange-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
 
@@ -436,9 +465,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
-                        value={editState.ga}
-                        onChange={(e) => handleDetailInputChange(detail.id, "ga", Number(e.target.value))}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500"
+                        value={getInputDisplayValue(editState.ga)}
+                        onChange={(e) => handleDetailInputChange(detail.id, "ga", e.target.value)}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
 
@@ -449,9 +478,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
-                        value={editState.ajusteRecupero}
-                        onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", Number(e.target.value))}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500"
+                        value={getInputDisplayValue(editState.ajusteRecupero)}
+                        onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", e.target.value)}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
                   </div>
@@ -540,9 +569,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
-                          value={editState.creditos}
-                          onChange={(e) => handleDetailInputChange(detail.id, "creditos", Number(e.target.value))}
-                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500 px-1 py-0.5"
+                          value={getInputDisplayValue(editState.creditos)}
+                          onChange={(e) => handleDetailInputChange(detail.id, "creditos", e.target.value)}
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 
@@ -552,9 +581,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
-                          value={editState.debitos}
-                          onChange={(e) => handleDetailInputChange(detail.id, "debitos", Number(e.target.value))}
-                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500 px-1 py-0.5"
+                          value={getInputDisplayValue(editState.debitos)}
+                          onChange={(e) => handleDetailInputChange(detail.id, "debitos", e.target.value)}
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 
@@ -564,9 +593,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
-                          value={editState.ajustesOs}
-                          onChange={(e) => handleDetailInputChange(detail.id, "ajustesOs", Number(e.target.value))}
-                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-amber-600 focus-visible:ring-emerald-500 px-1 py-0.5"
+                          value={getInputDisplayValue(editState.ajustesOs)}
+                          onChange={(e) => handleDetailInputChange(detail.id, "ajustesOs", e.target.value)}
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-amber-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 
@@ -576,9 +605,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
-                          value={editState.pendientesCobro}
-                          onChange={(e) => handleDetailInputChange(detail.id, "pendientesCobro", Number(e.target.value))}
-                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-orange-600 focus-visible:ring-emerald-500 px-1 py-0.5"
+                          value={getInputDisplayValue(editState.pendientesCobro)}
+                          onChange={(e) => handleDetailInputChange(detail.id, "pendientesCobro", e.target.value)}
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-orange-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 
@@ -593,9 +622,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
-                          value={editState.ga}
-                          onChange={(e) => handleDetailInputChange(detail.id, "ga", Number(e.target.value))}
-                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500 px-1 py-0.5"
+                          value={getInputDisplayValue(editState.ga)}
+                          onChange={(e) => handleDetailInputChange(detail.id, "ga", e.target.value)}
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 
@@ -605,9 +634,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
-                          value={editState.ajusteRecupero}
-                          onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", Number(e.target.value))}
-                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500 px-1 py-0.5"
+                          value={getInputDisplayValue(editState.ajusteRecupero)}
+                          onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", e.target.value)}
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 

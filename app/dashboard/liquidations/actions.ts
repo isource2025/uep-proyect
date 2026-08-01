@@ -610,3 +610,32 @@ Provincia de Corrientes
   }
 }
 
+export async function fetchLiquidationById(id: number) {
+  try {
+    const liq = await prisma.liquidacion.findUnique({
+      where: { id },
+      include: {
+        period: true,
+        rc: {
+          include: {
+            cliente: true,
+          },
+        },
+        details: {
+          include: {
+            hospital: true,
+            cliente: true,
+            compra: true,
+          },
+        },
+      },
+    });
+
+    if (!liq) return null;
+    return sanitizarLiquidacionCabecera(liq);
+  } catch (e) {
+    console.error("Error fetching liquidation by id:", e);
+    return null;
+  }
+}
+

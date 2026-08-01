@@ -225,12 +225,13 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
           </div>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-center">
-          <span className={`text-2xs font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${liq.status === "PENDIENTE"
-            ? "bg-amber-500/10 text-amber-500 border border-amber-500/20"
-            : liq.status === "NOTIFICADO"
-              ? "bg-blue-500/10 text-blue-500 border border-blue-500/20"
-              : "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-            }`}>
+          <span className={`text-2xs font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${
+            liq.status === "PENDIENTE"
+              ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
+              : liq.status === "NOTIFICADO"
+                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+          }`}>
             {liq.status}
           </span>
         </div>

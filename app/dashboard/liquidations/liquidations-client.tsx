@@ -467,7 +467,13 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                           )}
                         </TableCell>
                         <TableCell>
-                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-3xs font-semibold border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-3xs font-semibold border ${
+                            liq.status === "PENDIENTE"
+                              ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20"
+                              : liq.status === "NOTIFICADO"
+                                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                          }`}>
                             {liq.status}
                           </span>
                         </TableCell>

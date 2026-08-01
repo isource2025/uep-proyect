@@ -320,24 +320,169 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="w-full max-h-[500px] overflow-y-auto overflow-x-auto">
-            <Table className="w-full min-w-[1300px] text-xs">
-              <TableHeader className="bg-muted/60 text-muted-foreground sticky top-0 z-10 shadow-xs">
-                <TableRow className="hover:bg-transparent border-border">
-                  <TableHead className="font-bold text-2xs py-3">PERIODO</TableHead>
-                  <TableHead className="font-bold text-2xs">CUIT N°</TableHead>
-                  <TableHead className="font-bold text-2xs">PRESTADOR (HOSPITAL)</TableHead>
-                  <TableHead className="font-bold text-2xs">LOCALIDAD</TableHead>
-                  <TableHead className="font-bold text-2xs">FC N° HOSPITAL</TableHead>
-                  <TableHead className="font-bold text-2xs text-right">TOTAL FACTURADO</TableHead>
-                  <TableHead className="font-bold text-2xs text-right text-emerald-500">CRÉDITOS (+)</TableHead>
-                  <TableHead className="font-bold text-2xs text-right text-red-500">DÉBITOS (-)</TableHead>
-                  <TableHead className="font-bold text-2xs text-right text-amber-500">AJUSTES O.S.</TableHead>
-                  <TableHead className="font-bold text-2xs text-right text-orange-500">PENDIENTES COBRO (-)</TableHead>
-                  <TableHead className="font-bold text-2xs text-right text-emerald-400">BRUTO A PAGAR</TableHead>
-                  <TableHead className="font-bold text-2xs text-right text-blue-400">GA (-)</TableHead>
-                  <TableHead className="font-bold text-2xs text-right text-purple-400">AJUSTE RECUPERO (+)</TableHead>
-                  <TableHead className="font-bold text-2xs text-right text-emerald-400 font-extrabold">NETO A PAGAR</TableHead>
+          {/* MOBILE & TABLET LAYOUT: Stacked Cards Grid (hidden on desktop) */}
+          <div className="block lg:hidden p-4 space-y-4">
+            {liq.details.map((detail: any) => {
+              const editState = editableDetails.find((e) => e.id === detail.id) || {
+                totalFacturado: Number(detail.totalFacturado),
+                creditos: Number(detail.creditos),
+                debitos: Number(detail.debitos),
+                ajustesOs: Number(detail.ajustesOs),
+                pendientesCobro: Number(detail.pendientesCobro),
+                ga: Number(detail.ga),
+                ajusteRecupero: Number(detail.ajusteRecupero),
+              };
+
+              const bruto = Math.max(
+                0,
+                editState.totalFacturado +
+                  editState.creditos -
+                  editState.debitos +
+                  editState.ajustesOs -
+                  editState.pendientesCobro
+              );
+
+              const neto = Math.max(0, bruto - editState.ga + editState.ajusteRecupero);
+
+              return (
+                <div key={detail.id} className="rounded-xl border border-border bg-muted/10 p-4 space-y-4 text-foreground">
+                  {/* Header: Hospital Info */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-border/80 pb-2.5 gap-1.5">
+                    <div>
+                      <h5 className="font-bold text-sm text-foreground flex items-center gap-1.5 whitespace-normal break-words">
+                        <Building2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                        {detail.prestadorNombre || detail.hospital?.nombre || "Hospital"}
+                      </h5>
+                      <p className="text-3xs text-muted-foreground mt-0.5">
+                        CUIT: {detail.cuit || detail.hospital?.cuit || "-"} &bull; Localidad: {detail.localidad || detail.hospital?.code || "CAPITAL"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 text-3xs font-mono text-muted-foreground self-start sm:self-center">
+                      <span>Período: <strong className="text-foreground">{detail.periodo || liq.mesCarga}</strong></span>
+                      <span>FC Hospital: <strong className="text-foreground">{detail.fcHospital || `FC-${detail.compraId}`}</strong></span>
+                    </div>
+                  </div>
+
+                  {/* Calculations & Inputs Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    {/* Total Facturado */}
+                    <div className="space-y-1 bg-muted/40 p-2.5 rounded-lg border border-border/30 flex flex-col justify-center">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold">Total Facturado</span>
+                      <p className="font-bold text-foreground text-sm">{formatCurrency(editState.totalFacturado)}</p>
+                    </div>
+
+                    {/* Créditos */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground uppercase font-bold">Créditos (+)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editState.creditos}
+                        onChange={(e) => handleDetailInputChange(detail.id, "creditos", Number(e.target.value))}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500"
+                      />
+                    </div>
+
+                    {/* Débitos */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground uppercase font-bold">Débitos (-)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editState.debitos}
+                        onChange={(e) => handleDetailInputChange(detail.id, "debitos", Number(e.target.value))}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500"
+                      />
+                    </div>
+
+                    {/* Ajustes OS */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground uppercase font-bold">Ajustes OS</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editState.ajustesOs}
+                        onChange={(e) => handleDetailInputChange(detail.id, "ajustesOs", Number(e.target.value))}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-amber-600 focus-visible:ring-emerald-500"
+                      />
+                    </div>
+
+                    {/* Pendientes Cobro */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground uppercase font-bold">Pendientes Cobro (-)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editState.pendientesCobro}
+                        onChange={(e) => handleDetailInputChange(detail.id, "pendientesCobro", Number(e.target.value))}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-orange-600 focus-visible:ring-emerald-500"
+                      />
+                    </div>
+
+                    {/* Bruto a Pagar */}
+                    <div className="space-y-1 bg-muted/40 p-2.5 rounded-lg border border-border/30 flex flex-col justify-center">
+                      <span className="text-[10px] text-muted-foreground uppercase font-bold">Bruto a Pagar</span>
+                      <p className="font-bold text-foreground text-sm">{formatCurrency(bruto)}</p>
+                    </div>
+
+                    {/* GA */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground uppercase font-bold">GA (-)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editState.ga}
+                        onChange={(e) => handleDetailInputChange(detail.id, "ga", Number(e.target.value))}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500"
+                      />
+                    </div>
+
+                    {/* Ajuste Recupero */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground uppercase font-bold">Ajuste Recupero (+)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editState.ajusteRecupero}
+                        onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", Number(e.target.value))}
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Neto a Pagar Row */}
+                  <div className="flex justify-end items-center gap-3 pt-3 border-t border-border/50 text-xs">
+                    <span className="text-muted-foreground font-semibold">Neto a Pagar:</span>
+                    <span className="text-base font-extrabold text-emerald-600 dark:text-emerald-400">
+                      {formatCurrency(neto)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* DESKTOP LAYOUT: Highly Compact Excel-like Spreadsheet (hidden on mobile/tablet) */}
+          <div className="hidden lg:block w-full max-h-[550px] overflow-y-auto">
+            <Table className="w-full text-3xs border-collapse table-fixed">
+              <TableHeader className="bg-muted text-muted-foreground sticky top-0 z-10 border-b border-border">
+                <TableRow className="bg-muted hover:bg-muted border-border">
+                  <TableHead className="font-bold text-3xs px-2 py-2 w-[240px] whitespace-normal break-words leading-tight align-middle text-muted-foreground bg-muted">PRESTADOR / DETALLES</TableHead>
+                  <TableHead className="font-bold text-3xs px-2 py-2 text-right w-[110px] whitespace-normal break-words leading-tight align-middle text-muted-foreground bg-muted">TOTAL FACTURADO</TableHead>
+                  <TableHead className="font-bold text-3xs px-1.5 py-2 text-right text-emerald-500 w-[85px] whitespace-normal break-words leading-tight align-middle bg-muted">CRÉDITOS (+)</TableHead>
+                  <TableHead className="font-bold text-3xs px-1.5 py-2 text-right text-red-500 w-[85px] whitespace-normal break-words leading-tight align-middle bg-muted">DÉBITOS (-)</TableHead>
+                  <TableHead className="font-bold text-3xs px-1.5 py-2 text-right text-amber-500 w-[85px] whitespace-normal break-words leading-tight align-middle bg-muted">AJUSTES O.S.</TableHead>
+                  <TableHead className="font-bold text-3xs px-1.5 py-2 text-right text-orange-500 w-[85px] whitespace-normal break-words leading-tight align-middle bg-muted">PENDIENTES COBRO (-)</TableHead>
+                  <TableHead className="font-bold text-3xs px-2 py-2 text-right text-emerald-400 w-[110px] whitespace-normal break-words leading-tight align-middle bg-muted">BRUTO A PAGAR</TableHead>
+                  <TableHead className="font-bold text-3xs px-1.5 py-2 text-right text-blue-400 w-[85px] whitespace-normal break-words leading-tight align-middle bg-muted">GA (-)</TableHead>
+                  <TableHead className="font-bold text-3xs px-1.5 py-2 text-right text-purple-400 w-[85px] whitespace-normal break-words leading-tight align-middle bg-muted">AJUSTE RECUPERO (+)</TableHead>
+                  <TableHead className="font-bold text-3xs px-2 py-2 text-right text-emerald-400 font-extrabold w-[110px] whitespace-normal break-words leading-tight align-middle bg-muted">NETO A PAGAR</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -352,7 +497,6 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                     ajusteRecupero: Number(detail.ajusteRecupero),
                   };
 
-                  // Real-time calculation ensuring non-negative values
                   const bruto = Math.max(
                     0,
                     editState.totalFacturado +
@@ -365,97 +509,110 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                   const neto = Math.max(0, bruto - editState.ga + editState.ajusteRecupero);
 
                   return (
-                    <TableRow key={detail.id} className="hover:bg-muted/20 border-border text-foreground">
-                      <TableCell className="text-2xs font-mono">{detail.periodo || liq.mesCarga}</TableCell>
-                      <TableCell className="text-2xs font-mono">{detail.cuit || detail.hospital?.cuit || "-"}</TableCell>
-                      <TableCell className="font-bold text-xs">{detail.prestadorNombre || detail.hospital?.nombre}</TableCell>
-                      <TableCell className="text-2xs">{detail.localidad || detail.hospital?.code || "CAPITAL"}</TableCell>
-                      <TableCell className="text-2xs font-mono">{detail.fcHospital || `FC-${detail.compraId}`}</TableCell>
+                    <TableRow key={detail.id} className="hover:bg-muted/10 border-border text-foreground">
+                      {/* PRESTADOR / DETALLES MERGED METADATA */}
+                      <TableCell className="px-2 py-1.5">
+                        <div className="space-y-0.5">
+                          <div className="font-bold text-2xs text-foreground whitespace-normal break-words leading-tight">
+                            {detail.prestadorNombre || detail.hospital?.nombre}
+                          </div>
+                          <div className="text-4xs text-muted-foreground font-mono flex flex-wrap gap-x-2 gap-y-0.5">
+                            <span>CUIT: {detail.cuit || detail.hospital?.cuit || "-"}</span>
+                            <span>&bull;</span>
+                            <span>{detail.localidad || detail.hospital?.code || "CAPITAL"}</span>
+                            <span>&bull;</span>
+                            <span>Período: {detail.periodo || liq.mesCarga}</span>
+                          </div>
+                          <div className="text-4xs font-mono text-emerald-600 dark:text-emerald-400">
+                            FC Hosp: {detail.fcHospital || `FC-${detail.compraId}`}
+                          </div>
+                        </div>
+                      </TableCell>
                       
                       {/* TOTAL FACTURADO */}
-                      <TableCell className="text-right font-semibold text-xs">
+                      <TableCell className="text-right font-semibold text-2xs px-2 py-1.5">
                         {formatCurrency(editState.totalFacturado)}
                       </TableCell>
 
                       {/* CRÉDITOS */}
-                      <TableCell className="text-right">
+                      <TableCell className="text-right px-1.5 py-1.5">
                         <Input
                           type="number"
                           step="0.01"
                           min="0"
                           value={editState.creditos}
                           onChange={(e) => handleDetailInputChange(detail.id, "creditos", Number(e.target.value))}
-                          className="w-24 text-right h-8 text-2xs bg-muted/40 border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500"
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500 px-1 py-0.5"
                         />
                       </TableCell>
 
                       {/* DÉBITOS */}
-                      <TableCell className="text-right">
+                      <TableCell className="text-right px-1.5 py-1.5">
                         <Input
                           type="number"
                           step="0.01"
                           min="0"
                           value={editState.debitos}
                           onChange={(e) => handleDetailInputChange(detail.id, "debitos", Number(e.target.value))}
-                          className="w-24 text-right h-8 text-2xs bg-muted/40 border-border font-semibold text-red-600 focus-visible:ring-emerald-500"
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500 px-1 py-0.5"
                         />
                       </TableCell>
 
                       {/* AJUSTES OS */}
-                      <TableCell className="text-right">
+                      <TableCell className="text-right px-1.5 py-1.5">
                         <Input
                           type="number"
                           step="0.01"
                           min="0"
                           value={editState.ajustesOs}
                           onChange={(e) => handleDetailInputChange(detail.id, "ajustesOs", Number(e.target.value))}
-                          className="w-24 text-right h-8 text-2xs bg-muted/40 border-border font-semibold text-amber-600 focus-visible:ring-emerald-500"
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-amber-600 focus-visible:ring-emerald-500 px-1 py-0.5"
                         />
                       </TableCell>
 
                       {/* PENDIENTES COBRO */}
-                      <TableCell className="text-right">
+                      <TableCell className="text-right px-1.5 py-1.5">
                         <Input
                           type="number"
                           step="0.01"
                           min="0"
                           value={editState.pendientesCobro}
                           onChange={(e) => handleDetailInputChange(detail.id, "pendientesCobro", Number(e.target.value))}
-                          className="w-24 text-right h-8 text-2xs bg-muted/40 border-border font-semibold text-orange-600 focus-visible:ring-emerald-500"
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-orange-600 focus-visible:ring-emerald-500 px-1 py-0.5"
                         />
                       </TableCell>
 
                       {/* BRUTO A PAGAR */}
-                      <TableCell className="text-right font-extrabold text-xs text-foreground">
+                      <TableCell className="text-right font-extrabold text-2xs px-2 py-1.5 text-foreground">
                         {formatCurrency(bruto)}
                       </TableCell>
 
                       {/* GA */}
-                      <TableCell className="text-right">
+                      <TableCell className="text-right px-1.5 py-1.5">
                         <Input
                           type="number"
                           step="0.01"
                           min="0"
                           value={editState.ga}
                           onChange={(e) => handleDetailInputChange(detail.id, "ga", Number(e.target.value))}
-                          className="w-24 text-right h-8 text-2xs bg-muted/40 border-border font-semibold text-blue-600 focus-visible:ring-emerald-500"
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500 px-1 py-0.5"
                         />
                       </TableCell>
 
                       {/* AJUSTE RECUPERO */}
-                      <TableCell className="text-right">
+                      <TableCell className="text-right px-1.5 py-1.5">
                         <Input
                           type="number"
                           step="0.01"
                           min="0"
                           value={editState.ajusteRecupero}
                           onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", Number(e.target.value))}
-                          className="w-24 text-right h-8 text-2xs bg-muted/40 border-border font-semibold text-purple-600 focus-visible:ring-emerald-500"
+                          className="w-full text-right h-7 text-3xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500 px-1 py-0.5"
                         />
                       </TableCell>
 
                       {/* NETO A PAGAR */}
-                      <TableCell className="text-right font-extrabold text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded">
+                      <TableCell className="text-right font-extrabold text-2xs px-2 py-1.5 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 rounded">
                         {formatCurrency(neto)}
                       </TableCell>
                     </TableRow>

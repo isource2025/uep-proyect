@@ -261,6 +261,14 @@ export async function fetchLiquidationData(
   };
 }
 
+function calculateDefaultGA(totalFacturado: number): number {
+  return Number((totalFacturado * 0.06).toFixed(2));
+}
+
+function calculateDefaultAjustesOs(totalFacturado: number): number {
+  return Number((totalFacturado * 0.05).toFixed(2));
+}
+
 // 2. Generate a new Liquidation header and hospital detail rows from an RC
 export async function calculateLiquidation(rcId: number) {
   try {
@@ -338,6 +346,16 @@ export async function calculateLiquidation(rcId: number) {
         const nroCbte = comp.numero ? String(comp.numero).padStart(8, "0") : "";
         const fcNumStr = comp.numero ? `FC-${ptoVta}-${nroCbte}` : `FC-${comp.id}`;
         
+        const defaultAjustesOs = calculateDefaultAjustesOs(total);
+        const defaultGa = calculateDefaultGA(total);
+        
+        // bruto = total + creditos - debitos + ajustesOs - pendientesCobro
+        // since creditos, debitos, pendientesCobro are 0 initially:
+        const defaultBruto = Math.max(0, total + defaultAjustesOs);
+        // neto = bruto - ga + ajusteRecupero
+        // since ajusteRecupero is 0 initially:
+        const defaultNeto = Math.max(0, defaultBruto - defaultGa);
+        
         return prisma.liquidacionDetalle.create({
           data: {
             liquidationId: liquidation.id,
@@ -352,12 +370,12 @@ export async function calculateLiquidation(rcId: number) {
             totalFacturado: total,
             creditos: 0,
             debitos: 0,
-            ajustesOs: 0,
+            ajustesOs: defaultAjustesOs,
             pendientesCobro: 0,
-            brutoAPagar: total,
-            ga: 0,
+            brutoAPagar: defaultBruto,
+            ga: defaultGa,
             ajusteRecupero: 0,
-            netoAPagar: total,
+            netoAPagar: defaultNeto,
           },
         });
       });
@@ -365,6 +383,11 @@ export async function calculateLiquidation(rcId: number) {
     } else {
       // Create at least 1 default detail row from RC applied invoice if no Compras
       const total = toNum(rc.importe);
+      const defaultAjustesOs = calculateDefaultAjustesOs(total);
+      const defaultGa = calculateDefaultGA(total);
+      const defaultBruto = Math.max(0, total + defaultAjustesOs);
+      const defaultNeto = Math.max(0, defaultBruto - defaultGa);
+
       await prisma.liquidacionDetalle.create({
         data: {
           liquidationId: liquidation.id,
@@ -377,12 +400,12 @@ export async function calculateLiquidation(rcId: number) {
           totalFacturado: total,
           creditos: 0,
           debitos: 0,
-          ajustesOs: 0,
+          ajustesOs: defaultAjustesOs,
           pendientesCobro: 0,
-          brutoAPagar: total,
-          ga: 0,
+          brutoAPagar: defaultBruto,
+          ga: defaultGa,
           ajusteRecupero: 0,
-          netoAPagar: total,
+          netoAPagar: defaultNeto,
         },
       });
     }
@@ -423,8 +446,8 @@ export async function updateLiquidationDetails(
       if (!record) return Promise.resolve();
 
       const totalFacturado = toNum(record.totalFacturado);
-      const brutoAPagar = totalFacturado + d.creditos - d.debitos + d.ajustesOs - d.pendientesCobro;
-      const netoAPagar = brutoAPagar - d.ga + d.ajusteRecupero;
+      const brutoAPagar = Math.max(0, totalFacturado + d.creditos - d.debitos + d.ajustesOs - d.pendientesCobro);
+      const netoAPagar = Math.max(0, brutoAPagar - d.ga + d.ajusteRecupero);
 
       return prisma.liquidacionDetalle.update({
         where: { id: d.id },

@@ -40,6 +40,7 @@ function sanitizeCbte(c: any) {
     cliente: sanitizeCliente(c.cliente),
     appliedAsRc: c.appliedAsRc ? c.appliedAsRc.map((app: any) => ({
       ...app,
+      importe: toNum(app.importe),
       fc: sanitizeCbte(app.fc),
     })) : undefined,
   };

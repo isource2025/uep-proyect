@@ -295,7 +295,7 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
           </div>
 
           {/* PDF DEBITS UPLOAD MODULE */}
-          <div className="space-y-1 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+          <div className="space-y-1 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 self-center">
             <span className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold flex items-center gap-1">
               <UploadCloud className="h-3.5 w-3.5" />
               Detalle Débitos Escaneados (Obra Social)

@@ -407,12 +407,14 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         <Building2 className="h-4 w-4 text-emerald-500 shrink-0" />
                         {detail.prestadorNombre || detail.hospital?.nombre || "Hospital"}
                       </h5>
+                      <p className="text-3xs font-semibold text-muted-foreground mt-0.5">
+                        Período FC Compra: <span className="text-foreground font-bold">{detail.periodo || liq.mesCarga}</span>
+                      </p>
                       <p className="text-3xs text-muted-foreground mt-0.5">
                         CUIT: {detail.cuit || detail.hospital?.cuit || "-"} &bull; Localidad: {detail.localidad || detail.hospital?.code || "CAPITAL"}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 text-3xs font-mono text-muted-foreground self-start sm:self-center">
-                      <span>Período: <strong className="text-foreground">{detail.periodo || liq.mesCarga}</strong></span>
                       <span>FC Hospital: <strong className="text-foreground">{detail.fcHospital || `FC-${detail.compraId}`}</strong></span>
                     </div>
                   </div>
@@ -570,14 +572,15 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           <div className="font-bold text-2xs text-foreground whitespace-normal break-words leading-tight">
                             {detail.prestadorNombre || detail.hospital?.nombre}
                           </div>
-                          <div className="text-4xs text-muted-foreground font-mono flex flex-wrap gap-x-2 gap-y-0.5">
+                          <div className="text-4xs font-semibold text-muted-foreground font-mono mt-0.5">
+                            Período FC Compra: <span className="text-foreground font-bold">{detail.periodo || liq.mesCarga}</span>
+                          </div>
+                          <div className="text-4xs text-muted-foreground font-mono flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
                             <span>CUIT: {detail.cuit || detail.hospital?.cuit || "-"}</span>
                             <span>&bull;</span>
                             <span>{detail.localidad || detail.hospital?.code || "CAPITAL"}</span>
-                            <span>&bull;</span>
-                            <span>Período: {detail.periodo || liq.mesCarga}</span>
                           </div>
-                          <div className="text-4xs font-mono text-emerald-600 dark:text-emerald-400">
+                          <div className="text-4xs font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
                             FC Hosp: {detail.fcHospital || `FC-${detail.compraId}`}
                           </div>
                         </div>
@@ -689,29 +692,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
         </Button>
 
         <div className="flex gap-2">
-          {liq.status !== "NOTIFICADO" && liq.status !== "CERRADA" && (
-            <Button
-              onClick={handleNotifyHospital}
-              disabled={notifying || saving}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1.5 px-4 h-9 cursor-pointer text-xs"
-            >
-              {notifying ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  Notificando...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="h-4 w-4" />
-                  Notificar Hospital
-                </>
-              )}
-            </Button>
-          )}
-
           <Button
             onClick={handleSaveDetails}
-            disabled={saving || notifying}
+            disabled={saving}
             className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1.5 px-6 h-9 cursor-pointer text-xs"
           >
             {saving ? (

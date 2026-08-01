@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { fetchLiquidationData, calculateLiquidation } from "./actions";
+import { fetchLiquidationData, calculateLiquidation, notifyHospital } from "./actions";
 import { cn } from "@/lib/utils";
 import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,8 +38,33 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
   const [pendingSearchQuery, setPendingSearchQuery] = useState("");
 
   const [calculatingRcId, setCalculatingRcId] = useState<number | null>(null);
+  const [notifyingIds, setNotifyingIds] = useState<number[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  const handleNotifyHospital = async (id: number) => {
+    setNotifyingIds((prev) => [...prev, id]);
+    setErrorMsg("");
+    setSuccessMsg("");
+    try {
+      const res = await notifyHospital(id);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      setSuccessMsg("Hospitales notificados y correo simulado enviado con éxito.");
+      setData((prev) => ({
+        ...prev,
+        liquidations: prev.liquidations.map((l) =>
+          l.id === id ? { ...l, status: "NOTIFICADO" } : l
+        ),
+      }));
+    } catch (e: any) {
+      setErrorMsg("Error al notificar a los establecimientos.");
+    } finally {
+      setNotifyingIds((prev) => prev.filter((x) => x !== id));
+    }
+  };
 
 
   // Pagination states for generated liquidations list
@@ -478,16 +503,39 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Link href={`/dashboard/liquidations/${liq.id}`}>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-xs gap-1 h-8 border border-border hover:bg-muted cursor-pointer"
-                            >
-                              <Eye className="h-3.5 w-3.5 text-emerald-500" />
-                              Ver / Editar Liquidación
-                            </Button>
-                          </Link>
+                          <div className="flex items-center justify-end gap-2">
+                            {liq.status !== "NOTIFICADO" && liq.status !== "CERRADA" && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleNotifyHospital(liq.id)}
+                                disabled={notifyingIds.includes(liq.id)}
+                                className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1 text-xs h-8 cursor-pointer"
+                              >
+                                {notifyingIds.includes(liq.id) ? (
+                                  <>
+                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                    Notificando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    Notificar Hospital
+                                  </>
+                                )}
+                              </Button>
+                            )}
+
+                            <Link href={`/dashboard/liquidations/${liq.id}`}>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs gap-1 h-8 border border-border hover:bg-muted cursor-pointer font-bold text-foreground"
+                              >
+                                <Eye className="h-3.5 w-3.5 text-emerald-500" />
+                                Ver / Editar
+                              </Button>
+                            </Link>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

@@ -41,6 +41,7 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
 
   // Store current liquidation state locally to dynamically display updates
   const [liq, setLiq] = useState(liquidation);
+  const [mesCarga, setMesCarga] = useState(liq.mesCarga || "");
 
   // Initialise editable detail rows ensuring no negative values (minimum is 0)
   const [editableDetails, setEditableDetails] = useState<any[]>(
@@ -93,7 +94,7 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
         ajusteRecupero: Number(item.ajusteRecupero || 0),
       }));
 
-      const res = await updateLiquidationDetails(liq.id, parsedDetails);
+      const res = await updateLiquidationDetails(liq.id, parsedDetails, undefined, mesCarga);
       if (res.error) {
         setErrorMsg(res.error);
         return;
@@ -261,11 +262,35 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
             <span className="text-[10px] text-muted-foreground uppercase font-bold">Recibo UEP</span>
             <p className="font-mono font-bold text-foreground text-sm">{liq.rc.puntoVenta}-{liq.rc.numero}</p>
             <p className="text-[11px] text-muted-foreground font-semibold mt-0.5">{liq.rc.cliente?.nombre}</p>
+            
+            {/* FC Ventas unificadas associated with this receipt */}
+            {liq.rc?.appliedAsRc && liq.rc.appliedAsRc.length > 0 && (
+              <div className="mt-2 bg-muted/40 p-2 rounded-lg border border-border/30 text-[10px] space-y-1 max-h-[100px] overflow-y-auto">
+                <span className="text-[9px] text-muted-foreground uppercase font-bold block">FC Ventas Asociadas:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {liq.rc.appliedAsRc.map((app: any) => {
+                    const fc = app.fc;
+                    if (!fc) return null;
+                    return (
+                      <span key={app.id} className="inline-block px-1.5 py-0.5 bg-background border border-border/40 font-mono font-bold text-foreground rounded text-3xs">
+                        {fc.puntoVenta}-{String(fc.numero).padStart(8, "0")}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="space-y-1">
-            <span className="text-[10px] text-muted-foreground uppercase font-bold">Mes Carga</span>
-            <p className="font-bold text-foreground text-sm">{liq.mesCarga || `${liq.periodMes}/${liq.periodAnio}`}</p>
+          <div className="space-y-1.5 flex flex-col justify-start">
+            <Label className="text-[10px] text-muted-foreground uppercase font-bold">Mes Carga</Label>
+            <Input
+              type="text"
+              value={mesCarga}
+              onChange={(e) => setMesCarga(e.target.value)}
+              placeholder="e.g. 06/2026"
+              className="h-8 text-xs bg-background border-border font-semibold text-foreground max-w-[140px]"
+            />
           </div>
 
           {/* PDF DEBITS UPLOAD MODULE */}

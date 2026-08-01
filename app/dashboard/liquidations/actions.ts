@@ -38,6 +38,10 @@ function sanitizeCbte(c: any) {
     numero: c.numero ? Number(c.numero) : 0,
     importe: toNum(c.importe),
     cliente: sanitizeCliente(c.cliente),
+    appliedAsRc: c.appliedAsRc ? c.appliedAsRc.map((app: any) => ({
+      ...app,
+      fc: sanitizeCbte(app.fc),
+    })) : undefined,
   };
 }
 
@@ -356,13 +360,17 @@ export async function calculateLiquidation(rcId: number) {
         // since ajusteRecupero is 0 initially:
         const defaultNeto = Math.max(0, defaultBruto - defaultGa);
         
+        const compPeriod = comp.fecha
+          ? `${(comp.fecha.getMonth() + 1).toString().padStart(2, "0")}/${comp.fecha.getFullYear()}`
+          : monthStr;
+
         return prisma.liquidacionDetalle.create({
           data: {
             liquidationId: liquidation.id,
             compraId: comp.id,
             hospitalId: comp.hospitalId,
             clienteId: comp.clienteId || rc.clienteId,
-            periodo: monthStr,
+            periodo: compPeriod,
             cuit: comp.hospital?.cuit ? toNum(comp.hospital.cuit).toString() : rc.cliente?.cuit ? toNum(rc.cliente.cuit).toString() : "",
             prestadorNombre: comp.hospital?.nombre || "Hospital Prestador",
             localidad: extractLocalidad(comp.hospital?.nombre),
@@ -430,7 +438,8 @@ export async function updateLiquidationDetails(
     ga: number;
     ajusteRecupero: number;
   }>,
-  status?: string
+  status?: string,
+  mesCarga?: string
 ) {
   try {
     const detailIds = details.map((d) => d.id);
@@ -466,10 +475,13 @@ export async function updateLiquidationDetails(
 
     await Promise.all(updatePromises);
 
-    if (status) {
+    if (status || mesCarga !== undefined) {
       await prisma.liquidacion.update({
         where: { id: liquidationId },
-        data: { status },
+        data: {
+          ...(status ? { status } : {}),
+          ...(mesCarga !== undefined ? { mesCarga } : {}),
+        },
       });
     }
 
@@ -642,6 +654,11 @@ export async function fetchLiquidationById(id: number) {
         rc: {
           include: {
             cliente: true,
+            appliedAsRc: {
+              include: {
+                fc: true,
+              },
+            },
           },
         },
         details: {

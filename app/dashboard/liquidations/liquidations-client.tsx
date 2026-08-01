@@ -171,24 +171,26 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
 
   const handleOpenLiquidationModal = (liq: any) => {
     setSelectedLiqModal(liq);
-    // Initialize editable rows
+    // Initialize editable rows ensuring no negative values (minimum is 0)
     setEditableDetails(
       liq.details.map((d: any) => ({
         id: d.id,
-        totalFacturado: Number(d.totalFacturado),
-        creditos: Number(d.creditos),
-        debitos: Number(d.debitos),
-        ajustesOs: Number(d.ajustesOs),
-        pendientesCobro: Number(d.pendientesCobro),
-        ga: Number(d.ga),
-        ajusteRecupero: Number(d.ajusteRecupero),
+        totalFacturado: Math.max(0, Number(d.totalFacturado)),
+        creditos: Math.max(0, Number(d.creditos)),
+        debitos: Math.max(0, Number(d.debitos)),
+        ajustesOs: Math.max(0, Number(d.ajustesOs)),
+        pendientesCobro: Math.max(0, Number(d.pendientesCobro)),
+        ga: Math.max(0, Number(d.ga)),
+        ajusteRecupero: Math.max(0, Number(d.ajusteRecupero)),
       }))
     );
   };
 
   const handleDetailInputChange = (id: string, field: string, value: number) => {
+    // Prevent negative numbers (0 is the minimum)
+    const clampedValue = Math.max(0, value);
     setEditableDetails((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+      prev.map((item) => (item.id === id ? { ...item, [field]: clampedValue } : item))
     );
   };
 
@@ -824,15 +826,17 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                       ajusteRecupero: Number(detail.ajusteRecupero),
                     };
 
-                    // Real-time calculation
-                    const bruto =
+                    // Real-time calculation ensuring non-negative values
+                    const bruto = Math.max(
+                      0,
                       editState.totalFacturado +
-                      editState.creditos -
-                      editState.debitos +
-                      editState.ajustesOs -
-                      editState.pendientesCobro;
-                    
-                    const neto = bruto - editState.ga + editState.ajusteRecupero;
+                        editState.creditos -
+                        editState.debitos +
+                        editState.ajustesOs -
+                        editState.pendientesCobro
+                    );
+
+                    const neto = Math.max(0, bruto - editState.ga + editState.ajusteRecupero);
 
                     return (
                       <div key={detail.id} className="rounded-xl border border-border bg-muted/10 p-4 space-y-4 text-foreground">
@@ -867,6 +871,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                             <Input
                               type="number"
                               step="0.01"
+                              min="0"
                               value={editState.creditos}
                               onChange={(e) => handleDetailInputChange(detail.id, "creditos", Number(e.target.value))}
                               className="w-full h-8 text-xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500"
@@ -879,6 +884,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                             <Input
                               type="number"
                               step="0.01"
+                              min="0"
                               value={editState.debitos}
                               onChange={(e) => handleDetailInputChange(detail.id, "debitos", Number(e.target.value))}
                               className="w-full h-8 text-xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500"
@@ -891,6 +897,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                             <Input
                               type="number"
                               step="0.01"
+                              min="0"
                               value={editState.ajustesOs}
                               onChange={(e) => handleDetailInputChange(detail.id, "ajustesOs", Number(e.target.value))}
                               className="w-full h-8 text-xs bg-background border-border font-semibold text-amber-600 focus-visible:ring-emerald-500"
@@ -903,6 +910,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                             <Input
                               type="number"
                               step="0.01"
+                              min="0"
                               value={editState.pendientesCobro}
                               onChange={(e) => handleDetailInputChange(detail.id, "pendientesCobro", Number(e.target.value))}
                               className="w-full h-8 text-xs bg-background border-border font-semibold text-orange-600 focus-visible:ring-emerald-500"
@@ -921,6 +929,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                             <Input
                               type="number"
                               step="0.01"
+                              min="0"
                               value={editState.ga}
                               onChange={(e) => handleDetailInputChange(detail.id, "ga", Number(e.target.value))}
                               className="w-full h-8 text-xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500"
@@ -933,6 +942,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                             <Input
                               type="number"
                               step="0.01"
+                              min="0"
                               value={editState.ajusteRecupero}
                               onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", Number(e.target.value))}
                               className="w-full h-8 text-xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500"

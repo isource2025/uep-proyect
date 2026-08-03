@@ -169,6 +169,34 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
     return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(num);
   };
 
+  const getPaginationItems = (current: number, total: number) => {
+    const pages: (number | string)[] = [];
+    const maxVisible = 5;
+
+    if (total <= maxVisible) {
+      for (let i = 1; i <= total; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      const start = Math.max(2, current - 1);
+      const end = Math.min(total - 1, current + 1);
+
+      if (start > 2) {
+        pages.push("...");
+      }
+
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+
+      if (end < total - 1) {
+        pages.push("...");
+      }
+
+      pages.push(total);
+    }
+    return pages;
+  };
+
   // Filtered pending list as user types
   const filteredPendingList = pendingList.filter((item) => {
     if (!pendingSearchQuery.trim()) return true;
@@ -371,12 +399,19 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
                           Anterior
                         </Button>
                         
-                        {[...Array(totalPendingPages)].map((_, index) => {
-                          const pageNum = index + 1;
+                        {getPaginationItems(safePendingPage, totalPendingPages).map((item, index) => {
+                          if (item === "...") {
+                            return (
+                              <span key={`ellipsis-pending-${index}`} className="px-2 text-muted-foreground font-semibold">
+                                ...
+                              </span>
+                            );
+                          }
+                          const pageNum = item as number;
                           const isCurrent = pageNum === safePendingPage;
                           return (
                             <Button
-                              key={pageNum}
+                              key={`page-pending-${pageNum}`}
                               variant={isCurrent ? "default" : "ghost"}
                               size="sm"
                               onClick={() => setPendingPage(pageNum)}
@@ -532,12 +567,19 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
                       Anterior
                     </Button>
                     
-                    {[...Array(totalUnifiedPages)].map((_, index) => {
-                      const pageNum = index + 1;
+                    {getPaginationItems(safeUnifiedPage, totalUnifiedPages).map((item, index) => {
+                      if (item === "...") {
+                        return (
+                          <span key={`ellipsis-unified-${index}`} className="px-2 text-muted-foreground font-semibold">
+                            ...
+                          </span>
+                        );
+                      }
+                      const pageNum = item as number;
                       const isCurrent = pageNum === safeUnifiedPage;
                       return (
                         <Button
-                          key={pageNum}
+                          key={`page-unified-${pageNum}`}
                           variant={isCurrent ? "default" : "ghost"}
                           size="sm"
                           onClick={() => setUnifiedPage(pageNum)}

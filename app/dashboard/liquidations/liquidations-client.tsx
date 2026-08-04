@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { fetchLiquidationData, calculateLiquidation, notifyHospital } from "./actions";
 import { cn } from "@/lib/utils";
 import { SearchBar } from "@/components/search-bar";
@@ -30,6 +31,7 @@ interface LiquidationsClientPageProps {
 }
 
 export default function LiquidationsClientPage({ initialData }: LiquidationsClientPageProps) {
+  const router = useRouter();
   const [data, setData] = useState(initialData);
   const [totalCount, setTotalCount] = useState(initialData.totalLiquidationsCount);
   const [totalPendingCount, setTotalPendingCount] = useState(initialData.totalPendingRcsCount);
@@ -38,6 +40,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
   const [pendingSearchQuery, setPendingSearchQuery] = useState("");
 
   const [calculatingRcId, setCalculatingRcId] = useState<number | null>(null);
+  const [enteringDetailsId, setEnteringDetailsId] = useState<number | null>(null);
   const [notifyingIds, setNotifyingIds] = useState<number[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -525,16 +528,28 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                               </Button>
                             )}
 
-                            <Link href={`/dashboard/liquidations/${liq.id}`}>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-xs gap-1 h-8 border border-border hover:bg-muted cursor-pointer font-bold text-foreground"
-                              >
-                                <Eye className="h-3.5 w-3.5 text-emerald-500" />
-                                Ver / Editar
-                              </Button>
-                            </Link>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setEnteringDetailsId(liq.id);
+                                router.push(`/dashboard/liquidations/${liq.id}`);
+                              }}
+                              disabled={enteringDetailsId !== null || notifyingIds.includes(liq.id)}
+                              className="text-xs gap-1 h-8 border border-border hover:bg-muted cursor-pointer font-bold text-foreground"
+                            >
+                              {enteringDetailsId === liq.id ? (
+                                <>
+                                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
+                                  Entrando...
+                                </>
+                              ) : (
+                                <>
+                                  <Eye className="h-3.5 w-3.5 text-emerald-500" />
+                                  Ver / Editar
+                                </>
+                              )}
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>

@@ -33,6 +33,7 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
   const [uploading, setUploading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [goingBack, setGoingBack] = useState(false);
 
   const getInputDisplayValue = (val: any) => {
     if (val === 0 || val === "0" || val === "") return "";
@@ -208,10 +209,18 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
-            onClick={() => router.push("/dashboard/liquidations")}
+            onClick={() => {
+              setGoingBack(true);
+              router.push("/dashboard/liquidations");
+            }}
+            disabled={goingBack || saving}
             className="border-border cursor-pointer text-xs h-9 flex items-center gap-1.5"
           >
-            <ArrowLeft className="h-4 w-4" />
+            {goingBack ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowLeft className="h-4 w-4" />
+            )}
             Volver a Liquidaciones
           </Button>
           <div>
@@ -685,10 +694,21 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 border border-border rounded-xl bg-muted/20">
         <Button
           variant="outline"
-          onClick={() => router.push("/dashboard/liquidations")}
+          onClick={() => {
+            setGoingBack(true);
+            router.push("/dashboard/liquidations");
+          }}
+          disabled={goingBack || saving}
           className="border-border cursor-pointer text-xs h-9"
         >
-          Volver a la Lista
+          {goingBack ? (
+            <>
+              <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              Cargando Lista...
+            </>
+          ) : (
+            "Volver a la Lista"
+          )}
         </Button>
 
         <div className="flex gap-2">

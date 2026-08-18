@@ -507,27 +507,6 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            {liq.status !== "NOTIFICADO" && liq.status !== "CERRADA" && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleNotifyHospital(liq.id)}
-                                disabled={notifyingIds.includes(liq.id)}
-                                className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1 text-xs h-8 cursor-pointer"
-                              >
-                                {notifyingIds.includes(liq.id) ? (
-                                  <>
-                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                    Notificando...
-                                  </>
-                                ) : (
-                                  <>
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
-                                    Notificar Hospital
-                                  </>
-                                )}
-                              </Button>
-                            )}
-
                             <Button
                               size="sm"
                               variant="ghost"
@@ -550,6 +529,27 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
                                 </>
                               )}
                             </Button>
+
+                            {liq.status !== "NOTIFICADO" && liq.status !== "CERRADA" && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleNotifyHospital(liq.id)}
+                                disabled={notifyingIds.includes(liq.id)}
+                                className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1 text-xs h-8 cursor-pointer"
+                              >
+                                {notifyingIds.includes(liq.id) ? (
+                                  <>
+                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                    Notificando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    Notificar Hospital
+                                  </>
+                                )}
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

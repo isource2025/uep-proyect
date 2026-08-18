@@ -203,7 +203,7 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-4 sm:p-6 text-foreground">
+    <div className="space-y-6 text-foreground">
       {/* HEADER ACTIONS BAR */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-border/80">
         <div className="flex items-center gap-3">

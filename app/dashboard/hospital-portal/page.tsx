@@ -17,7 +17,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Building2, Receipt, Users, Plus, ShieldCheck, Mail, Paperclip, FileText, CheckCircle } from "lucide-react";
+import { Building2, Receipt, Users, Plus, ShieldCheck, Mail, Paperclip, FileText, CheckCircle, FileDown } from "lucide-react";
 import { PrintButton } from "./print-button";
 import DistributionGrid from "./distribution-grid";
 
@@ -251,8 +251,16 @@ export default async function HospitalPortalPage() {
                   </TableRow>
                 ) : (
                   hospitalLiquidations.map((liq) => {
-                    const totalFacturado = liq.details.reduce((sum, d) => sum + Number(d.totalFacturado), 0);
-                    const netoFinal = liq.details.reduce((sum, d) => sum + Number(d.netoAPagar), 0);
+                    const hospitalDetails = liq.details.filter(
+                      (d) =>
+                        d.hospitalId === hospitalId ||
+                        (d.prestadorNombre && hospital.nombre && d.prestadorNombre.toLowerCase().trim().includes(hospital.nombre.toLowerCase().trim())) ||
+                        (hospital.nombre && d.prestadorNombre && hospital.nombre.toLowerCase().trim().includes(d.prestadorNombre.toLowerCase().trim()))
+                    );
+                    const currentDetails = hospitalDetails.length > 0 ? hospitalDetails : liq.details;
+
+                    const totalFacturado = currentDetails.reduce((sum, d) => sum + Number(d.totalFacturado), 0);
+                    const netoFinal = currentDetails.reduce((sum, d) => sum + Number(d.netoAPagar), 0);
 
                     const totalDistributed = liq.distributions.reduce(
                       (sum, d) => sum + Number(d.honorarios) + Number(d.sobreasignaciones) + Number(d.gastos),
@@ -294,6 +302,16 @@ export default async function HospitalPortalPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
+                            {/* Debits PDF Download button if present */}
+                            {liq.debitsFileUrl && (
+                              <a href={liq.debitsFileUrl} target="_blank" rel="noopener noreferrer" download>
+                                <Button size="sm" variant="outline" className="border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 font-semibold gap-1.5 h-8 text-xs cursor-pointer">
+                                  <FileDown className="h-3.5 w-3.5" />
+                                  Débitos PDF
+                                </Button>
+                              </a>
+                            )}
+
                             {/* 1. Distribute Funds Dialog */}
                             <Dialog>
                               <DialogTrigger asChild>
@@ -399,6 +417,29 @@ export default async function HospitalPortalPage() {
 
                                 {/* Printable Area */}
                                 <div className="space-y-6 my-2 text-foreground" id="printable-report-content">
+                                  {/* Debits PDF Download Notice if present */}
+                                  {liq.debitsFileUrl && (
+                                    <div className="flex items-center justify-between p-3 rounded-lg border border-red-500/30 bg-red-500/5 text-xs">
+                                      <div className="flex items-center gap-2">
+                                        <FileText className="h-4 w-4 text-red-500 shrink-0" />
+                                        <div>
+                                          <span className="font-semibold text-foreground">Documento de Débitos de Obra Social Adjunto: </span>
+                                          <span className="text-muted-foreground">{liq.debitsFileName || "Comprobante_Debitos.pdf"}</span>
+                                        </div>
+                                      </div>
+                                      <a
+                                        href={liq.debitsFileUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        download
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-md font-semibold text-xs transition-colors shrink-0"
+                                      >
+                                        <FileDown className="h-3.5 w-3.5" />
+                                        Descargar PDF Débitos
+                                      </a>
+                                    </div>
+                                  )}
+
                                   {/* General Info Header */}
                                   <div className="grid grid-cols-3 gap-4 border border-border p-4 rounded-lg bg-muted/25 text-xs">
                                     <div className="space-y-1">
@@ -438,7 +479,7 @@ export default async function HospitalPortalPage() {
                                           </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                          {liq.details.map((d: any) => (
+                                          {currentDetails.map((d: any) => (
                                             <TableRow key={d.id} className="hover:bg-transparent border-border text-foreground text-xs">
                                               <TableCell className="font-semibold py-2 text-foreground">{d.prestadorNombre || hospital.nombre}</TableCell>
                                               <TableCell className="text-right py-2">{formatCurrency(d.totalFacturado)}</TableCell>

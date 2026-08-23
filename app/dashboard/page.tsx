@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -8,6 +11,14 @@ import Link from "next/link";
 export const revalidate = 0; // Force dynamic rendering so database updates show immediately
 
 export default async function DashboardPage() {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  const user = session?.user as any;
+  if (user && user.role !== "1" && user.hospitalId) {
+    redirect("/dashboard/hospital-portal");
+  }
   // Fetch summary stats, active period, recent cbtes and aggregations in parallel to minimize latency
   const [hospitalCount, agentCount, fcCount, rcCount, activePeriod, recentCbtes, totalInvoiced] = await Promise.all([
     prisma.proveedor.count({ where: { tipoProvId: 18 } }),

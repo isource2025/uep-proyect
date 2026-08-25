@@ -215,13 +215,7 @@ export async function fetchLiquidationData(
             cliente: true,
           },
         },
-        details: {
-          include: {
-            hospital: true,
-            cliente: true,
-            compra: true,
-          },
-        },
+        details: true,
       },
       orderBy: { createdAt: "desc" },
       skip,

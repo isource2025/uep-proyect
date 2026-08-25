@@ -55,56 +55,47 @@ export default async function HospitalPortalPage() {
     redirect("/dashboard");
   }
 
-  // 3. Find liquidations that belong to this hospital
-  // (We check detail fcVentaId -> Compra -> hospitalId = hospitalId)
-  const allLiquidations = await prisma.liquidacion.findMany({
-    include: {
-      period: true,
-      rc: {
-        include: {
-          cliente: true,
+  // 3. Find liquidations and agents that belong to this hospital in parallel
+  const [hospitalLiquidations, agents] = await Promise.all([
+    prisma.liquidacion.findMany({
+      where: {
+        details: {
+          some: {
+            OR: [
+              { hospitalId: hospitalId },
+              { compra: { hospitalId: hospitalId } },
+              ...(hospital.nombre ? [{ prestadorNombre: { contains: hospital.nombre } }] : []),
+            ],
+          },
         },
       },
-      details: true,
-      distributions: {
-        include: {
-          agent: true,
+      include: {
+        period: true,
+        rc: {
+          include: {
+            cliente: true,
+          },
         },
+        details: {
+          include: {
+            hospital: true,
+            compra: true,
+          },
+        },
+        distributions: {
+          include: {
+            agent: true,
+          },
+        },
+        attachments: true,
       },
-      attachments: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  // Filter liquidations: keep only those where at least one detail belongs to this hospital
-  const hospitalLiquidations = [];
-  for (const liq of allLiquidations) {
-    let belongsToHospital = false;
-    for (const detail of liq.details) {
-      if (detail.hospitalId === hospitalId) {
-        belongsToHospital = true;
-        break;
-      }
-      if (detail.compraId) {
-        const purchase = await prisma.compra.findFirst({
-          where: { id: detail.compraId },
-        });
-        if (purchase && purchase.hospitalId === hospitalId) {
-          belongsToHospital = true;
-          break;
-        }
-      }
-    }
-    if (belongsToHospital) {
-      hospitalLiquidations.push(liq);
-    }
-  }
-
-  // 4. Fetch agents belonging to this hospital for fee distribution
-  const agents = await prisma.agente.findMany({
-    where: { hospitalId },
-    orderBy: { nombre: "asc" },
-  });
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.agente.findMany({
+      where: { hospitalId },
+      orderBy: { nombre: "asc" },
+    }),
+  ]);
 
   // Server Action to save a distribution
   const handleSaveDistribution = async (formData: FormData) => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    // Prefetch destination pages for instant transition upon login
+    router.prefetch("/dashboard");
+    router.prefetch("/dashboard/hospital-portal");
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,8 +41,12 @@ export default function LoginPage() {
       if (authError) {
         setError(authError.message || "Error al iniciar sesión. Revisa tus credenciales.");
       } else {
-        router.refresh();
-        router.push("/dashboard");
+        const u = (data?.user as any) || {};
+        if (u.role !== "1" && u.hospitalId) {
+          router.push("/dashboard/hospital-portal");
+        } else {
+          router.push("/dashboard");
+        }
       }
     } catch (err: any) {
       setError("Ocurrió un error inesperado. Inténtalo de nuevo.");

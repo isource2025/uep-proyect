@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
 import {
   Building2,
   Calculator,
@@ -11,7 +12,8 @@ import {
   CheckCircle2,
   Save,
   ArrowLeft,
-  AlertCircle
+  AlertCircle,
+  FileDown,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -26,6 +28,9 @@ interface LiquidationDetailClientProps {
 
 export default function LiquidationDetailClient({ liquidation }: LiquidationDetailClientProps) {
   const router = useRouter();
+  const { data: session } = authClient.useSession();
+  const user = session?.user as any;
+  const isHospitalUser = user?.role !== "1" && user?.hospitalId !== undefined && user?.hospitalId !== null;
 
   // Loading and feedback states
   const [saving, setSaving] = useState(false);
@@ -202,6 +207,17 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
     return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(num);
   };
 
+  const displayedDetails = isHospitalUser
+    ? liq.details.filter(
+        (d: any) =>
+          d.hospitalId === user.hospitalId ||
+          (d.prestadorNombre && user.name && d.prestadorNombre.toLowerCase().trim().includes(user.name.toLowerCase().trim())) ||
+          (user.name && d.prestadorNombre && user.name.toLowerCase().trim().includes(d.prestadorNombre.toLowerCase().trim()))
+      )
+    : liq.details;
+
+  const currentDetails = displayedDetails.length > 0 ? displayedDetails : liq.details;
+
   return (
     <div className="space-y-6 text-foreground">
       {/* HEADER ACTIONS BAR */}
@@ -211,7 +227,11 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
             variant="outline"
             onClick={() => {
               setGoingBack(true);
-              router.push("/dashboard/liquidations");
+              if (isHospitalUser) {
+                router.push("/dashboard/hospital-portal");
+              } else {
+                router.push("/dashboard/liquidations");
+              }
             }}
             disabled={goingBack || saving}
             className="border-border cursor-pointer text-xs h-9 flex items-center gap-1.5"
@@ -221,7 +241,7 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
             ) : (
               <ArrowLeft className="h-4 w-4" />
             )}
-            Volver a Liquidaciones
+            {isHospitalUser ? "Volver al Portal" : "Volver a Liquidaciones"}
           </Button>
           <div>
             <h2 className="text-xl font-extrabold text-foreground flex items-center gap-2">
@@ -229,11 +249,25 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
               Planilla de Liquidación y Débitos (LIQ-{String(liq.id).padStart(4, "0")})
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Administración de débitos, créditos, GA y ajustes por recupero para la Obra Social.
+              {isHospitalUser
+                ? `Liquidación asignada a ${user.name}`
+                : "Administración de débitos, créditos, GA y ajustes por recupero para la Obra Social."}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-center">
+          {liq.debitsFileUrl && (
+            <a
+              href={liq.debitsFileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold text-xs transition-colors shadow-sm"
+            >
+              <FileDown className="h-4 w-4" />
+              Descargar PDF Débitos
+            </a>
+          )}
           <span className={`text-2xs font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${
             liq.status === "PENDIENTE"
               ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
@@ -385,7 +419,7 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
         <CardContent className="p-0">
           {/* MOBILE & TABLET LAYOUT: Stacked Cards Grid (hidden on desktop) */}
           <div className="block lg:hidden p-4 space-y-4">
-            {liq.details.map((detail: any) => {
+            {currentDetails.map((detail: any) => {
               const editState = editableDetails.find((e) => e.id === detail.id) || {
                 totalFacturado: Number(detail.totalFacturado),
                 creditos: Number(detail.creditos),
@@ -443,9 +477,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
+                        disabled={isHospitalUser || saving}
                         value={getInputDisplayValue(editState.creditos)}
                         onChange={(e) => handleDetailInputChange(detail.id, "creditos", e.target.value)}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500 disabled:opacity-75 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
 
@@ -456,9 +491,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
+                        disabled={isHospitalUser || saving}
                         value={getInputDisplayValue(editState.debitos)}
                         onChange={(e) => handleDetailInputChange(detail.id, "debitos", e.target.value)}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500 disabled:opacity-75 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
 
@@ -469,9 +505,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
+                        disabled={isHospitalUser || saving}
                         value={getInputDisplayValue(editState.ajustesOs)}
                         onChange={(e) => handleDetailInputChange(detail.id, "ajustesOs", e.target.value)}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-amber-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-amber-600 focus-visible:ring-emerald-500 disabled:opacity-75 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
 
@@ -482,9 +519,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
+                        disabled={isHospitalUser || saving}
                         value={getInputDisplayValue(editState.pendientesCobro)}
                         onChange={(e) => handleDetailInputChange(detail.id, "pendientesCobro", e.target.value)}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-orange-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-orange-600 focus-visible:ring-emerald-500 disabled:opacity-75 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
 
@@ -501,9 +539,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
+                        disabled={isHospitalUser || saving}
                         value={getInputDisplayValue(editState.ga)}
                         onChange={(e) => handleDetailInputChange(detail.id, "ga", e.target.value)}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500 disabled:opacity-75 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
 
@@ -514,9 +553,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                         type="number"
                         step="0.01"
                         min="0"
+                        disabled={isHospitalUser || saving}
                         value={getInputDisplayValue(editState.ajusteRecupero)}
                         onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", e.target.value)}
-                        className="w-full h-8 text-xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full h-8 text-xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500 disabled:opacity-75 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
                   </div>
@@ -551,7 +591,7 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {liq.details.map((detail: any) => {
+                {currentDetails.map((detail: any) => {
                   const editState = editableDetails.find((e) => e.id === detail.id) || {
                     totalFacturado: Number(detail.totalFacturado),
                     creditos: Number(detail.creditos),
@@ -606,9 +646,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
+                          disabled={isHospitalUser || saving}
                           value={getInputDisplayValue(editState.creditos)}
                           onChange={(e) => handleDetailInputChange(detail.id, "creditos", e.target.value)}
-                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 
@@ -618,9 +659,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
+                          disabled={isHospitalUser || saving}
                           value={getInputDisplayValue(editState.debitos)}
                           onChange={(e) => handleDetailInputChange(detail.id, "debitos", e.target.value)}
-                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 
@@ -630,9 +672,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
+                          disabled={isHospitalUser || saving}
                           value={getInputDisplayValue(editState.ajustesOs)}
                           onChange={(e) => handleDetailInputChange(detail.id, "ajustesOs", e.target.value)}
-                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-amber-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-amber-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 
@@ -642,9 +685,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
+                          disabled={isHospitalUser || saving}
                           value={getInputDisplayValue(editState.pendientesCobro)}
                           onChange={(e) => handleDetailInputChange(detail.id, "pendientesCobro", e.target.value)}
-                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-orange-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-orange-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 
@@ -659,9 +703,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
+                          disabled={isHospitalUser || saving}
                           value={getInputDisplayValue(editState.ga)}
                           onChange={(e) => handleDetailInputChange(detail.id, "ga", e.target.value)}
-                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 
@@ -671,9 +716,10 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
                           type="number"
                           step="0.01"
                           min="0"
+                          disabled={isHospitalUser || saving}
                           value={getInputDisplayValue(editState.ajusteRecupero)}
                           onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", e.target.value)}
-                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                       </TableCell>
 
@@ -696,7 +742,11 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
           variant="outline"
           onClick={() => {
             setGoingBack(true);
-            router.push("/dashboard/liquidations");
+            if (isHospitalUser) {
+              router.push("/dashboard/hospital-portal");
+            } else {
+              router.push("/dashboard/liquidations");
+            }
           }}
           disabled={goingBack || saving}
           className="border-border cursor-pointer text-xs h-9"
@@ -707,29 +757,31 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
               Cargando Lista...
             </>
           ) : (
-            "Volver a la Lista"
+            isHospitalUser ? "Volver a Mis Liquidaciones" : "Volver a la Lista"
           )}
         </Button>
 
-        <div className="flex gap-2">
-          <Button
-            onClick={handleSaveDetails}
-            disabled={saving}
-            className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1.5 px-6 h-9 cursor-pointer text-xs"
-          >
-            {saving ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Guardando Ajustes...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4" />
-                Guardar Ajustes de Liquidación
-              </>
-            )}
-          </Button>
-        </div>
+        {!isHospitalUser && (
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSaveDetails}
+              disabled={saving}
+              className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1.5 px-6 h-9 cursor-pointer text-xs"
+            >
+              {saving ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Guardando Ajustes...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  Guardar Ajustes de Liquidación
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

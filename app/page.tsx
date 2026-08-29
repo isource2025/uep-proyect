@@ -10,6 +10,10 @@ export default async function Home() {
   });
 
   if (session) {
+    const user = session.user as any;
+    if (user && user.role !== "1" && user.hospitalId) {
+      redirect("/dashboard/hospital-portal");
+    }
     redirect("/dashboard");
   } else {
     redirect("/login");

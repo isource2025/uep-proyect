@@ -21,7 +21,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground selection:bg-emerald-500 selection:text-zinc-950 font-sans">
-      <DashboardSidebar />
+      <DashboardSidebar user={session.user as any} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <DashboardHeader
           user={{

@@ -14,13 +14,21 @@ import {
   Settings,
   FileDown,
 } from "lucide-react";
-
 import { authClient } from "@/lib/auth-client";
 
-export function DashboardSidebar() {
+interface DashboardSidebarProps {
+  user?: {
+    name?: string;
+    email?: string;
+    role?: string;
+    hospitalId?: number | null;
+  };
+}
+
+export function DashboardSidebar({ user: initialUser }: DashboardSidebarProps) {
   const pathname = usePathname();
   const { data: session } = authClient.useSession();
-  const user = session?.user as any;
+  const user = initialUser || (session?.user as any);
 
   // An admin (role === "1") is NEVER restricted to a single hospital view
   const isHospitalUser = user?.role !== "1" && user?.hospitalId !== undefined && user?.hospitalId !== null;
@@ -85,7 +93,7 @@ export function DashboardSidebar() {
     <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-card text-muted-foreground">
       {/* Brand Header Link to Dashboard */}
       <Link
-        href="/dashboard"
+        href={isHospitalUser ? "/dashboard/hospital-portal" : "/dashboard"}
         className="flex h-16 items-center gap-2 border-b border-border px-6 bg-card hover:bg-muted/30 transition-colors"
       >
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-zinc-950 font-bold">

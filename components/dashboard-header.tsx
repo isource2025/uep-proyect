@@ -50,10 +50,10 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
   const handleLogout = async () => {
     try {
       await authClient.signOut();
-      router.refresh();
-      router.push("/login");
+      window.location.href = "/login";
     } catch (error) {
       console.error("Sign out error", error);
+      window.location.href = "/login";
     }
   };
 

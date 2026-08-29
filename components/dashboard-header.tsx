@@ -26,34 +26,14 @@ interface DashboardHeaderProps {
 export function DashboardHeader({ user }: DashboardHeaderProps) {
   const router = useRouter();
 
-  // #region agent log
-  useEffect(() => {
-    fetch("http://127.0.0.1:7512/ingest/356f6776-4866-47b5-9aec-f04790f78e37", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "86b1be" },
-      body: JSON.stringify({
-        sessionId: "86b1be",
-        runId: "header-bg-fix",
-        hypothesisId: "H-HDR",
-        location: "dashboard-header.tsx:useEffect",
-        message: "Header mounted with dark bg #171717",
-        data: {
-          isDark: document.documentElement.classList.contains("dark"),
-          headerClass: "bg-background dark:bg-[#171717]",
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-  }, []);
-  // #endregion
-
   const handleLogout = async () => {
     try {
       await authClient.signOut();
-      window.location.href = "/login";
+      router.push("/login");
+      router.refresh();
     } catch (error) {
       console.error("Sign out error", error);
-      window.location.href = "/login";
+      router.push("/login");
     }
   };
 

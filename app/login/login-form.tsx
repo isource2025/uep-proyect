@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,10 +10,17 @@ import { Button } from "@/components/ui/button";
 import { Shield, Loader2, AlertCircle } from "lucide-react";
 
 export default function LoginForm() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    // Prefetch destination routes for instant transitions
+    router.prefetch("/dashboard");
+    router.prefetch("/dashboard/hospital-portal");
+  }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,8 +44,7 @@ export default function LoginForm() {
       } else {
         const u = (data?.user as any) || {};
         const destination = u.role !== "1" && u.hospitalId ? "/dashboard/hospital-portal" : "/dashboard";
-        // Perform a clean document navigation to guarantee fresh cookies are sent on initial page load
-        window.location.href = destination;
+        router.push(destination);
       }
     } catch (err: any) {
       setError("Ocurrió un error inesperado. Inténtalo de nuevo.");

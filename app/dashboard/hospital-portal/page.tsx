@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { serializeData } from "@/lib/utils";
 import HospitalPortalClient from "./hospital-portal-client";
 
 export const revalidate = 0;
@@ -97,10 +98,10 @@ export default async function HospitalPortalPage() {
 
   return (
     <HospitalPortalClient
-      hospital={hospital}
+      hospital={serializeData(hospital)}
       hospitalId={hospitalId}
-      initialLiquidations={hospitalLiquidations}
-      agents={agents}
+      initialLiquidations={serializeData(hospitalLiquidations)}
+      agents={serializeData(agents)}
       onAddAttachment={handleAddAttachment}
     />
   );

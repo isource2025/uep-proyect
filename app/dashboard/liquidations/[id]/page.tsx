@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { serializeData } from "@/lib/utils";
 import { fetchLiquidationById } from "../actions";
 import LiquidationDetailClient from "./liquidation-detail-client";
 
@@ -26,7 +27,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
 
   return (
     <LiquidationDetailClient
-      liquidation={liquidation}
+      liquidation={serializeData(liquidation)}
       currentUser={session?.user as any}
     />
   );

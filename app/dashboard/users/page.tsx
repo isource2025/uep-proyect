@@ -15,7 +15,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { UserPlus, Search, ShieldCheck, Mail, Users2 } from "lucide-react";
+import { UserPlus, ShieldCheck, Mail, Users2 } from "lucide-react";
+import { SearchBar } from "@/components/search-bar";
 
 export const revalidate = 0;
 
@@ -254,15 +255,12 @@ export default async function UsersPage({
       {/* Search & List Card */}
       <Card className="border-border bg-card text-card-foreground">
         <CardHeader className="pb-4">
-          <form method="GET" className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              name="query"
-              placeholder="Buscar por nombre, operador o email..."
-              defaultValue={query}
-              className="bg-muted/40 border-border text-foreground placeholder-muted-foreground pl-10 pr-4 focus-visible:ring-emerald-500 h-10 w-full"
-            />
-          </form>
+          <SearchBar
+            name="query"
+            placeholder="Buscar por nombre, operador o email..."
+            defaultValue={query}
+            className="max-w-sm"
+          />
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-border overflow-hidden">

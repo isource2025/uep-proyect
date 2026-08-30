@@ -271,17 +271,15 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
             </CardHeader>
             <CardContent>
               {/* Search input for pending unifications */}
-              <div className="mb-4 relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
+              <div className="mb-4">
+                <SearchBar
                   placeholder="Filtrar Obra Social pendiente por nombre o CUIT..."
                   value={pendingSearchQuery}
-                  onChange={(e) => {
-                    setPendingSearchQuery(e.target.value);
+                  onChange={(val) => {
+                    setPendingSearchQuery(val);
                     setPendingPage(1);
                   }}
-                  className="pl-9 bg-muted/20 border-border text-foreground text-xs h-9 focus-visible:ring-emerald-500"
+                  className="w-full"
                 />
               </div>
 
@@ -650,12 +648,12 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
                   <h4 className="text-xs font-bold text-foreground">
                     Facturas de Hospitales ({selectedInvoiceDetails.purchases.length}):
                   </h4>
-                  <Input
-                    type="text"
-                    placeholder="Filtrar por hospital o número de factura..."
+                  <SearchBar
+                    placeholder="Filtrar por hospital o número..."
                     value={modalSearchQuery}
-                    onChange={(e) => setModalSearchQuery(e.target.value)}
-                    className="text-2xs h-7 w-64 bg-muted/20 border-border focus-visible:ring-emerald-500"
+                    onChange={setModalSearchQuery}
+                    size="sm"
+                    className="w-64"
                   />
                 </div>
 
@@ -766,12 +764,12 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
                   <h4 className="text-xs font-bold text-foreground">
                     Facturas de Hospitales Pendientes ({selectedPendingDetails.purchases.length}):
                   </h4>
-                  <Input
-                    type="text"
-                    placeholder="Filtrar por hospital o número de factura..."
+                  <SearchBar
+                    placeholder="Filtrar por hospital o número..."
                     value={pendingModalSearchQuery}
-                    onChange={(e) => setPendingModalSearchQuery(e.target.value)}
-                    className="text-2xs h-7 w-64 bg-muted/20 border-border focus-visible:ring-emerald-500"
+                    onChange={setPendingModalSearchQuery}
+                    size="sm"
+                    className="w-64"
                   />
                 </div>
 

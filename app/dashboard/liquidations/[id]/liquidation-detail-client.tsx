@@ -14,6 +14,7 @@ import {
   AlertCircle,
   FileDown,
 } from "lucide-react";
+import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,9 @@ export default function LiquidationDetailClient({
 }: LiquidationDetailClientProps) {
   const router = useRouter();
   const isHospitalUser = currentUser?.role !== "1" && currentUser?.hospitalId !== undefined && currentUser?.hospitalId !== null;
+
+  // Search query state for filtering details
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Loading and feedback states
   const [saving, setSaving] = useState(false);
@@ -223,6 +227,24 @@ export default function LiquidationDetailClient({
     : liq.details;
 
   const currentDetails = displayedDetails.length > 0 ? displayedDetails : liq.details;
+
+  const filteredDetails = currentDetails.filter((d: any) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    const prestador = (d.prestadorNombre || d.hospital?.nombre || "").toLowerCase();
+    const cuit = (d.cuit || d.hospital?.cuit || "").toLowerCase();
+    const periodo = (d.periodo || liq.mesCarga || "").toLowerCase();
+    const fcHospital = (d.fcHospital || `fc-${d.compraId || ""}`).toLowerCase();
+    const localidad = (d.localidad || d.hospital?.code || "").toLowerCase();
+
+    return (
+      prestador.includes(q) ||
+      cuit.includes(q) ||
+      periodo.includes(q) ||
+      fcHospital.includes(q) ||
+      localidad.includes(q)
+    );
+  });
 
   return (
     <div className="space-y-6 text-foreground">
@@ -411,7 +433,7 @@ export default function LiquidationDetailClient({
 
       {/* SECTION 2 - TABLA GRANDE DE LIQUIDACIÓN POR HOSPITAL (PLANILLA EXCEL) */}
       <Card className="border-border bg-card">
-        <CardHeader className="pb-3 border-b border-border/80 flex flex-row items-center justify-between">
+        <CardHeader className="p-4 pb-3 border-b border-border/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <CardTitle className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Building2 className="h-4 w-4 text-emerald-500" />
@@ -421,11 +443,25 @@ export default function LiquidationDetailClient({
               Complete las celdas numéricas. Los totales neto y bruto se recalculan de forma segura e instantánea.
             </CardDescription>
           </div>
+
+          {/* Search Bar */}
+          <SearchBar
+            placeholder="Buscar por hospital, período o CUIT..."
+            value={searchQuery}
+            onChange={setSearchQuery}
+            size="sm"
+            className="w-full sm:w-80"
+          />
         </CardHeader>
         <CardContent className="p-0">
           {/* MOBILE & TABLET LAYOUT: Stacked Cards Grid (hidden on desktop) */}
           <div className="block lg:hidden p-4 space-y-4">
-            {currentDetails.map((detail: any) => {
+            {filteredDetails.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border p-8 text-center text-muted-foreground text-xs font-medium">
+                No se encontraron renglones que coincidan con la búsqueda.
+              </div>
+            ) : (
+              filteredDetails.map((detail: any) => {
               const editState = editableDetails.find((e) => e.id === detail.id) || {
                 totalFacturado: Number(detail.totalFacturado),
                 creditos: Number(detail.creditos),
@@ -576,7 +612,8 @@ export default function LiquidationDetailClient({
                   </div>
                 </div>
               );
-            })}
+            })
+          )}
           </div>
 
           {/* DESKTOP LAYOUT: Highly Compact Excel-like Spreadsheet (hidden on mobile/tablet) */}
@@ -597,7 +634,14 @@ export default function LiquidationDetailClient({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {currentDetails.map((detail: any) => {
+                {filteredDetails.length === 0 ? (
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableCell colSpan={10} className="text-center py-12 text-xs text-muted-foreground font-medium">
+                      No se encontraron renglones que coincidan con la búsqueda.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredDetails.map((detail: any) => {
                   const editState = editableDetails.find((e) => e.id === detail.id) || {
                     totalFacturado: Number(detail.totalFacturado),
                     creditos: Number(detail.creditos),
@@ -735,7 +779,8 @@ export default function LiquidationDetailClient({
                       </TableCell>
                     </TableRow>
                   );
-                })}
+                })
+              )}
               </TableBody>
             </Table>
           </div>

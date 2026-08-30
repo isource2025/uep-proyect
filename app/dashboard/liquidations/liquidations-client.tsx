@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Calculator, Receipt, Eye, CheckCircle2, RefreshCw, AlertCircle, UploadCloud, FileText, Download, Building2, Save } from "lucide-react";
+import { LiquidationsTable } from "@/components/liquidations-table";
 
 interface LiquidationsClientPageProps {
   initialData: {
@@ -415,227 +416,25 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
         </div>
       )}
 
-      {/* Generated Liquidations Table */}
-      <Card className="border-border bg-card text-card-foreground">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-bold text-foreground">Historial de Liquidaciones Generadas</CardTitle>
-          <CardDescription className="text-muted-foreground text-xs mt-1">
-            Consulte la planilla interactiva de liquidación por cada recibo UEP y modifique débitos, créditos o adjunte los comprobantes escaneados.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <SearchBar
-            placeholder="Buscar por Obra Social, Recibo o Mes..."
-            value={searchQuery}
-            onChange={setSearchQuery}
-            onSubmit={handleSearchSubmit}
-            isLoading={isLoading}
-            className="mb-2"
-          />
-          <div className="rounded-lg border border-border overflow-hidden">
-            <Table>
-              <TableHeader className="bg-muted/50 text-muted-foreground">
-                <TableRow className="hover:bg-transparent border-border">
-                  <TableHead className="font-semibold text-xs py-3">LIQ. N°</TableHead>
-                  <TableHead className="font-semibold text-xs">Obra Social (Cliente)</TableHead>
-                  <TableHead className="font-semibold text-xs">Mes Carga</TableHead>
-                  <TableHead className="font-semibold text-xs">Recibo UEP</TableHead>
-                  <TableHead className="font-semibold text-xs text-right">Neto Inicial</TableHead>
-                  <TableHead className="font-semibold text-xs text-right">Neto a Pagar</TableHead>
-                  <TableHead className="font-semibold text-xs text-center">Débitos PDF</TableHead>
-                  <TableHead className="font-semibold text-xs">Estado</TableHead>
-                  <TableHead className="font-semibold text-xs text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody className={cn(isLoading && "opacity-50 pointer-events-none transition-opacity duration-200")}>
-                {liquidations.length === 0 ? (
-                  <TableRow className="border-border">
-                    <TableCell colSpan={9} className="text-center text-muted-foreground text-sm py-12">
-                      <div className="flex flex-col items-center gap-2">
-                        <Receipt className="h-8 w-8 text-muted-foreground" />
-                        <p>No se han generado liquidaciones en este período.</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  paginatedLiquidations.map((liq) => {
-                    return (
-                      <TableRow key={liq.id} className="hover:bg-muted/40 border-border text-foreground">
-                        <TableCell className="font-mono text-xs font-bold text-foreground py-3.5">
-                          LIQ-{String(liq.id).padStart(4, "0")}
-                        </TableCell>
-                        <TableCell className="text-xs font-semibold max-w-[200px] whitespace-normal break-words">
-                          {liq.rc.cliente?.nombre || "Obra Social"}
-                        </TableCell>
-                        <TableCell className="text-xs font-mono">
-                          {liq.mesCarga || `${liq.periodMes}/${liq.periodAnio}`}
-                        </TableCell>
-                        <TableCell className="text-xs font-mono">
-                          {liq.rc.puntoVenta}-{liq.rc.numero}
-                        </TableCell>
-                        <TableCell className="text-right text-xs">
-                          {formatCurrency(liq.totalFacturado)}
-                        </TableCell>
-                        <TableCell className="text-right text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                          {formatCurrency(liq.netoAPagar)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {liq.debitsFileUrl ? (
-                            <a
-                              href={liq.debitsFileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-2xs text-emerald-600 hover:underline font-semibold"
-                            >
-                              <FileText className="h-3.5 w-3.5" />
-                              Ver PDF
-                            </a>
-                          ) : (
-                            <span className="text-2xs text-muted-foreground">Sin adjunto</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-3xs font-semibold border ${
-                            liq.status === "PENDIENTE"
-                              ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20"
-                              : liq.status === "NOTIFICADO"
-                                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
-                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                          }`}>
-                            {liq.status}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setEnteringDetailsId(liq.id);
-                                router.push(`/dashboard/liquidations/${liq.id}`);
-                              }}
-                              disabled={enteringDetailsId !== null || notifyingIds.includes(liq.id)}
-                              className="text-xs gap-1 h-8 border border-border hover:bg-muted cursor-pointer font-bold text-foreground"
-                            >
-                              {enteringDetailsId === liq.id ? (
-                                <>
-                                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
-                                  Entrando...
-                                </>
-                              ) : (
-                                <>
-                                  <Eye className="h-3.5 w-3.5 text-emerald-500" />
-                                  Ver / Editar
-                                </>
-                              )}
-                            </Button>
-
-                            {liq.status !== "NOTIFICADO" && liq.status !== "CERRADA" && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleNotifyHospital(liq.id)}
-                                disabled={notifyingIds.includes(liq.id)}
-                                className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1 text-xs h-8 cursor-pointer"
-                              >
-                                {notifyingIds.includes(liq.id) ? (
-                                  <>
-                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                    Notificando...
-                                  </>
-                                ) : (
-                                  <>
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
-                                    Notificar Hospital
-                                  </>
-                                )}
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Pagination Controls */}
-          {totalItems > 0 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between border-t border-border mt-4 pt-4 gap-4 text-xs text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <span>Mostrar</span>
-                <select
-                  value={itemsPerPage}
-                  onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
-                  className="bg-muted/40 border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                >
-                  <option value={5} className="bg-card text-foreground">5</option>
-                  <option value={10} className="bg-card text-foreground">10</option>
-                  <option value={20} className="bg-card text-foreground">20</option>
-                  <option value={50} className="bg-card text-foreground">50</option>
-                </select>
-                <span>por página</span>
-              </div>
-
-              <div>
-                Mostrando <span className="font-semibold text-foreground">{totalItems > 0 ? startIndex + 1 : 0}</span>-
-                <span className="font-semibold text-foreground">{endIndex}</span> de{" "}
-                <span className="font-semibold text-foreground">{totalItems}</span> liquidaciones
-              </div>
-
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="h-8 px-2 border border-border cursor-pointer disabled:opacity-50"
-                >
-                  Anterior
-                </Button>
-                
-                {getPaginationItems(currentPage, totalPages).map((item, index) => {
-                  if (item === "...") {
-                    return (
-                      <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground font-semibold">
-                        ...
-                      </span>
-                    );
-                  }
-                  const pageNum = item as number;
-                  const isCurrent = pageNum === currentPage;
-                  return (
-                    <Button
-                      key={`page-${pageNum}`}
-                      variant={isCurrent ? "default" : "ghost"}
-                      size="sm"
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`h-8 w-8 cursor-pointer ${
-                        isCurrent
-                          ? "bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold"
-                          : "border border-border hover:bg-muted"
-                      }`}
-                    >
-                      {pageNum}
-                    </Button>
-                  );
-                })}
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="h-8 px-2 border border-border cursor-pointer disabled:opacity-50"
-                >
-                  Siguiente
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Centralized Dynamic Liquidations Table */}
+      <LiquidationsTable
+        liquidations={paginatedLiquidations}
+        isHospitalUser={false}
+        onNotifyHospital={handleNotifyHospital}
+        notifyingIds={notifyingIds}
+        isLoading={isLoading}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onSearchSubmit={handleSearchSubmit}
+        pagination={{
+          currentPage,
+          totalPages,
+          totalItems,
+          itemsPerPage,
+          onPageChange: setCurrentPage,
+          onItemsPerPageChange: handleItemsPerPageChange,
+        }}
+      />
     </div>
   );
 }

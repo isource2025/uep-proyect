@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
 import { fetchLiquidationById } from "../actions";
 import LiquidationDetailClient from "./liquidation-detail-client";
 
@@ -13,10 +15,19 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const liquidation = await fetchLiquidationById(liqId);
+  const [liquidation, session] = await Promise.all([
+    fetchLiquidationById(liqId),
+    auth.api.getSession({ headers: await headers() }),
+  ]);
+
   if (!liquidation) {
     notFound();
   }
 
-  return <LiquidationDetailClient liquidation={liquidation} />;
+  return (
+    <LiquidationDetailClient
+      liquidation={liquidation}
+      currentUser={session?.user as any}
+    />
+  );
 }

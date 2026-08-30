@@ -38,7 +38,7 @@ export default function LoginForm() {
       } else {
         const u = (data?.user as any) || {};
         const destination = u.role !== "1" && u.hospitalId ? "/dashboard/hospital-portal" : "/dashboard";
-        window.location.href = destination;
+        router.replace(destination);
       }
     } catch (err: any) {
       setError("Ocurrió un error inesperado. Inténtalo de nuevo.");

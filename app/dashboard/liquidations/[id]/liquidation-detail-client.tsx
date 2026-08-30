@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { authClient } from "@/lib/auth-client";
 import {
   Building2,
   Calculator,
@@ -24,13 +23,20 @@ import { updateLiquidationDetails, uploadDebitsFile, deleteDebitsFile, notifyHos
 
 interface LiquidationDetailClientProps {
   liquidation: any;
+  currentUser?: {
+    name?: string;
+    email?: string;
+    role?: string;
+    hospitalId?: number | null;
+  };
 }
 
-export default function LiquidationDetailClient({ liquidation }: LiquidationDetailClientProps) {
+export default function LiquidationDetailClient({
+  liquidation,
+  currentUser,
+}: LiquidationDetailClientProps) {
   const router = useRouter();
-  const { data: session } = authClient.useSession();
-  const user = session?.user as any;
-  const isHospitalUser = user?.role !== "1" && user?.hospitalId !== undefined && user?.hospitalId !== null;
+  const isHospitalUser = currentUser?.role !== "1" && currentUser?.hospitalId !== undefined && currentUser?.hospitalId !== null;
 
   // Loading and feedback states
   const [saving, setSaving] = useState(false);
@@ -210,9 +216,9 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
   const displayedDetails = isHospitalUser
     ? liq.details.filter(
         (d: any) =>
-          d.hospitalId === user.hospitalId ||
-          (d.prestadorNombre && user.name && d.prestadorNombre.toLowerCase().trim().includes(user.name.toLowerCase().trim())) ||
-          (user.name && d.prestadorNombre && user.name.toLowerCase().trim().includes(d.prestadorNombre.toLowerCase().trim()))
+          d.hospitalId === currentUser?.hospitalId ||
+          (d.prestadorNombre && currentUser?.name && d.prestadorNombre.toLowerCase().trim().includes(currentUser.name.toLowerCase().trim())) ||
+          (currentUser?.name && d.prestadorNombre && currentUser.name.toLowerCase().trim().includes(d.prestadorNombre.toLowerCase().trim()))
       )
     : liq.details;
 
@@ -250,7 +256,7 @@ export default function LiquidationDetailClient({ liquidation }: LiquidationDeta
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
               {isHospitalUser
-                ? `Liquidación asignada a ${user.name}`
+                ? `Liquidación asignada a ${currentUser?.name || "Hospital"}`
                 : "Administración de débitos, créditos, GA y ajustes por recupero para la Obra Social."}
             </p>
           </div>

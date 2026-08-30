@@ -14,7 +14,6 @@ import {
   Settings,
   FileDown,
 } from "lucide-react";
-import { authClient } from "@/lib/auth-client";
 
 interface DashboardSidebarProps {
   user?: {
@@ -25,10 +24,8 @@ interface DashboardSidebarProps {
   };
 }
 
-export function DashboardSidebar({ user: initialUser }: DashboardSidebarProps) {
+export function DashboardSidebar({ user }: DashboardSidebarProps) {
   const pathname = usePathname();
-  const { data: session } = authClient.useSession();
-  const user = initialUser || (session?.user as any);
 
   // An admin (role === "1") is NEVER restricted to a single hospital view
   const isHospitalUser = user?.role !== "1" && user?.hospitalId !== undefined && user?.hospitalId !== null;

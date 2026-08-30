@@ -29,11 +29,10 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
   const handleLogout = async () => {
     try {
       await authClient.signOut();
-      router.push("/login");
-      router.refresh();
+      window.location.href = "/login";
     } catch (error) {
       console.error("Sign out error", error);
-      router.push("/login");
+      window.location.href = "/login";
     }
   };
 

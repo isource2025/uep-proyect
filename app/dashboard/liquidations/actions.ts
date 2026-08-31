@@ -97,9 +97,20 @@ function sanitizarLiquidacionDetalle(d: any) {
   };
 }
 
+function sanitizeDistribucion(d: any) {
+  if (!d) return null;
+  return {
+    ...d,
+    honorarios: toNum(d.honorarios),
+    sobreasignaciones: toNum(d.sobreasignaciones),
+    gastos: toNum(d.gastos),
+  };
+}
+
 function sanitizarLiquidacionCabecera(liq: any) {
   if (!liq) return null;
   const details = (liq.details || []).map(sanitizarLiquidacionDetalle);
+  const distributions = (liq.distributions || []).map(sanitizeDistribucion);
 
   // Compute aggregate totals across all hospital rows for UI display
   const totalFacturado = details.reduce((sum: number, d: any) => sum + d.totalFacturado, 0);
@@ -112,10 +123,16 @@ function sanitizarLiquidacionCabecera(liq: any) {
   const ajusteRecupero = details.reduce((sum: number, d: any) => sum + d.ajusteRecupero, 0);
   const netoAPagar = details.reduce((sum: number, d: any) => sum + d.netoAPagar, 0);
 
+  const totalHonorarios = distributions.reduce((sum: number, d: any) => sum + d.honorarios, 0);
+  const totalSobreasignaciones = distributions.reduce((sum: number, d: any) => sum + d.sobreasignaciones, 0);
+  const totalGastos = distributions.reduce((sum: number, d: any) => sum + d.gastos, 0);
+  const totalDistribuido = totalHonorarios + totalSobreasignaciones + totalGastos;
+
   return {
     ...liq,
     rc: sanitizeCbte(liq.rc),
     details,
+    distributions,
     totalFacturado,
     creditos,
     debitos,
@@ -125,6 +142,10 @@ function sanitizarLiquidacionCabecera(liq: any) {
     ga,
     ajusteRecupero,
     netoAPagar,
+    totalHonorarios,
+    totalSobreasignaciones,
+    totalGastos,
+    totalDistribuido,
   };
 }
 
@@ -661,6 +682,11 @@ export async function fetchLiquidationById(id: number) {
             hospital: true,
             cliente: true,
             compra: true,
+          },
+        },
+        distributions: {
+          include: {
+            agent: true,
           },
         },
       },

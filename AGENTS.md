@@ -36,6 +36,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Theme Toggle**: Wrapped with `ThemeProvider` from `next-themes`. App has `defaultTheme="system"` enabled, but the `ThemeToggle` dropdown options are limited to "Claro" (`light`) and "Oscuro" (`dark`).
 - **Next.js 16 Asynchronous Headers**: In Next.js 16, `headers()` is asynchronous and must be awaited when retrieving sessions.
 - **Database Safety & Integrity**: 
+  - **CONSULTA Y APROBACIÓN PREVIA OBLIGATORIA**: **NUNCA** realizar ningún cambio en la base de datos (crear tablas, modificar o eliminar tablas, agregar campos, cambiar nombres de columnas, alterar tipos de datos, índices, relaciones o ejecutar migraciones DDL) sin **consultar primero al usuario y obtener su confirmación explícita**, detallando previamente el cambio propuesto y su justificación.
   - **NUNCA** borrar datos de la base de datos (operaciones como `deleteMany`, `DELETE`, `TRUNCATE` o `DROP` están terminantemente prohibidas en seeds o scripts generales).
   - La base de datos de producción (`iSource`) es estrictamente de **sólo lectura/inspección**. No realizar modificaciones de esquema ni agregar registros en ella para mantener la paridad estructural idéntica con desarrollo.
 - **Consolidación e Intermediación de Facturación**:

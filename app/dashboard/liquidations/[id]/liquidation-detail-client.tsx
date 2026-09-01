@@ -26,8 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { updateLiquidationDetails, uploadDebitsFile, deleteDebitsFile, notifyHospital } from "../actions";
-import { bulkSaveDistributions } from "@/app/dashboard/hospital-portal/actions";
+import { updateLiquidationDetails, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions } from "../actions";
 
 interface LiquidationDetailClientProps {
   liquidation: any;
@@ -95,24 +94,20 @@ export default function LiquidationDetailClient({
 
   // Initialise agents and distributions state
   const initialDistRows = (agents || []).map((agent: any) => {
-    const dist = (liq.distributions || []).find((d: any) => d.agentId === agent.id);
-    const cargoStr =
-      agent.cargo === "1"
-        ? "ADMINISTRATIVO"
-        : agent.cargo === "2"
-        ? "MEDICO"
-        : agent.cargo === "3"
-        ? "ENFERMERO"
-        : agent.cargo || "PROFESIONAL";
+    const personalDist = (liq.personalDistributions || []).find((p: any) => p.idAgente === (agent.idAgente || agent.id));
+    const legacyDist = (liq.distributions || []).find((d: any) => d.agentId === agent.id);
+
+    const honVal = personalDist ? Number(personalDist.honorarios || 0) : (legacyDist ? Number(legacyDist.honorarios || 0) : 0);
+    const sobreVal = personalDist ? Number(personalDist.sobreasignacion || 0) : (legacyDist ? Number(legacyDist.sobreasignaciones || 0) : 0);
 
     return {
-      agentId: agent.id,
+      agentId: agent.idAgente || agent.id,
+      legajo: agent.legajo || "",
       nombre: agent.nombre,
       cuil: agent.cuil || "",
-      cargo: cargoStr,
-      honorarios: dist ? Math.max(0, Number(dist.honorarios)) : 0,
-      sobreasignaciones: dist ? Math.max(0, Number(dist.sobreasignaciones)) : 0,
-      gastos: dist ? Math.max(0, Number(dist.gastos)) : 0,
+      cargo: agent.cargo || "PROFESIONAL",
+      honorarios: Math.max(0, honVal),
+      sobreasignaciones: Math.max(0, sobreVal),
     };
   });
 
@@ -181,30 +176,25 @@ export default function LiquidationDetailClient({
   };
 
   const handleSaveAgentsDistribution = async () => {
-    if (!targetHospitalId) {
-      setErrorMsg("No se pudo identificar el establecimiento para guardar la distribución.");
-      return;
-    }
-
     setSavingAgents(true);
     setErrorMsg(null);
     setSuccessMsg(null);
 
     try {
       const distPayload = agentDistRows.map((r) => ({
-        agentId: r.agentId,
+        idAgente: r.agentId,
         honorarios: Number(r.honorarios || 0),
-        sobreasignaciones: Number(r.sobreasignaciones || 0),
-        gastos: Number(r.gastos || 0),
+        sobreasignacion: Number(r.sobreasignaciones || 0),
       }));
 
-      const res = await bulkSaveDistributions(liq.id, targetHospitalId, distPayload);
+      const res = await saveLiquidacionPersonalDistributions(liq.id, distPayload);
       if (res.error) {
         setErrorMsg(res.error);
         return;
       }
 
-      setSuccessMsg("Distribución de personal guardada exitosamente.");
+      setSuccessMsg("Distribución de personal guardada en LiquidacionPersonal exitosamente.");
+      router.refresh();
     } catch (e: any) {
       setErrorMsg("Error al guardar la distribución individual de agentes.");
     } finally {
@@ -395,14 +385,10 @@ export default function LiquidationDetailClient({
       ? agentDistRows.reduce((sum, r) => sum + (Number(r.sobreasignaciones) || 0), 0)
       : Number(liq.totalSobreasignaciones || 0);
 
-  const liveTotalGastos =
-    agentDistRows.length > 0
-      ? agentDistRows.reduce((sum, r) => sum + (Number(r.gastos) || 0), 0)
-      : Number(liq.totalGastos || 0);
-
-  const liveTotalDistribuido = liveTotalHonorarios + liveTotalSobreasignaciones + liveTotalGastos;
   const currentHospitalNeto = detailSums.netoAPagar;
-  const balanceRestante = currentHospitalNeto - liveTotalDistribuido;
+  const liveTotalGastos = Math.max(0, currentHospitalNeto - (liveTotalHonorarios + liveTotalSobreasignaciones));
+  const liveTotalDistribuido = liveTotalHonorarios + liveTotalSobreasignaciones + liveTotalGastos;
+  const balanceRestante = currentHospitalNeto - (liveTotalHonorarios + liveTotalSobreasignaciones);
 
   return (
     <div className="space-y-6 text-foreground">
@@ -964,19 +950,18 @@ export default function LiquidationDetailClient({
               <Table>
                 <TableHeader className="bg-muted/50 text-muted-foreground">
                   <TableRow className="hover:bg-transparent border-border">
-                    <TableHead className="font-semibold text-3xs uppercase py-2">DNI / CUIL</TableHead>
+                    <TableHead className="font-semibold text-3xs uppercase py-2">LEGAJO / ID</TableHead>
                     <TableHead className="font-semibold text-3xs uppercase">APELLIDO Y NOMBRE</TableHead>
                     <TableHead className="font-semibold text-3xs uppercase">PUESTO LABORAL</TableHead>
                     <TableHead className="font-semibold text-3xs uppercase text-right">HONORARIOS ($)</TableHead>
                     <TableHead className="font-semibold text-3xs uppercase text-right">SOBREASIGNACIÓN ($)</TableHead>
-                    <TableHead className="font-semibold text-3xs uppercase text-right">GASTOS ($)</TableHead>
                     <TableHead className="font-semibold text-3xs uppercase text-right">TOTAL AGENTE</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredAgentRows.length === 0 ? (
                     <TableRow className="border-border">
-                      <TableCell colSpan={7} className="text-center text-muted-foreground text-xs py-8">
+                      <TableCell colSpan={6} className="text-center text-muted-foreground text-xs py-8">
                         {agentSearchQuery.trim()
                           ? "No se encontraron agentes que coincidan con la búsqueda."
                           : "No hay agentes registrados para este establecimiento."}
@@ -986,16 +971,15 @@ export default function LiquidationDetailClient({
                     filteredAgentRows.map((agent: any) => {
                       const totalAgente =
                         Number(agent.honorarios || 0) +
-                        Number(agent.sobreasignaciones || 0) +
-                        Number(agent.gastos || 0);
+                        Number(agent.sobreasignaciones || 0);
 
                       return (
                         <TableRow
-                          key={agent.agentId}
+                          key={`${agent.agentId}-${agent.legajo}`}
                           className="hover:bg-muted/40 border-border text-foreground text-xs"
                         >
                           <TableCell className="font-mono text-3xs text-muted-foreground whitespace-nowrap">
-                            {agent.cuil || "-"}
+                            {agent.legajo || agent.agentId || "-"}
                           </TableCell>
                           <TableCell className="font-semibold text-3xs whitespace-normal break-words">
                             {agent.nombre}
@@ -1033,21 +1017,6 @@ export default function LiquidationDetailClient({
                                 handleAgentInputChange(agent.agentId, "sobreasignaciones", e.target.value)
                               }
                               className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-indigo-600 dark:text-indigo-400 focus-visible:ring-indigo-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </TableCell>
-
-                          {/* GASTOS INDIVIDUALES */}
-                          <TableCell className="text-right px-1 py-1">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              disabled={savingAgents}
-                              value={getInputDisplayValue(agent.gastos)}
-                              onChange={(e) =>
-                                handleAgentInputChange(agent.agentId, "gastos", e.target.value)
-                              }
-                              className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-amber-600 dark:text-amber-400 focus-visible:ring-amber-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                           </TableCell>
 

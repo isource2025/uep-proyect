@@ -123,9 +123,25 @@ function sanitizarLiquidacionCabecera(liq: any) {
   const ajusteRecupero = details.reduce((sum: number, d: any) => sum + d.ajusteRecupero, 0);
   const netoAPagar = details.reduce((sum: number, d: any) => sum + d.netoAPagar, 0);
 
-  const totalHonorarios = distributions.reduce((sum: number, d: any) => sum + d.honorarios, 0);
-  const totalSobreasignaciones = distributions.reduce((sum: number, d: any) => sum + d.sobreasignaciones, 0);
-  const totalGastos = distributions.reduce((sum: number, d: any) => sum + d.gastos, 0);
+  const personalDistributions = (liq.personalDistributions || []).map((p: any) => ({
+    idLiquidacion: p.idLiquidacion,
+    idAgente: p.idAgente,
+    honorarios: toNum(p.honorarios),
+    sobreasignacion: toNum(p.sobreasignacion),
+  }));
+
+  const personalHonorarios = personalDistributions.reduce((sum: number, p: any) => sum + p.honorarios, 0);
+  const personalSobreasignacion = personalDistributions.reduce((sum: number, p: any) => sum + p.sobreasignacion, 0);
+
+  const totalHonorarios = personalDistributions.length > 0
+    ? personalHonorarios
+    : distributions.reduce((sum: number, d: any) => sum + d.honorarios, 0);
+
+  const totalSobreasignaciones = personalDistributions.length > 0
+    ? personalSobreasignacion
+    : distributions.reduce((sum: number, d: any) => sum + d.sobreasignaciones, 0);
+
+  const totalGastos = Math.max(0, netoAPagar - (totalHonorarios + totalSobreasignaciones));
   const totalDistribuido = totalHonorarios + totalSobreasignaciones + totalGastos;
 
   return {
@@ -133,6 +149,7 @@ function sanitizarLiquidacionCabecera(liq: any) {
     rc: sanitizeCbte(liq.rc),
     details,
     distributions,
+    personalDistributions,
     totalFacturado,
     creditos,
     debitos,
@@ -663,40 +680,86 @@ Provincia de Corrientes
 
 export async function fetchLiquidationById(id: number) {
   try {
-    const liq = await prisma.liquidacion.findUnique({
-      where: { id },
-      include: {
-        period: true,
-        rc: {
-          include: {
-            cliente: true,
-            appliedAsRc: {
-              include: {
-                fc: true,
+    const [liq, personalDistributions] = await Promise.all([
+      prisma.liquidacion.findUnique({
+        where: { id },
+        include: {
+          period: true,
+          rc: {
+            include: {
+              cliente: true,
+              appliedAsRc: {
+                include: {
+                  fc: true,
+                },
               },
             },
           },
-        },
-        details: {
-          include: {
-            hospital: true,
-            cliente: true,
-            compra: true,
+          details: {
+            include: {
+              hospital: true,
+              cliente: true,
+              compra: true,
+            },
+          },
+          distributions: {
+            include: {
+              agent: true,
+            },
           },
         },
-        distributions: {
-          include: {
-            agent: true,
-          },
-        },
-      },
-    });
+      }),
+      prisma.liquidacionPersonal.findMany({
+        where: { idLiquidacion: id },
+      }),
+    ]);
 
     if (!liq) return null;
-    return sanitizarLiquidacionCabecera(liq);
+    return sanitizarLiquidacionCabecera({ ...liq, personalDistributions });
   } catch (e) {
     console.error("Error fetching liquidation by id:", e);
     return null;
+  }
+}
+
+export async function saveLiquidacionPersonalDistributions(
+  liquidationId: number,
+  distributions: {
+    idAgente: number;
+    honorarios: number;
+    sobreasignacion: number;
+  }[]
+) {
+  try {
+    // 1. Delete previous distribution rows for this liquidation
+    await prisma.liquidacionPersonal.deleteMany({
+      where: { idLiquidacion: liquidationId },
+    });
+
+    // 2. Insert valid distribution rows
+    const validRows = distributions
+      .filter((d) => d.idAgente && (d.honorarios > 0 || d.sobreasignacion > 0))
+      .map((d) => ({
+        idLiquidacion: liquidationId,
+        idAgente: d.idAgente,
+        honorarios: d.honorarios,
+        sobreasignacion: d.sobreasignacion,
+      }));
+
+    if (validRows.length > 0) {
+      await prisma.liquidacionPersonal.createMany({
+        data: validRows,
+      });
+    }
+
+    revalidatePath(`/dashboard/liquidations/${liquidationId}`);
+    revalidatePath("/dashboard/liquidations");
+    revalidatePath("/dashboard/hospital-portal");
+
+    return { success: true };
+  } catch (e: any) {
+    console.error("Error saving liquidacion personal distributions:", e);
+    return { error: e.message || "Error al guardar los honorarios y sobreasignaciones." };
   }
 }
 

@@ -210,6 +210,7 @@ model Liquidacion {
   
   details        LiquidacionDetalle[]
   distributions  Distribucion[]
+  personalDistributions LiquidacionPersonal[]
   attachments    Adjunto[]
 }
 
@@ -339,4 +340,16 @@ model ImPersonalEmpresas {
 
   @@id([idPersonal, idEmpresa])
   @@map("imPersonalEmpresas")
+}
+
+model LiquidacionPersonal {
+  idLiquidacion   Int         @map("IdLiquidacion")
+  idAgente        Int         @map("IdAgente")
+  honorarios      Decimal?    @map("Honorarios") @db.Decimal(15, 2)
+  sobreasignacion Decimal?    @map("Sobreasignacion") @db.Decimal(15, 2)
+
+  liquidacion     Liquidacion @relation(fields: [idLiquidacion], references: [id], onDelete: Cascade)
+
+  @@id([idLiquidacion, idAgente])
+  @@map("LiquidacionPersonal")
 }

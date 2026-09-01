@@ -67,18 +67,24 @@ interface AgentsClientProps {
     email?: string;
     role?: string;
     hospitalId?: number | null;
+    empresaId?: number | null;
   };
+  targetHospitalId?: number;
 }
 
-export default function AgentsClient({ initialData, currentUser }: AgentsClientProps) {
+export default function AgentsClient({
+  initialData,
+  currentUser,
+  targetHospitalId,
+}: AgentsClientProps) {
   const router = useRouter();
-  const isAdmin = currentUser?.role === "1" || !currentUser?.hospitalId;
-  const hospitalId = currentUser?.hospitalId;
+  const isHospitalUser = currentUser?.role !== "1" && targetHospitalId !== undefined;
+  const isAdmin = !isHospitalUser;
 
   // Local state
   const [data, setData] = useState(initialData);
   const [selectedPeriod, setSelectedPeriod] = useState(initialData.activePeriod || "");
-  const [selectedHospital, setSelectedHospital] = useState<number | undefined>(hospitalId || undefined);
+  const [selectedHospital, setSelectedHospital] = useState<number | undefined>(targetHospitalId);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);

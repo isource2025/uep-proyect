@@ -88,7 +88,7 @@ export default function AgentsClient({ initialData, currentUser }: AgentsClientP
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPeriod, setUploadPeriod] = useState(
-    initialData.activePeriod || new Date().toISOString().split("T")[0]
+    initialData.activePeriod ? initialData.activePeriod.substring(0, 7) : new Date().toISOString().substring(0, 7)
   );
   const [uploading, setUploading] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -198,13 +198,27 @@ export default function AgentsClient({ initialData, currentUser }: AgentsClientP
   // Format date display
   const formatPeriodDisplay = (pStr: string) => {
     if (!pStr) return "-";
-    const [year, month] = pStr.split("-");
-    const months = [
-      "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-    ];
-    const mIdx = parseInt(month, 10) - 1;
-    return `${months[mIdx] || month} ${year}`;
+    const parts = pStr.split("-");
+    if (parts.length >= 2) {
+      const [year, month] = parts;
+      const months = [
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+      ];
+      const mIdx = parseInt(month, 10) - 1;
+      return `${months[mIdx] || month} ${year} (${month}/${year})`;
+    }
+    return pStr;
+  };
+
+  const formatMonthYearShort = (pStr: string) => {
+    if (!pStr) return "-";
+    const parts = pStr.split("-");
+    if (parts.length >= 2) {
+      const [year, month] = parts;
+      return `${month}/${year}`;
+    }
+    return pStr;
   };
 
   return (
@@ -266,15 +280,15 @@ export default function AgentsClient({ initialData, currentUser }: AgentsClientP
               <form onSubmit={handleUploadExcel} className="space-y-4 py-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="uploadPeriod" className="text-xs font-semibold">
-                    Período / Mes Correspondiente:
+                    Período (Mes / Año):
                   </Label>
                   <Input
                     id="uploadPeriod"
-                    type="date"
+                    type="month"
                     value={uploadPeriod}
                     onChange={(e) => setUploadPeriod(e.target.value)}
                     required
-                    className="bg-muted/40 border-border text-foreground text-xs h-9"
+                    className="bg-muted/40 border-border text-foreground text-xs h-9 cursor-pointer"
                   />
                 </div>
 
@@ -509,8 +523,8 @@ export default function AgentsClient({ initialData, currentUser }: AgentsClientP
                       <TableCell className="text-3xs text-muted-foreground">
                         {ag.empresa?.localidad || "CORRIENTES"}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-3xs text-muted-foreground">
-                        {ag.periodo}
+                      <TableCell className="text-right font-mono text-3xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        {formatMonthYearShort(ag.periodo)}
                       </TableCell>
                     </TableRow>
                   ))

@@ -146,7 +146,20 @@ export async function fetchAgentsData(
 export async function importAgentsFromExcel(formData: FormData) {
   try {
     const file = formData.get("file") as File;
-    const selectedPeriod = (formData.get("period") as string) || new Date().toISOString().split("T")[0];
+    let rawPeriod = (formData.get("period") as string)?.trim() || new Date().toISOString().substring(0, 7);
+    let periodDate: Date;
+
+    if (rawPeriod.includes("/")) {
+      const [m, y] = rawPeriod.split("/");
+      periodDate = new Date(`${y}-${m.padStart(2, "0")}-01T00:00:00.000Z`);
+    } else if (rawPeriod.length === 7) {
+      // "YYYY-MM"
+      periodDate = new Date(`${rawPeriod}-01T00:00:00.000Z`);
+    } else {
+      periodDate = new Date(rawPeriod);
+    }
+
+    const periodStr = `${String(periodDate.getUTCMonth() + 1).padStart(2, "0")}/${periodDate.getUTCFullYear()}`;
 
     if (!file) {
       return { error: "No se seleccionó ningún archivo." };
@@ -161,8 +174,6 @@ export async function importAgentsFromExcel(formData: FormData) {
     if (!rows || rows.length === 0) {
       return { error: "La planilla Excel está vacía o no contiene filas válidas." };
     }
-
-    const periodDate = new Date(selectedPeriod);
 
     // Fetch existing empresas in DB to match IDs
     const dbEmpresas = await prisma.empresa.findMany({
@@ -308,7 +319,7 @@ export async function importAgentsFromExcel(formData: FormData) {
       success: true,
       count: newRecords.length > 0 ? newRecords.length : recordsToInsert.length,
       unmatched: unmatchedEmpresasCount,
-      period: selectedPeriod,
+      period: periodStr,
     };
   } catch (e: any) {
     console.error("Error importing agents from Excel:", e);

@@ -37,6 +37,11 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
           href: "/dashboard/hospital-portal",
           icon: Building2,
         },
+        {
+          name: "Agentes",
+          href: "/dashboard/agents",
+          icon: Users,
+        },
       ]
     : [
         {
@@ -48,6 +53,11 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
           name: "Hospitales",
           href: "/dashboard/hospitals",
           icon: Building2,
+        },
+        {
+          name: "Agentes",
+          href: "/dashboard/agents",
+          icon: Users,
         },
         {
           name: "Períodos",

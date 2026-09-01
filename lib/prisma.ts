@@ -62,8 +62,14 @@ function getPrismaClient(): PrismaClient {
 
 export const prisma = new Proxy({} as PrismaClient, {
   get(_target, prop) {
-    const client = getPrismaClient();
-    const value = Reflect.get(client, prop, client);
+    let client = getPrismaClient();
+    let value = Reflect.get(client, prop, client);
+    if (value === undefined && typeof prop === "string" && !prop.startsWith("$") && !prop.startsWith("_")) {
+      // Re-instantiate in case prisma generate added new model delegates during dev server execution
+      client = createPrismaClient();
+      globalForPrisma.prisma = client;
+      value = Reflect.get(client, prop, client);
+    }
     return typeof value === "function" ? value.bind(client) : value;
   },
 });

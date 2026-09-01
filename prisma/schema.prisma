@@ -291,3 +291,52 @@ model CParametro {
 
   @@map("CParametros")
 }
+
+model Empresa {
+  id              Int       @id @map("IDEMPRESA") @db.SmallInt
+  descripcion     String?   @map("DESCRIPCION") @db.VarChar(80)
+  idGrupoCC       Int?      @map("IdGrupoCC") @db.SmallInt
+  calle           String?   @map("calle") @db.Char(25)
+  calleNro        Int?      @map("calle_nro") @db.SmallInt
+  depto           String?   @map("Depto") @db.Char(4)
+  piso            String?   @map("piso") @db.Char(3)
+  localidad       String?   @map("localidad") @db.Char(30)
+  idCodPostal     String?   @map("idcodpostal") @db.Char(8)
+  provincia       String?   @map("Provincia") @db.Char(30)
+  pais            String?   @map("Pais") @db.Char(30)
+  cuit            Decimal?  @map("Nro_CUIT") @db.Decimal(15, 0)
+  ingBrutos       Decimal?  @map("Nro_IngBrutos") @db.Decimal(15, 0)
+  cm              Decimal?  @map("CM") @db.Decimal(15, 0)
+  idTipoIVA       Int?      @map("IdTipoIVA") @db.SmallInt
+  inicioAct       DateTime? @map("InicioActividades")
+  telefono        String?   @map("TEEmpresa") @db.VarChar(45)
+  email           String?   @map("EMail") @db.VarChar(40)
+
+  personalMsp     ImPersonalMsp[]
+  personalEmpresas ImPersonalEmpresas[]
+
+  @@map("EMPRESAS")
+}
+
+model ImPersonalMsp {
+  periodo         DateTime @map("Periodo") @db.Date
+  idEmpresa       Int      @map("IdEmpresa")
+  legajo          String   @map("Legago") @db.VarChar(10)
+  idAgente        Int?     @map("IdAgente")
+  apellidoyNombre String?  @map("ApellidoyNombre") @db.VarChar(300)
+
+  empresa         Empresa  @relation(fields: [idEmpresa], references: [id])
+
+  @@id([idEmpresa, legajo, periodo])
+  @@map("imPersonalMsp")
+}
+
+model ImPersonalEmpresas {
+  idPersonal      Int      @map("IdPersonal")
+  idEmpresa       Int      @map("IdEmpresa")
+
+  empresa         Empresa  @relation(fields: [idEmpresa], references: [id])
+
+  @@id([idPersonal, idEmpresa])
+  @@map("imPersonalEmpresas")
+}

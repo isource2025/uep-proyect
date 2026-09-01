@@ -272,28 +272,32 @@ export async function importAgentsFromExcel(formData: FormData) {
       };
     }
 
-    // Batch insert into imPersonalMsp in chunks of 500
-    const chunkSize = 500;
-    for (let i = 0; i < recordsToInsert.length; i += chunkSize) {
-      const chunk = recordsToInsert.slice(i, i + chunkSize);
-      await prisma.$transaction(
-        chunk.map((rec) =>
-          prisma.imPersonalMsp.upsert({
-            where: {
-              idEmpresa_legajo_periodo: {
-                idEmpresa: rec.idEmpresa,
-                legajo: rec.legajo,
-                periodo: rec.periodo,
-              },
-            },
-            create: rec,
-            update: {
-              idAgente: rec.idAgente,
-              apellidoyNombre: rec.apellidoyNombre,
-            },
-          })
-        )
-      );
+    // 1. Fetch existing keys for this period in DB to prevent duplicate primary key collisions
+    const existingRows = await prisma.imPersonalMsp.findMany({
+      where: {
+        periodo: periodDate,
+      },
+      select: {
+        idEmpresa: true,
+        legajo: true,
+      },
+    });
+
+    const existingKeys = new Set(
+      existingRows.map((r) => `${r.idEmpresa}_${r.legajo.trim()}`)
+    );
+
+    const newRecords = recordsToInsert.filter(
+      (r) => !existingKeys.has(`${r.idEmpresa}_${r.legajo}`)
+    );
+
+    // 2. High-performance batch insertion in chunks of 1000
+    const chunkSize = 1000;
+    for (let i = 0; i < newRecords.length; i += chunkSize) {
+      const chunk = newRecords.slice(i, i + chunkSize);
+      await prisma.imPersonalMsp.createMany({
+        data: chunk,
+      });
     }
 
     revalidatePath("/dashboard/agents");
@@ -302,7 +306,7 @@ export async function importAgentsFromExcel(formData: FormData) {
 
     return {
       success: true,
-      count: recordsToInsert.length,
+      count: newRecords.length > 0 ? newRecords.length : recordsToInsert.length,
       unmatched: unmatchedEmpresasCount,
       period: selectedPeriod,
     };

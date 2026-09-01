@@ -403,13 +403,13 @@ export default function AgentsClient({
           {/* Filter controls */}
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Period selector */}
-            <div className="flex items-center gap-1.5 bg-muted/40 border border-border rounded-lg px-2.5 py-1 text-xs">
+            <div className="flex items-center gap-1.5 bg-muted/40 border border-border rounded-lg px-2.5 py-1 text-xs max-w-xs">
               <CalendarRange className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-3xs font-bold uppercase text-muted-foreground">Período:</span>
+              <span className="text-3xs font-bold uppercase text-muted-foreground shrink-0">Período:</span>
               <select
                 value={selectedPeriod}
                 onChange={(e) => handlePeriodChange(e.target.value)}
-                className="bg-transparent border-none text-foreground font-semibold text-xs focus:outline-none cursor-pointer"
+                className="bg-transparent border-none text-foreground font-semibold text-xs focus:outline-none cursor-pointer truncate min-w-0 w-auto"
               >
                 {data.periods.length === 0 ? (
                   <option value="" className="bg-card text-foreground">
@@ -427,13 +427,13 @@ export default function AgentsClient({
 
             {/* Hospital selector for Admins */}
             {isAdmin && (
-              <div className="flex items-center gap-1.5 bg-muted/40 border border-border rounded-lg px-2.5 py-1 text-xs max-w-xs">
+              <div className="flex items-center gap-1.5 bg-muted/40 border border-border rounded-lg px-2.5 py-1 text-xs max-w-xs sm:max-w-md">
                 <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <span className="text-3xs font-bold uppercase text-muted-foreground">Establecimiento:</span>
+                <span className="text-3xs font-bold uppercase text-muted-foreground shrink-0">Establecimiento:</span>
                 <select
                   value={selectedHospital || ""}
                   onChange={(e) => handleHospitalChange(e.target.value)}
-                  className="bg-transparent border-none text-foreground font-semibold text-xs focus:outline-none cursor-pointer truncate"
+                  className="bg-transparent border-none text-foreground font-semibold text-xs focus:outline-none cursor-pointer truncate min-w-0 w-full"
                 >
                   <option value="" className="bg-card text-foreground">
                     Todos los Establecimientos ({data.empresas.length})

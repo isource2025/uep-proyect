@@ -33,7 +33,17 @@ export async function bulkSaveDistributions(
 
     const netoFinalLimit = details.reduce((sum, d) => sum + Number(d.netoAPagar), 0);
 
-    // 2. Validate total distributed amount
+    // 2. Validate total distributed amount & exclusivity (Honorarios OR Sobreasignaciones)
+    const hasBoth = distributions.some(
+      (d) => Number(d.honorarios || 0) > 0 && Number(d.sobreasignaciones || 0) > 0
+    );
+
+    if (hasBoth) {
+      return {
+        error: "Regla de validación: Un profesional solo puede percibir Honorarios o Sobreasignación, no ambos conceptos simultáneamente.",
+      };
+    }
+
     const totalRequested = distributions.reduce(
       (sum, d) => sum + d.honorarios + d.sobreasignaciones + d.gastos,
       0

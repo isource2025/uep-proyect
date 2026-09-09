@@ -82,25 +82,41 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
   }
 
   let agents: any[] = [];
+  let extraSavedAgents: any[] = [];
+
+  // Temporarily relaxed period filter for client demo (TODO: restore strict period check tomorrow)
   if (targetEmpresaId) {
     const mspAgents = await prisma.imPersonalMsp.findMany({
-      where: { idEmpresa: targetEmpresaId },
+      where: {
+        idEmpresa: targetEmpresaId,
+      },
       orderBy: { apellidoyNombre: "asc" },
     });
+
     if (mspAgents.length > 0) {
-      agents = mspAgents.map((ag) => ({
-        id: ag.idAgente || parseInt(ag.legajo.replace(/[^\d]/g, ""), 10) || 0,
-        idAgente: ag.idAgente || parseInt(ag.legajo.replace(/[^\d]/g, ""), 10) || 0,
-        legajo: ag.legajo.trim(),
-        nombre: ag.apellidoyNombre?.trim() || "",
-        cargo: ag.idAgente ? `Puesto ${ag.idAgente}` : "PROFESIONAL",
-      }));
+      const seen = new Set<string>();
+      for (const ag of mspAgents) {
+        const agId = ag.idAgente || parseInt(ag.legajo.replace(/[^\d]/g, ""), 10) || 0;
+        const key = `${agId}_${ag.legajo.trim()}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          agents.push({
+            id: agId,
+            idAgente: agId,
+            legajo: ag.legajo.trim(),
+            nombre: ag.apellidoyNombre?.trim() || "",
+            cargo: ag.idAgente ? `Puesto ${ag.idAgente}` : "PROFESIONAL",
+          });
+        }
+      }
     }
   }
 
-  if (agents.length === 0 && user?.hospitalId) {
+  // Fallback to Agente table if imPersonalMsp is empty for this establishment
+  if (agents.length === 0 && (user?.hospitalId || targetEmpresaId)) {
+    const hospId = user?.hospitalId || targetEmpresaId;
     const legacyAgents = await prisma.agente.findMany({
-      where: { hospitalId: user.hospitalId },
+      where: { hospitalId: hospId },
       orderBy: { nombre: "asc" },
     });
     agents = legacyAgents.map((ag) => ({
@@ -112,11 +128,34 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     }));
   }
 
+  // If there are already saved distributions for this liquidation, fetch their metadata to always display names correctly
+  const savedAgenteIds = (liquidation.personalDistributions || [])
+    .map((p: any) => p.idAgente)
+    .filter(Boolean);
+
+  if (savedAgenteIds.length > 0) {
+    const savedMsp = await prisma.imPersonalMsp.findMany({
+      where: {
+        idAgente: { in: savedAgenteIds },
+      },
+      distinct: ["idAgente"],
+    });
+
+    extraSavedAgents = savedMsp.map((ag) => ({
+      id: ag.idAgente || parseInt(ag.legajo.replace(/[^\d]/g, ""), 10) || 0,
+      idAgente: ag.idAgente || parseInt(ag.legajo.replace(/[^\d]/g, ""), 10) || 0,
+      legajo: ag.legajo.trim(),
+      nombre: ag.apellidoyNombre?.trim() || "",
+      cargo: ag.idAgente ? `Puesto ${ag.idAgente}` : "PROFESIONAL",
+    }));
+  }
+
   return (
     <LiquidationDetailClient
       liquidation={serializeData(liquidation)}
       currentUser={session?.user as any}
       agents={serializeData(agents)}
+      extraSavedAgents={serializeData(extraSavedAgents)}
       hospitalId={targetEmpresaId || user?.hospitalId}
     />
   );

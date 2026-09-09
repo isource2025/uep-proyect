@@ -731,6 +731,17 @@ export async function saveLiquidacionPersonalDistributions(
   }[]
 ) {
   try {
+    // Validation: An agent can receive EITHER Honorarios OR Sobreasignacion, but NOT both
+    const invalidExclusivity = distributions.find(
+      (d) => Number(d.honorarios || 0) > 0 && Number(d.sobreasignacion || 0) > 0
+    );
+
+    if (invalidExclusivity) {
+      return {
+        error: "Regla de validación: Un profesional solo puede percibir Honorarios o Sobreasignación, no ambos conceptos simultáneamente.",
+      };
+    }
+
     // 1. Delete previous distribution rows for this liquidation
     await prisma.liquidacionPersonal.deleteMany({
       where: { idLiquidacion: liquidationId },

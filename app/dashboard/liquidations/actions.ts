@@ -728,7 +728,8 @@ export async function saveLiquidacionPersonalDistributions(
     idAgente: number;
     honorarios: number;
     sobreasignacion: number;
-  }[]
+  }[],
+  hospitalId?: number
 ) {
   try {
     // Validation: An agent can receive EITHER Honorarios OR Sobreasignacion, but NOT both
@@ -742,10 +743,33 @@ export async function saveLiquidacionPersonalDistributions(
       };
     }
 
-    // 1. Delete previous distribution rows for this liquidation
-    await prisma.liquidacionPersonal.deleteMany({
-      where: { idLiquidacion: liquidationId },
-    });
+    // 1. Determine which agent rows to delete
+    if (hospitalId) {
+      // Scope deletion to agents of this specific hospital
+      const hospitalMsp = await prisma.imPersonalMsp.findMany({
+        where: { idEmpresa: hospitalId },
+        select: { idAgente: true, legajo: true },
+      });
+      const mspAgentIds = hospitalMsp
+        .map((m) => m.idAgente || parseInt(m.legajo.replace(/[^\d]/g, ""), 10) || 0)
+        .filter(Boolean);
+      const inputAgentIds = distributions.map((d) => d.idAgente);
+      const agentIdsToDelete = Array.from(new Set([...mspAgentIds, ...inputAgentIds]));
+
+      if (agentIdsToDelete.length > 0) {
+        await prisma.liquidacionPersonal.deleteMany({
+          where: {
+            idLiquidacion: liquidationId,
+            idAgente: { in: agentIdsToDelete },
+          },
+        });
+      }
+    } else {
+      // Admin saving full liquidation personal distribution
+      await prisma.liquidacionPersonal.deleteMany({
+        where: { idLiquidacion: liquidationId },
+      });
+    }
 
     // 2. Insert valid distribution rows
     const validRows = distributions

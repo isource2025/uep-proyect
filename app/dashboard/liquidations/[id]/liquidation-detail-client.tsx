@@ -118,12 +118,31 @@ export default function LiquidationDetailClient({
       (agents || []).find((a: any) => (a.idAgente || a.id) === p.idAgente) ||
       (extraSavedAgents || []).find((a: any) => (a.idAgente || a.id) === p.idAgente);
 
+    let hospName = agMeta?.hospitalNombre || "";
+    if (!hospName && agMeta?.hospitalId && liq.details) {
+      const matchDet = liq.details.find(
+        (d: any) =>
+          d.hospitalId === agMeta.hospitalId ||
+          d.compra?.hospitalId === agMeta.hospitalId
+      );
+      if (matchDet) {
+        hospName = matchDet.prestadorNombre || matchDet.hospital?.nombre || "";
+      }
+    }
+    if (!hospName && isHospitalUser && currentUser?.name) {
+      hospName = currentUser.name;
+    }
+    if (!hospName && liq.details && liq.details.length === 1) {
+      hospName = liq.details[0].prestadorNombre || liq.details[0].hospital?.nombre || "";
+    }
+
     return {
       agentId: p.idAgente,
       legajo: agMeta?.legajo || "",
       nombre: agMeta?.nombre || `Agente #${p.idAgente}`,
       cuil: agMeta?.cuil || "",
       cargo: agMeta?.cargo || "PROFESIONAL",
+      hospitalNombre: hospName,
       honorarios: Math.max(0, Number(p.honorarios || 0)),
       sobreasignaciones: Math.max(0, Number(p.sobreasignacion || 0)),
     };
@@ -162,15 +181,36 @@ export default function LiquidationDetailClient({
       !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
     );
 
-    const newRows = agentsToAdd.map((ag: any) => ({
-      agentId: ag.idAgente || ag.id,
-      legajo: ag.legajo || "",
-      nombre: ag.nombre,
-      cuil: ag.cuil || "",
-      cargo: ag.cargo || "PROFESIONAL",
-      honorarios: 0,
-      sobreasignaciones: 0,
-    }));
+    const newRows = agentsToAdd.map((ag: any) => {
+      let hospName = ag.hospitalNombre || "";
+      if (!hospName && ag.hospitalId && liq.details) {
+        const matchDet = liq.details.find(
+          (d: any) =>
+            d.hospitalId === ag.hospitalId ||
+            d.compra?.hospitalId === ag.hospitalId
+        );
+        if (matchDet) {
+          hospName = matchDet.prestadorNombre || matchDet.hospital?.nombre || "";
+        }
+      }
+      if (!hospName && isHospitalUser && currentUser?.name) {
+        hospName = currentUser.name;
+      }
+      if (!hospName && liq.details && liq.details.length === 1) {
+        hospName = liq.details[0].prestadorNombre || liq.details[0].hospital?.nombre || "";
+      }
+
+      return {
+        agentId: ag.idAgente || ag.id,
+        legajo: ag.legajo || "",
+        nombre: ag.nombre,
+        cuil: ag.cuil || "",
+        cargo: ag.cargo || "PROFESIONAL",
+        hospitalNombre: hospName,
+        honorarios: 0,
+        sobreasignaciones: 0,
+      };
+    });
 
     setAgentDistRows((prev) => [...prev, ...newRows]);
     setSelectedAgentIdsInModal([]);
@@ -284,7 +324,11 @@ export default function LiquidationDetailClient({
         sobreasignacion: Number(r.sobreasignaciones || 0),
       }));
 
-      const res = await saveLiquidacionPersonalDistributions(liq.id, distPayload);
+      const res = await saveLiquidacionPersonalDistributions(
+        liq.id,
+        distPayload,
+        isHospitalUser && targetHospitalId ? Number(targetHospitalId) : undefined
+      );
       if (res.error) {
         setErrorMsg(res.error);
         return;
@@ -466,6 +510,7 @@ export default function LiquidationDetailClient({
     const q = agentSearchQuery.toLowerCase().trim();
     return (
       agent.nombre.toLowerCase().includes(q) ||
+      (agent.hospitalNombre && agent.hospitalNombre.toLowerCase().includes(q)) ||
       agent.cuil.toLowerCase().includes(q) ||
       agent.cargo.toLowerCase().includes(q)
     );
@@ -1001,8 +1046,8 @@ export default function LiquidationDetailClient({
         </CardContent>
       </Card>
 
-      {/* SECTION 3 - CARGA INDIVIDUAL DE MÉDICOS Y PERSONAL (SISPER) */}
-      {(isHospitalUser || agentDistRows.length > 0 || agents.length > 0) && (
+      {/* SECTION 3 - DISTRIBUCIÓN INDIVIDUAL DE MÉDICOS Y PERSONAL (SISPER) */}
+      {(isHospitalUser || agentDistRows.length > 0) && (
         <Card className="border-border bg-card shadow-sm">
           <CardHeader className="p-4 pb-3 border-b border-border/80 flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1012,7 +1057,9 @@ export default function LiquidationDetailClient({
                   Distribución Individual por Médico / Personal de Salud (SISPER)
                 </CardTitle>
                 <CardDescription className="text-3xs text-muted-foreground mt-0.5">
-                  Añada los profesionales del período ({liq.periodMes}/{liq.periodAnio}) y asigne sus honorarios o sobreasignaciones individuales.
+                  {isHospitalUser
+                    ? `Añada los profesionales del período (${liq.periodMes || ""}/${liq.periodAnio || ""}) y asigne sus honorarios o sobreasignaciones individuales.`
+                    : "Distribuciones de honorarios y sobreasignaciones consolidadas cargadas por los establecimientos de salud."}
                 </CardDescription>
               </div>
 
@@ -1026,286 +1073,305 @@ export default function LiquidationDetailClient({
                     className="w-full sm:w-56"
                   />
                 )}
-                <Button
-                  onClick={handleSaveAgentsDistribution}
-                  disabled={savingAgents || balanceRestante < 0}
-                  className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-8 text-xs shrink-0 cursor-pointer"
-                >
-                  {savingAgents ? (
-                    <>
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      Guardando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-3.5 w-3.5" />
-                      Guardar Personal
-                    </>
-                  )}
-                </Button>
+                {isHospitalUser && (
+                  <Button
+                    onClick={handleSaveAgentsDistribution}
+                    disabled={savingAgents || balanceRestante < 0}
+                    className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-8 text-xs shrink-0 cursor-pointer"
+                  >
+                    {savingAgents ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        Guardando...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-3.5 w-3.5" />
+                        Guardar Personal
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
 
-            {/* SELECCIÓN Y AGREGADO DE AGENTES MEDIANTE MODAL */}
-            {agents.length === 0 ? (
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-amber-600 dark:text-amber-400 text-xs">
-                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                <div>
-                  <span className="font-bold">Sin agentes registrados:</span> No se encontraron profesionales cargados para este establecimiento. Puede importar la nómina correspondiente desde la sección de Agentes.
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-muted/40 rounded-lg border border-border">
-                <div className="text-xs text-muted-foreground flex items-center gap-2">
-                  <span className="inline-flex h-2 w-2 rounded-full bg-teal-500" />
-                  <span>
-                    Profesionales disponibles:{" "}
-                    <strong className="text-foreground">
-                      {agents.filter((ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))).length}
-                    </strong>{" "}
-                    (de {agents.length} en el establecimiento)
-                  </span>
-                </div>
-
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setSelectedAgentIdsInModal([]);
-                    setModalSearchQuery("");
-                    setIsAddModalOpen(true);
-                  }}
-                  disabled={
-                    savingAgents ||
-                    agents.filter((ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))).length === 0
-                  }
-                  className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-8 text-xs shrink-0 cursor-pointer"
-                >
-                  <UserPlus className="h-3.5 w-3.5" />
-                  Añadir Profesionales (Buscar en Modal)
-                </Button>
-              </div>
-            )}
-
-            {/* MODAL DE BÚSQUEDA Y SELECCIÓN DE AGENTES */}
-            <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-              <DialogContent className="border-border bg-card text-card-foreground sm:max-w-3xl md:max-w-4xl w-[94vw] max-h-[88vh] flex flex-col p-0 overflow-hidden shadow-2xl rounded-2xl">
-                <DialogHeader className="p-5 pb-4 border-b border-border bg-muted/15 flex flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
-                      <UserPlus className="h-5 w-5" />
-                    </div>
+            {/* SELECCIÓN Y AGREGADO DE AGENTES MEDIANTE MODAL (SOLO HOSPITAL) */}
+            {isHospitalUser && (
+              <>
+                {agents.length === 0 ? (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-amber-600 dark:text-amber-400 text-xs">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                     <div>
-                      <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
-                        Seleccionar Profesionales para la Liquidación
-                      </DialogTitle>
-                      <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                        Busque por nombre, apellido, CUIL o legajo. Puede seleccionar múltiples profesionales a la vez y agregarlos a la grilla.
-                      </DialogDescription>
+                      <span className="font-bold">Sin agentes registrados:</span> No se encontraron profesionales cargados para este establecimiento. Puede importar la nómina correspondiente desde la sección de Agentes.
                     </div>
                   </div>
-                </DialogHeader>
+                ) : (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-muted/40 rounded-lg border border-border">
+                    <div className="text-xs text-muted-foreground flex items-center gap-2">
+                      <span className="inline-flex h-2 w-2 rounded-full bg-teal-500" />
+                      <span>
+                        Profesionales disponibles:{" "}
+                        <strong className="text-foreground">
+                          {agents.filter((ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))).length}
+                        </strong>{" "}
+                        (de {agents.length} en el establecimiento)
+                      </span>
+                    </div>
 
-                {/* Search Bar & Toolbar */}
-                <div className="p-4 sm:p-5 border-b border-border bg-muted/20 space-y-3.5">
-                  <SearchBar
-                    placeholder="Buscar por apellido, nombre, CUIL o legajo..."
-                    value={modalSearchQuery}
-                    onChange={setModalSearchQuery}
-                    size="default"
-                    className="w-full shadow-xs"
-                  />
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAgentIdsInModal([]);
+                        setModalSearchQuery("");
+                        setIsAddModalOpen(true);
+                      }}
+                      disabled={
+                        savingAgents ||
+                        agents.filter((ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))).length === 0
+                      }
+                      className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-8 text-xs shrink-0 cursor-pointer"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      Añadir Profesionales (Buscar en Modal)
+                    </Button>
+                  </div>
+                )}
 
-                  {(() => {
-                    const availableInModal = agents.filter(
-                      (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
-                    );
-                    const filteredInModal = availableInModal.filter((ag: any) => {
-                      if (!modalSearchQuery.trim()) return true;
-                      const q = modalSearchQuery.toLowerCase().trim();
-                      const nombre = (ag.nombre || "").toLowerCase();
-                      const cuil = (ag.cuil || "").toLowerCase();
-                      const legajo = (ag.legajo || "").toLowerCase();
-                      const cargo = (ag.cargo || "").toLowerCase();
-                      return nombre.includes(q) || cuil.includes(q) || legajo.includes(q) || cargo.includes(q);
-                    });
-
-                    const visibleIds = filteredInModal.map((ag: any) => ag.idAgente || ag.id);
-                    const allVisibleSelected =
-                      visibleIds.length > 0 && visibleIds.every((id: number) => selectedAgentIdsInModal.includes(id));
-
-                    return (
-                      <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
-                        <div className="flex items-center gap-2.5">
-                          <span className="font-bold px-2.5 py-1 rounded-md bg-teal-500/15 text-teal-700 dark:text-teal-300">
-                            {selectedAgentIdsInModal.length} seleccionado(s)
-                          </span>
-                          <span className="text-muted-foreground text-xs">
-                            ({filteredInModal.length} disponibles)
-                          </span>
+                {/* MODAL DE BÚSQUEDA Y SELECCIÓN DE AGENTES */}
+                <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+                  <DialogContent className="border-border bg-card text-card-foreground sm:max-w-3xl md:max-w-4xl w-[94vw] max-h-[88vh] flex flex-col p-0 overflow-hidden shadow-2xl rounded-2xl">
+                    <DialogHeader className="p-5 pb-4 border-b border-border bg-muted/15 flex flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                          <UserPlus className="h-5 w-5" />
                         </div>
-
-                        <div className="flex items-center gap-2">
-                          {visibleIds.length > 0 && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleSelectAllVisibleInModal(visibleIds)}
-                              className="h-8 text-xs px-3 border-border cursor-pointer font-medium"
-                            >
-                              {allVisibleSelected ? "Deseleccionar visibles" : "Seleccionar todos los visibles"}
-                            </Button>
-                          )}
-
-                          {selectedAgentIdsInModal.length > 0 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedAgentIdsInModal([])}
-                              className="h-8 text-xs px-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
-                            >
-                              Limpiar Selección
-                            </Button>
-                          )}
+                        <div>
+                          <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
+                            Seleccionar Profesionales para la Liquidación
+                          </DialogTitle>
+                          <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                            Busque por nombre, apellido, CUIL o legajo. Puede seleccionar múltiples profesionales a la vez y agregarlos a la grilla.
+                          </DialogDescription>
                         </div>
                       </div>
-                    );
-                  })()}
-                </div>
+                    </DialogHeader>
 
-                {/* List of Agents */}
-                <div className="flex-1 overflow-y-auto max-h-[50vh] p-4 sm:p-5 space-y-2.5">
-                  {(() => {
-                    const availableInModal = agents.filter(
-                      (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
-                    );
-                    const filteredInModal = availableInModal.filter((ag: any) => {
-                      if (!modalSearchQuery.trim()) return true;
-                      const q = modalSearchQuery.toLowerCase().trim();
-                      const nombre = (ag.nombre || "").toLowerCase();
-                      const cuil = (ag.cuil || "").toLowerCase();
-                      const legajo = (ag.legajo || "").toLowerCase();
-                      const cargo = (ag.cargo || "").toLowerCase();
-                      return nombre.includes(q) || cuil.includes(q) || legajo.includes(q) || cargo.includes(q);
-                    });
+                    {/* Search Bar & Toolbar */}
+                    <div className="p-4 sm:p-5 border-b border-border bg-muted/20 space-y-3.5">
+                      <SearchBar
+                        placeholder="Buscar por apellido, nombre, CUIL o legajo..."
+                        value={modalSearchQuery}
+                        onChange={setModalSearchQuery}
+                        size="default"
+                        className="w-full shadow-xs"
+                      />
 
-                    if (filteredInModal.length === 0) {
-                      return (
-                        <div className="py-14 text-center text-xs text-muted-foreground">
-                          {modalSearchQuery.trim()
-                            ? `No se encontraron profesionales que coincidan con "${modalSearchQuery}".`
-                            : "Todos los profesionales disponibles ya han sido añadidos a la liquidación."}
-                        </div>
-                      );
-                    }
+                      {(() => {
+                        const availableInModal = agents.filter(
+                          (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
+                        );
+                        const filteredInModal = availableInModal.filter((ag: any) => {
+                          if (!modalSearchQuery.trim()) return true;
+                          const q = modalSearchQuery.toLowerCase().trim();
+                          const nombre = (ag.nombre || "").toLowerCase();
+                          const cuil = (ag.cuil || "").toLowerCase();
+                          const legajo = (ag.legajo || "").toLowerCase();
+                          const cargo = (ag.cargo || "").toLowerCase();
+                          return nombre.includes(q) || cuil.includes(q) || legajo.includes(q) || cargo.includes(q);
+                        });
 
-                    return filteredInModal.map((ag: any) => {
-                      const agId = ag.idAgente || ag.id;
-                      const isSelected = selectedAgentIdsInModal.includes(agId);
+                        const visibleIds = filteredInModal.map((ag: any) => ag.idAgente || ag.id);
+                        const allVisibleSelected =
+                          visibleIds.length > 0 && visibleIds.every((id: number) => selectedAgentIdsInModal.includes(id));
 
-                      return (
-                        <div
-                          key={`${agId}-${ag.legajo}`}
-                          onClick={() => handleToggleAgentInModal(agId)}
-                          className={cn(
-                            "flex items-center justify-between p-3.5 sm:p-4 rounded-xl cursor-pointer transition-all duration-150 border text-xs sm:text-sm select-none",
-                            isSelected
-                              ? "bg-teal-500/10 border-teal-500/50 shadow-xs ring-1 ring-teal-500/20"
-                              : "bg-card border-border/80 hover:bg-muted/40 hover:border-border shadow-2xs"
-                          )}
-                        >
-                          <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => {}} // handled by row click
-                              className="h-5 w-5 rounded border-border text-teal-600 focus:ring-teal-500 cursor-pointer shrink-0"
-                            />
-                            <div className="min-w-0">
-                              <p className="font-bold text-foreground text-sm truncate">
-                                {ag.nombre}
-                              </p>
-                              <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
-                                {ag.legajo && (
-                                  <span className="px-2 py-0.5 rounded bg-muted/80 font-mono text-xs">
-                                    Legajo: <strong className="text-foreground">{ag.legajo}</strong>
-                                  </span>
-                                )}
-                                {ag.cuil && (
-                                  <span className="px-2 py-0.5 rounded bg-muted/80 font-mono text-xs">
-                                    CUIL: <strong className="text-foreground">{ag.cuil}</strong>
-                                  </span>
-                                )}
-                                <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs font-semibold">
-                                  {ag.cargo}
+                        return (
+                          <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+                            <div className="flex items-center gap-2.5">
+                              <span className="font-bold px-2.5 py-1 rounded-md bg-teal-500/15 text-teal-700 dark:text-teal-300">
+                                {selectedAgentIdsInModal.length} seleccionado(s)
+                              </span>
+                              <span className="text-muted-foreground text-xs">
+                                ({filteredInModal.length} disponibles)
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              {visibleIds.length > 0 && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleSelectAllVisibleInModal(visibleIds)}
+                                  className="h-8 text-xs px-3 border-border cursor-pointer font-medium"
+                                >
+                                  {allVisibleSelected ? "Deseleccionar visibles" : "Seleccionar todos los visibles"}
+                                </Button>
+                              )}
+
+                              {selectedAgentIdsInModal.length > 0 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setSelectedAgentIdsInModal([])}
+                                  className="h-8 text-xs px-2.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                                >
+                                  Limpiar Selección
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* List of Agents */}
+                    <div className="flex-1 overflow-y-auto max-h-[50vh] p-4 sm:p-5 space-y-2.5">
+                      {(() => {
+                        const availableInModal = agents.filter(
+                          (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
+                        );
+                        const filteredInModal = availableInModal.filter((ag: any) => {
+                          if (!modalSearchQuery.trim()) return true;
+                          const q = modalSearchQuery.toLowerCase().trim();
+                          const nombre = (ag.nombre || "").toLowerCase();
+                          const cuil = (ag.cuil || "").toLowerCase();
+                          const legajo = (ag.legajo || "").toLowerCase();
+                          const cargo = (ag.cargo || "").toLowerCase();
+                          return nombre.includes(q) || cuil.includes(q) || legajo.includes(q) || cargo.includes(q);
+                        });
+
+                        if (filteredInModal.length === 0) {
+                          return (
+                            <div className="py-14 text-center text-xs text-muted-foreground">
+                              {modalSearchQuery.trim()
+                                ? `No se encontraron profesionales que coincidan con "${modalSearchQuery}".`
+                                : "Todos los profesionales disponibles ya han sido añadidos a la liquidación."}
+                            </div>
+                          );
+                        }
+
+                        return filteredInModal.map((ag: any) => {
+                          const agId = ag.idAgente || ag.id;
+                          const isSelected = selectedAgentIdsInModal.includes(agId);
+
+                          return (
+                            <div
+                              key={`${agId}-${ag.legajo}`}
+                              onClick={() => handleToggleAgentInModal(agId)}
+                              className={cn(
+                                "flex items-center justify-between p-3.5 sm:p-4 rounded-xl cursor-pointer transition-all duration-150 border text-xs sm:text-sm select-none",
+                                isSelected
+                                  ? "bg-teal-500/10 border-teal-500/50 shadow-xs ring-1 ring-teal-500/20"
+                                  : "bg-card border-border/80 hover:bg-muted/40 hover:border-border shadow-2xs"
+                              )}
+                            >
+                              <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}} // handled by row click
+                                  className="h-5 w-5 rounded border-border text-teal-600 focus:ring-teal-500 cursor-pointer shrink-0"
+                                />
+                                <div className="min-w-0">
+                                  <p className="font-bold text-foreground text-sm truncate">
+                                    {ag.nombre}
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                    {ag.legajo && (
+                                      <span className="px-2 py-0.5 rounded bg-muted/80 font-mono text-xs">
+                                        Legajo: <strong className="text-foreground">{ag.legajo}</strong>
+                                      </span>
+                                    )}
+                                    {ag.cuil && (
+                                      <span className="px-2 py-0.5 rounded bg-muted/80 font-mono text-xs">
+                                        CUIL: <strong className="text-foreground">{ag.cuil}</strong>
+                                      </span>
+                                    )}
+                                    <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs font-semibold">
+                                      {ag.cargo}
+                                    </span>
+                                    {ag.hospitalNombre && (
+                                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                                        {ag.hospitalNombre}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 ml-3">
+                                <span
+                                  className={cn(
+                                    "inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full transition-colors",
+                                    isSelected
+                                      ? "bg-teal-600 text-white shadow-xs"
+                                      : "bg-muted text-muted-foreground"
+                                  )}
+                                >
+                                  {isSelected && <Check className="h-3.5 w-3.5" />}
+                                  {isSelected ? "Seleccionado" : "Elegir"}
                                 </span>
                               </div>
                             </div>
-                          </div>
+                          );
+                        });
+                      })()}
+                    </div>
 
-                          <div className="shrink-0 ml-3">
-                            <span
-                              className={cn(
-                                "inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full transition-colors",
-                                isSelected
-                                  ? "bg-teal-600 text-white shadow-xs"
-                                  : "bg-muted text-muted-foreground"
-                              )}
-                            >
-                              {isSelected && <Check className="h-3.5 w-3.5" />}
-                              {isSelected ? "Seleccionado" : "Elegir"}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-
-                {/* Dialog Footer */}
-                <DialogFooter className="p-4 sm:p-5 border-t border-border bg-muted/10 flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsAddModalOpen(false)}
-                    className="border-border text-xs h-9 px-4 cursor-pointer w-full sm:w-auto"
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={handleConfirmAddAgentsFromModal}
-                    disabled={selectedAgentIdsInModal.length === 0}
-                    className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold text-xs h-9 gap-1.5 cursor-pointer px-5 w-full sm:w-auto"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Añadir Selección ({selectedAgentIdsInModal.length}) a la Grilla
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                    {/* Dialog Footer */}
+                    <DialogFooter className="p-4 sm:p-5 border-t border-border bg-muted/10 flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsAddModalOpen(false)}
+                        className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                      >
+                        Cancelar
+                      </Button>
+                      <div className="flex items-center gap-2.5">
+                        <Button
+                          type="button"
+                          onClick={handleConfirmAddAgentsFromModal}
+                          disabled={selectedAgentIdsInModal.length === 0}
+                          className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold text-xs h-9 px-4 cursor-pointer gap-1.5 shadow-sm"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Añadir {selectedAgentIdsInModal.length > 0 ? `(${selectedAgentIdsInModal.length})` : ""} a la Liquidación
+                        </Button>
+                      </div>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </>
+            )}
           </CardHeader>
+
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader className="bg-muted/50 text-muted-foreground">
                   <TableRow className="hover:bg-transparent border-border">
-                    <TableHead className="font-semibold text-3xs uppercase py-2">APELLIDO Y NOMBRE</TableHead>
+                    <TableHead className="font-semibold text-3xs uppercase py-2">PRESTADOR</TableHead>
                     <TableHead className="font-semibold text-3xs uppercase">PUESTO LABORAL</TableHead>
                     <TableHead className="font-semibold text-3xs uppercase text-right">HONORARIOS ($)</TableHead>
                     <TableHead className="font-semibold text-3xs uppercase text-right">SOBREASIGNACIÓN ($)</TableHead>
                     <TableHead className="font-semibold text-3xs uppercase text-right">TOTAL AGENTE</TableHead>
-                    <TableHead className="font-semibold text-3xs uppercase text-center w-12">QUITAR</TableHead>
+                    {isHospitalUser && (
+                      <TableHead className="font-semibold text-3xs uppercase text-center w-12">QUITAR</TableHead>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredAgentRows.length === 0 ? (
                     <TableRow className="border-border">
-                      <TableCell colSpan={6} className="text-center text-muted-foreground text-xs py-8">
+                      <TableCell colSpan={isHospitalUser ? 6 : 5} className="text-center text-muted-foreground text-xs py-8">
                         {agentSearchQuery.trim()
                           ? "No se encontraron agentes que coincidan con la búsqueda."
-                          : "La lista de distribución está vacía. Seleccione arriba los profesionales del período para añadirlos uno por uno."}
+                          : isHospitalUser
+                          ? "La lista de distribución está vacía. Seleccione arriba los profesionales del período para añadirlos uno por uno."
+                          : "Aún no se han registrado distribuciones de profesionales por parte de los establecimientos de salud para esta liquidación."}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -1319,8 +1385,15 @@ export default function LiquidationDetailClient({
                           key={`${agent.agentId}-${agent.legajo}`}
                           className="hover:bg-muted/40 border-border text-foreground text-xs"
                         >
-                          <TableCell className="font-semibold text-3xs whitespace-normal break-words py-2.5">
-                            {agent.nombre}
+                          <TableCell className="text-3xs whitespace-normal break-words py-2.5">
+                            <div className="font-bold text-foreground text-xs">
+                              {agent.hospitalNombre || agent.nombre}
+                            </div>
+                            {agent.hospitalNombre && agent.nombre && (
+                              <div className="text-3xs text-muted-foreground font-medium mt-0.5">
+                                {agent.nombre}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-3xs text-muted-foreground whitespace-nowrap">
                             <span className="inline-block px-1.5 py-0.5 rounded bg-muted font-medium text-3xs">
@@ -1330,32 +1403,44 @@ export default function LiquidationDetailClient({
 
                           {/* HONORARIOS INDIVIDUALES */}
                           <TableCell className="text-right px-1 py-1">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              disabled={savingAgents}
-                              value={getInputDisplayValue(agent.honorarios)}
-                              onChange={(e) =>
-                                handleAgentInputChange(agent.agentId, "honorarios", e.target.value)
-                              }
-                              className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-teal-600 dark:text-teal-400 focus-visible:ring-teal-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
+                            {isHospitalUser ? (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                disabled={savingAgents}
+                                value={getInputDisplayValue(agent.honorarios)}
+                                onChange={(e) =>
+                                  handleAgentInputChange(agent.agentId, "honorarios", e.target.value)
+                                }
+                                className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-teal-600 dark:text-teal-400 focus-visible:ring-teal-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                            ) : (
+                              <span className="font-mono text-3xs font-semibold text-teal-600 dark:text-teal-400 px-2">
+                                {formatCurrency(agent.honorarios)}
+                              </span>
+                            )}
                           </TableCell>
 
                           {/* SOBREASIGNACION INDIVIDUAL */}
                           <TableCell className="text-right px-1 py-1">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              disabled={savingAgents}
-                              value={getInputDisplayValue(agent.sobreasignaciones)}
-                              onChange={(e) =>
-                                handleAgentInputChange(agent.agentId, "sobreasignaciones", e.target.value)
-                              }
-                              className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-indigo-600 dark:text-indigo-400 focus-visible:ring-indigo-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
+                            {isHospitalUser ? (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                disabled={savingAgents}
+                                value={getInputDisplayValue(agent.sobreasignaciones)}
+                                onChange={(e) =>
+                                  handleAgentInputChange(agent.agentId, "sobreasignaciones", e.target.value)
+                                }
+                                className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-indigo-600 dark:text-indigo-400 focus-visible:ring-indigo-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                            ) : (
+                              <span className="font-mono text-3xs font-semibold text-indigo-600 dark:text-indigo-400 px-2">
+                                {formatCurrency(agent.sobreasignaciones)}
+                              </span>
+                            )}
                           </TableCell>
 
                           {/* TOTAL AGENTE */}
@@ -1363,20 +1448,22 @@ export default function LiquidationDetailClient({
                             {formatCurrency(totalAgente)}
                           </TableCell>
 
-                          {/* QUITAR AGENTE */}
-                          <TableCell className="text-center px-1 py-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              disabled={savingAgents}
-                              onClick={() => handleRemoveAgent(agent.agentId)}
-                              className="h-7 w-7 p-0 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 cursor-pointer"
-                              title="Quitar de la lista de distribución"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </TableCell>
+                          {/* QUITAR AGENTE (SOLO HOSPITAL) */}
+                          {isHospitalUser && (
+                            <TableCell className="text-center px-1 py-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={savingAgents}
+                                onClick={() => handleRemoveAgent(agent.agentId)}
+                                className="h-7 w-7 p-0 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 cursor-pointer"
+                                title="Quitar de la lista de distribución"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </TableCell>
+                          )}
                         </TableRow>
                       );
                     })

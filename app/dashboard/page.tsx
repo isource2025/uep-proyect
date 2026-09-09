@@ -20,8 +20,9 @@ export default async function DashboardPage() {
     redirect("/dashboard/hospital-portal");
   }
   // Fetch summary stats, active period, recent cbtes and aggregations in parallel to minimize latency
-  const [hospitalCount, agentCount, fcCount, rcCount, activePeriod, recentCbtes, totalInvoiced] = await Promise.all([
+  const [hospitalCount, mspAgentCount, legacyAgentCount, fcCount, rcCount, activePeriod, recentCbtes, totalInvoiced] = await Promise.all([
     prisma.proveedor.count({ where: { tipoProvId: 18 } }),
+    prisma.imPersonalMsp.count(),
     prisma.agente.count(),
     prisma.cbte.count({ where: { type: "FC" } }),
     prisma.cbte.count({ where: { type: "RC" } }),
@@ -38,6 +39,8 @@ export default async function DashboardPage() {
       where: { type: "FC" },
     })
   ]);
+
+  const agentCount = mspAgentCount > 0 ? mspAgentCount : legacyAgentCount;
 
   // Format currency helper
   const formatCurrency = (val: any) => {
@@ -59,13 +62,15 @@ export default async function DashboardPage() {
       value: hospitalCount,
       description: "Centros médicos activos en el sistema ERP",
       icon: Building2,
+      href: "/dashboard/import",
       color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
     },
     {
       title: "Agentes Médicos (SISPER)",
       value: agentCount,
-      description: "Profesionales de la salud registrados",
+      description: "Profesionales de la salud cargados desde Excel",
       icon: Users,
+      href: "/dashboard/agents",
       color: "text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/20",
     },
     {
@@ -73,6 +78,7 @@ export default async function DashboardPage() {
       value: fcCount,
       description: `Monto total: ${formatCurrency(totalInvoiced._sum.importe)}`,
       icon: FileText,
+      href: "/dashboard/import",
       color: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20",
     },
     {
@@ -80,6 +86,7 @@ export default async function DashboardPage() {
       value: rcCount,
       description: "Recibos de cobro de obras sociales",
       icon: Landmark,
+      href: "/dashboard/liquidations",
       color: "text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20",
     },
   ];
@@ -114,8 +121,8 @@ export default async function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {statCards.map((card) => {
           const Icon = card.icon;
-          return (
-            <Card key={card.title} className="border-border bg-card text-card-foreground">
+          const cardContent = (
+            <Card className="border-border bg-card text-card-foreground hover:bg-muted/30 transition-all duration-200 h-full">
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   {card.title}
@@ -129,6 +136,14 @@ export default async function DashboardPage() {
                 <p className="text-xs text-muted-foreground mt-1.5 leading-tight">{card.description}</p>
               </CardContent>
             </Card>
+          );
+
+          return card.href ? (
+            <Link key={card.title} href={card.href} className="block transition-transform hover:-translate-y-0.5">
+              {cardContent}
+            </Link>
+          ) : (
+            <div key={card.title}>{cardContent}</div>
           );
         })}
       </div>

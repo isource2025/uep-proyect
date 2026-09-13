@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import path from "path";
 import { put } from "@vercel/blob";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -355,6 +357,9 @@ export async function calculateLiquidation(rcId: number) {
 
     const monthStr = `${activePeriod.mes.toString().padStart(2, "0")}/${activePeriod.anio}`;
 
+    const session = await auth.api.getSession({ headers: await headers() });
+    const currentUserName = session?.user?.name || session?.user?.email || "Operador";
+
     // Create Liquidation Header record
     const liquidation = await prisma.liquidacion.create({
       data: {
@@ -362,6 +367,8 @@ export async function calculateLiquidation(rcId: number) {
         periodMes: activePeriod.mes,
         rcId,
         mesCarga: monthStr,
+        createdByName: currentUserName,
+        observaciones: "",
         status: "PENDIENTE",
       },
     });
@@ -472,7 +479,8 @@ export async function updateLiquidationDetails(
     ajusteRecupero: number;
   }>,
   status?: string,
-  mesCarga?: string
+  mesCarga?: string,
+  observaciones?: string
 ) {
   try {
     const detailIds = details.map((d) => d.id);
@@ -508,12 +516,13 @@ export async function updateLiquidationDetails(
 
     await Promise.all(updatePromises);
 
-    if (status || mesCarga !== undefined) {
+    if (status || mesCarga !== undefined || observaciones !== undefined) {
       await prisma.liquidacion.update({
         where: { id: liquidationId },
         data: {
           ...(status ? { status } : {}),
           ...(mesCarga !== undefined ? { mesCarga } : {}),
+          ...(observaciones !== undefined ? { observaciones } : {}),
         },
       });
     }

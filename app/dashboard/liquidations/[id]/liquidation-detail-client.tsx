@@ -27,6 +27,8 @@ import {
   ClipboardPaste,
   AlertTriangle,
   Percent,
+  User,
+  MessageSquare,
 } from "lucide-react";
 import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -109,6 +111,7 @@ export default function LiquidationDetailClient({
   // Store current liquidation state locally to dynamically display updates
   const [liq, setLiq] = useState(liquidation);
   const [mesCarga, setMesCarga] = useState(liq.mesCarga || "");
+  const [observaciones, setObservaciones] = useState(liq.observaciones || "");
   const [globalGaPercent, setGlobalGaPercent] = useState("6");
   const [customGlobalGaPercent, setCustomGlobalGaPercent] = useState("");
 
@@ -457,7 +460,7 @@ export default function LiquidationDetailClient({
         ajusteRecupero: Number(item.ajusteRecupero || 0),
       }));
 
-      const res = await updateLiquidationDetails(liq.id, parsedDetails, undefined, mesCarga);
+      const res = await updateLiquidationDetails(liq.id, parsedDetails, undefined, mesCarga, observaciones);
       if (res.error) {
         setErrorMsg(res.error);
         return;
@@ -791,6 +794,12 @@ export default function LiquidationDetailClient({
             <p className="font-mono font-bold text-foreground text-sm">
               LIQ-{String(liq.id).padStart(4, "0")}
             </p>
+            {!isHospitalUser && (
+              <div className="flex items-center gap-1.5 text-3xs text-muted-foreground pt-1">
+                <User className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                <span>Liquidado por: <strong className="text-foreground font-semibold">{liq.createdByName || "Operador"}</strong></span>
+              </div>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -900,6 +909,29 @@ export default function LiquidationDetailClient({
               </div>
             )}
           </div>
+
+          {/* OBSERVACIONES DEL LIQUIDADOR (Solo visible para Administradores / Liquidadores) */}
+          {!isHospitalUser && (
+            <div className="sm:col-span-4 mt-1 pt-3 border-t border-border/60">
+              <div className="flex items-center justify-between mb-1.5">
+                <Label className="text-[10px] text-muted-foreground uppercase font-bold flex items-center gap-1.5">
+                  <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />
+                  Observaciones de la Liquidación (Uso Interno)
+                </Label>
+                <span className="text-3xs text-muted-foreground">
+                  Visible únicamente para operadores y administradores
+                </span>
+              </div>
+              <textarea
+                disabled={saving}
+                value={observaciones}
+                onChange={(e) => setObservaciones(e.target.value)}
+                placeholder="Escriba notas u observaciones sobre esta liquidación (ej. débitos acordados, acuerdos con la O.S., etc.)..."
+                rows={2}
+                className="w-full text-xs bg-background border border-border rounded-lg p-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-75 resize-y font-normal"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

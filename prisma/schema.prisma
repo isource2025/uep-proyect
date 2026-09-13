@@ -204,6 +204,9 @@ model Liquidacion {
   debitsFileUrl  String?              // Local path to scanned PDF of debits sent by Obra Social
   debitsFileName String?              // Original filename of debits PDF
   
+  createdByName  String?              // Name/email of user who generated/saved the liquidation
+  observaciones  String?              // Operator notes / observations
+  
   status         String               @default("PENDIENTE") // PENDIENTE, EN_PROCESO, NOTIFICADO, CERRADA
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt

@@ -794,10 +794,10 @@ export default function LiquidationDetailClient({
             <p className="font-mono font-bold text-foreground text-sm">
               LIQ-{String(liq.id).padStart(4, "0")}
             </p>
-            {!isHospitalUser && (
+            {!isHospitalUser && liq.createdByName && liq.createdByName.trim() !== "" && (
               <div className="flex items-center gap-1.5 text-3xs text-muted-foreground pt-1">
                 <User className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                <span>Liquidado por: <strong className="text-foreground font-semibold">{liq.createdByName || "Operador"}</strong></span>
+                <span>Liquidado por: <strong className="text-foreground font-semibold">{liq.createdByName}</strong></span>
               </div>
             )}
           </div>

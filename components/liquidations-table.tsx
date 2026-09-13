@@ -254,35 +254,41 @@ export function LiquidationsTable({
                         <>
                           <TableCell className="text-xs font-semibold whitespace-normal break-words py-2.5">
                             <div>{liq.rc?.cliente?.nombre || "Obra Social"}</div>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-3xs text-muted-foreground flex items-center gap-1">
-                                <User className="h-3 w-3 text-emerald-500 shrink-0" />
-                                {liq.createdByName || "Operador"}
-                              </span>
-                              {liq.observaciones && liq.observaciones.trim() !== "" && (
-                                <div className="relative group inline-block">
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold cursor-help hover:bg-amber-500/20 transition-colors">
-                                    <MessageSquare className="h-3 w-3" />
-                                    Obs
+                            {((liq.createdByName && liq.createdByName.trim() !== "") || (liq.observaciones && liq.observaciones.trim() !== "")) && (
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {liq.createdByName && liq.createdByName.trim() !== "" && (
+                                  <span className="text-3xs text-muted-foreground flex items-center gap-1 font-normal">
+                                    <User className="h-3 w-3 text-emerald-500 shrink-0" />
+                                    {liq.createdByName}
                                   </span>
-                                  {/* Hover Tooltip Popup */}
-                                  <div className="absolute left-0 top-full mt-1.5 hidden group-hover:flex flex-col z-50 w-72 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95">
-                                    <div className="flex items-center justify-between border-b border-border/60 pb-1.5 mb-1.5">
-                                      <span className="font-bold text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                                        <MessageSquare className="h-3.5 w-3.5" />
-                                        Observaciones
-                                      </span>
-                                      <span className="text-3xs text-muted-foreground">
-                                        {liq.createdByName || "Operador"}
-                                      </span>
+                                )}
+                                {liq.observaciones && liq.observaciones.trim() !== "" && (
+                                  <div className="relative group inline-block">
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold cursor-help hover:bg-amber-500/20 transition-colors">
+                                      <MessageSquare className="h-3 w-3" />
+                                      Obs
+                                    </span>
+                                    {/* Hover Tooltip Popup */}
+                                    <div className="absolute left-0 top-full mt-1.5 hidden group-hover:flex flex-col z-50 w-72 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95">
+                                      <div className="flex items-center justify-between border-b border-border/60 pb-1.5 mb-1.5">
+                                        <span className="font-bold text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                                          <MessageSquare className="h-3.5 w-3.5" />
+                                          Observaciones
+                                        </span>
+                                        {liq.createdByName && (
+                                          <span className="text-3xs text-muted-foreground">
+                                            {liq.createdByName}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-2xs text-foreground whitespace-pre-wrap leading-relaxed font-normal">
+                                        {liq.observaciones}
+                                      </p>
                                     </div>
-                                    <p className="text-2xs text-foreground whitespace-pre-wrap leading-relaxed font-normal">
-                                      {liq.observaciones}
-                                    </p>
                                   </div>
-                                </div>
-                              )}
-                            </div>
+                                )}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-xs font-mono whitespace-nowrap">
                             {liq.mesCarga || (liq.periodMes ? `${liq.periodMes}/${liq.periodAnio}` : "-")}

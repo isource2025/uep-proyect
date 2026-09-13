@@ -357,17 +357,14 @@ export async function calculateLiquidation(rcId: number) {
 
     const monthStr = `${activePeriod.mes.toString().padStart(2, "0")}/${activePeriod.anio}`;
 
-    const session = await auth.api.getSession({ headers: await headers() });
-    const currentUserName = session?.user?.name || session?.user?.email || "Operador";
-
-    // Create Liquidation Header record
+    // Create Liquidation Header record (createdByName is null until the liquidador loads and saves values)
     const liquidation = await prisma.liquidacion.create({
       data: {
         periodAnio: activePeriod.anio,
         periodMes: activePeriod.mes,
         rcId,
         mesCarga: monthStr,
-        createdByName: currentUserName,
+        createdByName: null,
         observaciones: "",
         status: "PENDIENTE",
       },
@@ -516,16 +513,18 @@ export async function updateLiquidationDetails(
 
     await Promise.all(updatePromises);
 
-    if (status || mesCarga !== undefined || observaciones !== undefined) {
-      await prisma.liquidacion.update({
-        where: { id: liquidationId },
-        data: {
-          ...(status ? { status } : {}),
-          ...(mesCarga !== undefined ? { mesCarga } : {}),
-          ...(observaciones !== undefined ? { observaciones } : {}),
-        },
-      });
-    }
+    const session = await auth.api.getSession({ headers: await headers() });
+    const currentUserName = session?.user?.name || session?.user?.email || (session?.user as any)?.operador;
+
+    await prisma.liquidacion.update({
+      where: { id: liquidationId },
+      data: {
+        ...(status ? { status } : {}),
+        ...(mesCarga !== undefined ? { mesCarga } : {}),
+        ...(observaciones !== undefined ? { observaciones } : {}),
+        ...(currentUserName ? { createdByName: currentUserName } : {}),
+      },
+    });
 
     revalidatePath("/dashboard/liquidations");
     return { success: true };

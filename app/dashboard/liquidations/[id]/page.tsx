@@ -119,47 +119,41 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
   let agentsPeriodOrigin: "current" | "previous" | "none" = "none";
 
   // [RECORDATORIO PENDIENTE]: Activar control estricto de período (mes en curso con fallback a 1 mes previo; no permitir 2+ meses).
-  // Temporalmente relajado para facilitar desarrollo y carga de pruebas.
-  if (targetEmpresaIds.length > 0) {
-    const mspAgents = await prisma.imPersonalMsp.findMany({
-      where: {
-        idEmpresa: { in: targetEmpresaIds },
+  // Trae todos los agentes del sistema (permitiendo a hospitales cargar agentes que trabajen en múltiples efectores).
+  const mspAgents = await prisma.imPersonalMsp.findMany({
+    include: {
+      empresa: {
+        select: { id: true, descripcion: true },
       },
-      include: {
-        empresa: {
-          select: { id: true, descripcion: true },
-        },
-      },
-      orderBy: [{ idEmpresa: "asc" }, { apellidoyNombre: "asc" }],
-    });
+    },
+    orderBy: [{ apellidoyNombre: "asc" }, { idEmpresa: "asc" }],
+  });
 
-    if (mspAgents.length > 0) {
-      agentsPeriodOrigin = "current";
-      const seen = new Set<string>();
-      for (const ag of mspAgents) {
-        const agId = ag.idAgente || parseInt(ag.legajo.replace(/[^\d]/g, ""), 10) || 0;
-        const key = `${ag.idEmpresa}_${agId}_${ag.legajo.trim()}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          agents.push({
-            id: agId,
-            idAgente: agId,
-            legajo: ag.legajo.trim(),
-            nombre: ag.apellidoyNombre?.trim() || "",
-            cargo: ag.idAgente ? `Puesto ${ag.idAgente}` : "PROFESIONAL",
-            hospitalId: ag.idEmpresa,
-            hospitalNombre: ag.empresa?.descripcion?.trim() || "",
-          });
-        }
+  if (mspAgents.length > 0) {
+    agentsPeriodOrigin = "current";
+    const seen = new Set<string>();
+    for (const ag of mspAgents) {
+      const agId = ag.idAgente || parseInt(ag.legajo.replace(/[^\d]/g, ""), 10) || 0;
+      // Key by unique agent ID to avoid duplicate lines in the selection modal
+      const key = `${agId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        agents.push({
+          id: agId,
+          idAgente: agId,
+          legajo: ag.legajo.trim(),
+          nombre: ag.apellidoyNombre?.trim() || "",
+          cargo: ag.idAgente ? `Puesto ${ag.idAgente}` : "PROFESIONAL",
+          hospitalId: ag.idEmpresa,
+          hospitalNombre: ag.empresa?.descripcion?.trim() || "",
+        });
       }
     }
   }
 
   // Fallback to legacy Agente table if imPersonalMsp is empty
-  if (agents.length === 0 && (user?.hospitalId || targetEmpresaId || targetEmpresaIds.length > 0)) {
-    const hospIds = targetEmpresaIds.length > 0 ? targetEmpresaIds : [user?.hospitalId || targetEmpresaId];
+  if (agents.length === 0) {
     const legacyAgents = await prisma.agente.findMany({
-      where: { hospitalId: { in: hospIds } },
       orderBy: { nombre: "asc" },
     });
     agents = legacyAgents.map((ag) => ({

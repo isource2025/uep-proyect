@@ -88,7 +88,9 @@ export default function LiquidationDetailClient({
 
   // Modal state for adding agents
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [modalSearchQuery, setModalSearchQuery] = useState("");
+  const [modalSearchInput, setModalSearchInput] = useState("");
+  const [submittedSearchQuery, setSubmittedSearchQuery] = useState("");
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedAgentIdsInModal, setSelectedAgentIdsInModal] = useState<number[]>([]);
 
   const getInputDisplayValue = (val: any) => {
@@ -216,7 +218,9 @@ export default function LiquidationDetailClient({
 
     setAgentDistRows((prev) => [...prev, ...newRows]);
     setSelectedAgentIdsInModal([]);
-    setModalSearchQuery("");
+    setModalSearchInput("");
+    setSubmittedSearchQuery("");
+    setHasSearched(false);
     setIsAddModalOpen(false);
     setSuccessMsg(`Se añadieron ${newRows.length} profesional(es) a la grilla de distribución.`);
   };
@@ -1134,7 +1138,9 @@ export default function LiquidationDetailClient({
                       type="button"
                       onClick={() => {
                         setSelectedAgentIdsInModal([]);
-                        setModalSearchQuery("");
+                        setModalSearchInput("");
+                        setSubmittedSearchQuery("");
+                        setHasSearched(false);
                         setIsAddModalOpen(true);
                       }}
                       disabled={
@@ -1162,34 +1168,78 @@ export default function LiquidationDetailClient({
                             Seleccionar Profesionales para la Liquidación
                           </DialogTitle>
                           <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                            Busque por nombre, apellido, CUIL o legajo. Puede seleccionar múltiples profesionales a la vez y agregarlos a la grilla.
+                            Escriba el nombre, CUIL, legajo o efector y presione <strong>Buscar</strong> para desplegar y seleccionar agentes.
                           </DialogDescription>
                         </div>
                       </div>
                     </DialogHeader>
 
-                    {/* Search Bar & Toolbar */}
+                    {/* Search Form & Toolbar */}
                     <div className="p-4 sm:p-5 border-b border-border bg-muted/20 space-y-3.5">
-                      <SearchBar
-                        placeholder="Buscar por apellido, nombre, CUIL o legajo..."
-                        value={modalSearchQuery}
-                        onChange={setModalSearchQuery}
-                        size="default"
-                        className="w-full shadow-xs"
-                      />
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (modalSearchInput.trim()) {
+                            setSubmittedSearchQuery(modalSearchInput.trim());
+                            setHasSearched(true);
+                          }
+                        }}
+                        className="flex items-center gap-2.5 w-full"
+                      >
+                        <div className="relative flex-1">
+                          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            type="text"
+                            placeholder="Buscar por apellido, nombre, CUIL, legajo o efector..."
+                            value={modalSearchInput}
+                            onChange={(e) => setModalSearchInput(e.target.value)}
+                            className="pl-9 pr-8 bg-card border-border text-foreground text-xs sm:text-sm h-10 w-full rounded-xl focus-visible:ring-1 focus-visible:ring-teal-500 shadow-xs"
+                          />
+                          {modalSearchInput && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setModalSearchInput("");
+                                setSubmittedSearchQuery("");
+                                setHasSearched(false);
+                              }}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+
+                        <Button
+                          type="submit"
+                          disabled={!modalSearchInput.trim()}
+                          className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-10 px-4 text-xs shrink-0 cursor-pointer rounded-xl shadow-xs"
+                        >
+                          <Search className="h-4 w-4" />
+                          Buscar
+                        </Button>
+                      </form>
 
                       {(() => {
+                        const hasQuery = hasSearched && submittedSearchQuery.length > 0;
                         const availableInModal = agents.filter(
                           (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
                         );
                         const filteredInModal = availableInModal.filter((ag: any) => {
-                          if (!modalSearchQuery.trim()) return true;
-                          const q = modalSearchQuery.toLowerCase().trim();
+                          if (!hasQuery) return false;
+                          const q = submittedSearchQuery.toLowerCase().trim();
                           const nombre = (ag.nombre || "").toLowerCase();
                           const cuil = (ag.cuil || "").toLowerCase();
                           const legajo = (ag.legajo || "").toLowerCase();
                           const cargo = (ag.cargo || "").toLowerCase();
-                          return nombre.includes(q) || cuil.includes(q) || legajo.includes(q) || cargo.includes(q);
+                          const hospital = (ag.hospitalNombre || "").toLowerCase();
+                          return (
+                            nombre.includes(q) ||
+                            cuil.includes(q) ||
+                            legajo.includes(q) ||
+                            cargo.includes(q) ||
+                            hospital.includes(q)
+                          );
                         });
 
                         const visibleIds = filteredInModal.map((ag: any) => ag.idAgente || ag.id);
@@ -1197,18 +1247,28 @@ export default function LiquidationDetailClient({
                           visibleIds.length > 0 && visibleIds.every((id: number) => selectedAgentIdsInModal.includes(id));
 
                         return (
-                          <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-0.5">
                             <div className="flex items-center gap-2.5">
-                              <span className="font-bold px-2.5 py-1 rounded-md bg-teal-500/15 text-teal-700 dark:text-teal-300">
-                                {selectedAgentIdsInModal.length} seleccionado(s)
-                              </span>
-                              <span className="text-muted-foreground text-xs">
-                                ({filteredInModal.length} disponibles)
-                              </span>
+                              {selectedAgentIdsInModal.length > 0 ? (
+                                <span className="font-bold px-2.5 py-1 rounded-md bg-teal-500/15 text-teal-700 dark:text-teal-300">
+                                  {selectedAgentIdsInModal.length} seleccionado(s)
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">
+                                  {hasQuery
+                                    ? `${filteredInModal.length} resultado(s) encontrados`
+                                    : "Ingrese un término y haga clic en Buscar"}
+                                </span>
+                              )}
+                              {hasQuery && selectedAgentIdsInModal.length > 0 && (
+                                <span className="text-muted-foreground text-xs">
+                                  ({filteredInModal.length} encontrados)
+                                </span>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-2">
-                              {visibleIds.length > 0 && (
+                              {hasQuery && visibleIds.length > 0 && (
                                 <Button
                                   type="button"
                                   variant="outline"
@@ -1240,25 +1300,111 @@ export default function LiquidationDetailClient({
                     {/* List of Agents */}
                     <div className="flex-1 overflow-y-auto max-h-[50vh] p-4 sm:p-5 space-y-2.5">
                       {(() => {
+                        const hasQuery = hasSearched && submittedSearchQuery.length > 0;
                         const availableInModal = agents.filter(
                           (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
                         );
+
+                        // If user has not performed a search yet
+                        if (!hasQuery) {
+                          // If some agents were already selected, show them for quick reference/toggling
+                          const selectedAgents = availableInModal.filter((ag: any) =>
+                            selectedAgentIdsInModal.includes(ag.idAgente || ag.id)
+                          );
+
+                          if (selectedAgents.length > 0) {
+                            return (
+                              <div className="space-y-3">
+                                <div className="text-xs font-semibold text-muted-foreground flex items-center gap-2 px-1">
+                                  <CheckCircle2 className="h-4 w-4 text-teal-500" />
+                                  <span>Profesionales seleccionados ({selectedAgents.length}):</span>
+                                </div>
+                                {selectedAgents.map((ag: any) => {
+                                  const agId = ag.idAgente || ag.id;
+                                  return (
+                                    <div
+                                      key={`selected-${agId}-${ag.legajo}`}
+                                      onClick={() => handleToggleAgentInModal(agId)}
+                                      className="flex items-center justify-between p-3.5 rounded-xl cursor-pointer border bg-teal-500/10 border-teal-500/50 shadow-xs ring-1 ring-teal-500/20 text-xs sm:text-sm select-none"
+                                    >
+                                      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                                        <input
+                                          type="checkbox"
+                                          checked={true}
+                                          onChange={() => {}}
+                                          className="h-5 w-5 rounded border-border text-teal-600 focus:ring-teal-500 cursor-pointer shrink-0"
+                                        />
+                                        <div className="min-w-0">
+                                          <p className="font-bold text-foreground text-sm truncate">{ag.nombre}</p>
+                                          <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                            {ag.legajo && (
+                                              <span className="px-2 py-0.5 rounded bg-muted/80 font-mono text-xs">
+                                                Legajo: <strong className="text-foreground">{ag.legajo}</strong>
+                                              </span>
+                                            )}
+                                            {ag.cuil && (
+                                              <span className="px-2 py-0.5 rounded bg-muted/80 font-mono text-xs">
+                                                CUIL: <strong className="text-foreground">{ag.cuil}</strong>
+                                              </span>
+                                            )}
+                                            {ag.hospitalNombre && (
+                                              <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                                                {ag.hospitalNombre}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="shrink-0 ml-3">
+                                        <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-teal-600 text-white shadow-xs">
+                                          <Check className="h-3.5 w-3.5" />
+                                          Seleccionado
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="py-14 text-center flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                              <div className="h-12 w-12 rounded-2xl bg-muted/60 flex items-center justify-center text-muted-foreground/80">
+                                <Search className="h-6 w-6" />
+                              </div>
+                              <div className="max-w-xs space-y-1">
+                                <p className="font-semibold text-foreground text-sm">Buscador de Profesionales</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Ingrese un término de búsqueda y haga clic en <strong>Buscar</strong> para encontrar los profesionales.
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        }
+
                         const filteredInModal = availableInModal.filter((ag: any) => {
-                          if (!modalSearchQuery.trim()) return true;
-                          const q = modalSearchQuery.toLowerCase().trim();
+                          const q = submittedSearchQuery.toLowerCase().trim();
                           const nombre = (ag.nombre || "").toLowerCase();
                           const cuil = (ag.cuil || "").toLowerCase();
                           const legajo = (ag.legajo || "").toLowerCase();
                           const cargo = (ag.cargo || "").toLowerCase();
-                          return nombre.includes(q) || cuil.includes(q) || legajo.includes(q) || cargo.includes(q);
+                          const hospital = (ag.hospitalNombre || "").toLowerCase();
+                          return (
+                            nombre.includes(q) ||
+                            cuil.includes(q) ||
+                            legajo.includes(q) ||
+                            cargo.includes(q) ||
+                            hospital.includes(q)
+                          );
                         });
 
                         if (filteredInModal.length === 0) {
                           return (
                             <div className="py-14 text-center text-xs text-muted-foreground">
-                              {modalSearchQuery.trim()
-                                ? `No se encontraron profesionales que coincidan con "${modalSearchQuery}".`
-                                : "Todos los profesionales disponibles ya han sido añadidos a la liquidación."}
+                              No se encontraron profesionales que coincidan con &ldquo;
+                              <strong className="text-foreground">{submittedSearchQuery}</strong>
+                              &rdquo;.
                             </div>
                           );
                         }

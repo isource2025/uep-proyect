@@ -23,6 +23,9 @@ import {
   Plus,
   Check,
   X,
+  FileSpreadsheet,
+  ClipboardPaste,
+  AlertTriangle,
 } from "lucide-react";
 import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -86,10 +89,14 @@ export default function LiquidationDetailClient({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [goingBack, setGoingBack] = useState(false);
 
-  // Modal state for adding agents
+  // Modal state for adding agents (Single vs Batch from Excel)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [searchTab, setSearchTab] = useState<"single" | "batch">("single");
   const [modalSearchInput, setModalSearchInput] = useState("");
+  const [modalBatchInput, setModalBatchInput] = useState("");
   const [submittedSearchQuery, setSubmittedSearchQuery] = useState("");
+  const [submittedBatchTerms, setSubmittedBatchTerms] = useState<string[]>([]);
+  const [unmatchedBatchTerms, setUnmatchedBatchTerms] = useState<string[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedAgentIdsInModal, setSelectedAgentIdsInModal] = useState<number[]>([]);
 
@@ -174,6 +181,73 @@ export default function LiquidationDetailClient({
     });
   };
 
+  const handleExecuteBatchSearch = () => {
+    const rawTerms = modalBatchInput
+      .split(/[\r\n,;\t]+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+
+    if (rawTerms.length === 0) return;
+
+    const availableInModal = agents.filter(
+      (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
+    );
+
+    const matchedTerms = new Set<string>();
+    const foundAgentIds: number[] = [];
+
+    for (const ag of availableInModal) {
+      const agId = ag.idAgente || ag.id;
+      const agName = (ag.nombre || "").toLowerCase();
+      const agCuilDigits = (ag.cuil || "").replace(/[^\d]/g, "");
+      const agLegajo = (ag.legajo || "").toLowerCase().trim();
+      const agLegajoDigits = (ag.legajo || "").replace(/[^\d]/g, "");
+      const agIdStr = String(ag.idAgente || ag.id || "");
+
+      let isMatched = false;
+      for (const term of rawTerms) {
+        const cleanText = term.toLowerCase().trim();
+        const cleanDigits = term.replace(/[^\d]/g, "");
+
+        const matchDigits =
+          cleanDigits.length >= 6 &&
+          ((agCuilDigits && (agCuilDigits === cleanDigits || agCuilDigits.includes(cleanDigits))) ||
+            (agLegajoDigits && agLegajoDigits === cleanDigits) ||
+            (agIdStr && agIdStr === cleanDigits));
+
+        const matchText =
+          cleanText.length >= 3 &&
+          (agName.includes(cleanText) ||
+            cleanText.includes(agName) ||
+            agLegajo.includes(cleanText) ||
+            (cleanText.includes(" ") &&
+              cleanText
+                .split(" ")
+                .filter((w) => w.length > 2)
+                .every((w) => agName.includes(w))));
+
+        if (matchDigits || matchText) {
+          isMatched = true;
+          matchedTerms.add(term);
+        }
+      }
+
+      if (isMatched) {
+        foundAgentIds.push(agId);
+      }
+    }
+
+    const unmatched = rawTerms.filter((t) => !matchedTerms.has(t));
+    setSubmittedBatchTerms(rawTerms);
+    setUnmatchedBatchTerms(unmatched);
+    setHasSearched(true);
+
+    // Auto-select all matched agents from the batch
+    if (foundAgentIds.length > 0) {
+      setSelectedAgentIdsInModal((prev) => Array.from(new Set([...prev, ...foundAgentIds])));
+    }
+  };
+
   const handleConfirmAddAgentsFromModal = () => {
     if (selectedAgentIdsInModal.length === 0) {
       setIsAddModalOpen(false);
@@ -219,7 +293,10 @@ export default function LiquidationDetailClient({
     setAgentDistRows((prev) => [...prev, ...newRows]);
     setSelectedAgentIdsInModal([]);
     setModalSearchInput("");
+    setModalBatchInput("");
     setSubmittedSearchQuery("");
+    setSubmittedBatchTerms([]);
+    setUnmatchedBatchTerms([]);
     setHasSearched(false);
     setIsAddModalOpen(false);
     setSuccessMsg(`Se añadieron ${newRows.length} profesional(es) a la grilla de distribución.`);
@@ -1176,71 +1253,191 @@ export default function LiquidationDetailClient({
 
                     {/* Search Form & Toolbar */}
                     <div className="p-4 sm:p-5 border-b border-border bg-muted/20 space-y-3.5">
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (modalSearchInput.trim()) {
-                            setSubmittedSearchQuery(modalSearchInput.trim());
-                            setHasSearched(true);
-                          }
-                        }}
-                        className="flex items-center gap-2.5 w-full"
-                      >
-                        <div className="relative flex-1">
-                          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            type="text"
-                            placeholder="Buscar por apellido, nombre, CUIL, legajo o efector..."
-                            value={modalSearchInput}
-                            onChange={(e) => setModalSearchInput(e.target.value)}
-                            className="pl-9 pr-8 bg-card border-border text-foreground text-xs sm:text-sm h-10 w-full rounded-xl focus-visible:ring-1 focus-visible:ring-teal-500 shadow-xs"
-                          />
-                          {modalSearchInput && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setModalSearchInput("");
-                                setSubmittedSearchQuery("");
-                                setHasSearched(false);
-                              }}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
+                      {/* Mode Selector Tabs */}
+                      <div className="flex items-center gap-1.5 p-1 bg-muted/70 rounded-xl w-fit border border-border/70">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchTab("single");
+                            setHasSearched(false);
+                          }}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none",
+                            searchTab === "single"
+                              ? "bg-card text-foreground shadow-xs border border-border"
+                              : "text-muted-foreground hover:text-foreground"
                           )}
-                        </div>
-
-                        <Button
-                          type="submit"
-                          disabled={!modalSearchInput.trim()}
-                          className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-10 px-4 text-xs shrink-0 cursor-pointer rounded-xl shadow-xs"
                         >
-                          <Search className="h-4 w-4" />
-                          Buscar
-                        </Button>
-                      </form>
+                          <Search className="h-3.5 w-3.5" />
+                          Búsqueda Individual
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchTab("batch");
+                            setHasSearched(false);
+                          }}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none",
+                            searchTab === "batch"
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shadow-xs border border-emerald-500/30"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          <FileSpreadsheet className="h-3.5 w-3.5" />
+                          Pegar Columna de Excel (Lote)
+                        </button>
+                      </div>
+
+                      {searchTab === "single" ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (modalSearchInput.trim()) {
+                              setSubmittedSearchQuery(modalSearchInput.trim());
+                              setHasSearched(true);
+                            }
+                          }}
+                          className="flex items-center gap-2.5 w-full"
+                        >
+                          <div className="relative flex-1">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              type="text"
+                              placeholder="Buscar por apellido, nombre, CUIL, legajo o efector..."
+                              value={modalSearchInput}
+                              onChange={(e) => setModalSearchInput(e.target.value)}
+                              className="pl-9 pr-8 bg-card border-border text-foreground text-xs sm:text-sm h-10 w-full rounded-xl focus-visible:ring-1 focus-visible:ring-teal-500 shadow-xs"
+                            />
+                            {modalSearchInput && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setModalSearchInput("");
+                                  setSubmittedSearchQuery("");
+                                  setHasSearched(false);
+                                }}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+
+                          <Button
+                            type="submit"
+                            disabled={!modalSearchInput.trim()}
+                            className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-10 px-4 text-xs shrink-0 cursor-pointer rounded-xl shadow-xs"
+                          >
+                            <Search className="h-4 w-4" />
+                            Buscar
+                          </Button>
+                        </form>
+                      ) : (
+                        <div className="space-y-2.5">
+                          <div className="relative">
+                            <textarea
+                              rows={3}
+                              placeholder="Pegue aquí la columna copiada de Excel con los CUILs, legajos o apellidos (uno por fila)..."
+                              value={modalBatchInput}
+                              onChange={(e) => setModalBatchInput(e.target.value)}
+                              className="w-full p-3 pr-8 bg-card border border-border rounded-xl text-xs sm:text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-y shadow-xs"
+                            />
+                            {modalBatchInput && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setModalBatchInput("");
+                                  setSubmittedBatchTerms([]);
+                                  setUnmatchedBatchTerms([]);
+                                  setHasSearched(false);
+                                }}
+                                className="absolute right-3 top-3 text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-[11px] text-muted-foreground">
+                              💡 Copie la columna de CUILs o nombres desde su Excel y péguela aquí directamente.
+                            </p>
+                            <Button
+                              type="button"
+                              onClick={handleExecuteBatchSearch}
+                              disabled={!modalBatchInput.trim()}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1.5 h-9 px-4 text-xs shrink-0 cursor-pointer rounded-xl shadow-xs"
+                            >
+                              <FileSpreadsheet className="h-4 w-4" />
+                              Buscar Coincidencias en Excel
+                            </Button>
+                          </div>
+                        </div>
+                      )}
 
                       {(() => {
-                        const hasQuery = hasSearched && submittedSearchQuery.length > 0;
                         const availableInModal = agents.filter(
                           (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
                         );
-                        const filteredInModal = availableInModal.filter((ag: any) => {
-                          if (!hasQuery) return false;
-                          const q = submittedSearchQuery.toLowerCase().trim();
-                          const nombre = (ag.nombre || "").toLowerCase();
-                          const cuil = (ag.cuil || "").toLowerCase();
-                          const legajo = (ag.legajo || "").toLowerCase();
-                          const cargo = (ag.cargo || "").toLowerCase();
-                          const hospital = (ag.hospitalNombre || "").toLowerCase();
-                          return (
-                            nombre.includes(q) ||
-                            cuil.includes(q) ||
-                            legajo.includes(q) ||
-                            cargo.includes(q) ||
-                            hospital.includes(q)
-                          );
-                        });
+
+                        let filteredInModal: any[] = [];
+                        let hasQuery = false;
+
+                        if (searchTab === "single") {
+                          hasQuery = hasSearched && submittedSearchQuery.length > 0;
+                          if (hasQuery) {
+                            const q = submittedSearchQuery.toLowerCase().trim();
+                            filteredInModal = availableInModal.filter((ag: any) => {
+                              const nombre = (ag.nombre || "").toLowerCase();
+                              const cuil = (ag.cuil || "").toLowerCase();
+                              const legajo = (ag.legajo || "").toLowerCase();
+                              const cargo = (ag.cargo || "").toLowerCase();
+                              const hospital = (ag.hospitalNombre || "").toLowerCase();
+                              return (
+                                nombre.includes(q) ||
+                                cuil.includes(q) ||
+                                legajo.includes(q) ||
+                                cargo.includes(q) ||
+                                hospital.includes(q)
+                              );
+                            });
+                          }
+                        } else {
+                          hasQuery = hasSearched && submittedBatchTerms.length > 0;
+                          if (hasQuery) {
+                            filteredInModal = availableInModal.filter((ag: any) => {
+                              const agName = (ag.nombre || "").toLowerCase();
+                              const agCuilDigits = (ag.cuil || "").replace(/[^\d]/g, "");
+                              const agLegajo = (ag.legajo || "").toLowerCase().trim();
+                              const agLegajoDigits = (ag.legajo || "").replace(/[^\d]/g, "");
+                              const agIdStr = String(ag.idAgente || ag.id || "");
+
+                              return submittedBatchTerms.some((term) => {
+                                const cleanText = term.toLowerCase().trim();
+                                const cleanDigits = term.replace(/[^\d]/g, "");
+
+                                const matchDigits =
+                                  cleanDigits.length >= 6 &&
+                                  ((agCuilDigits && (agCuilDigits === cleanDigits || agCuilDigits.includes(cleanDigits))) ||
+                                    (agLegajoDigits && agLegajoDigits === cleanDigits) ||
+                                    (agIdStr && agIdStr === cleanDigits));
+
+                                const matchText =
+                                  cleanText.length >= 3 &&
+                                  (agName.includes(cleanText) ||
+                                    cleanText.includes(agName) ||
+                                    agLegajo.includes(cleanText) ||
+                                    (cleanText.includes(" ") &&
+                                      cleanText
+                                        .split(" ")
+                                        .filter((w) => w.length > 2)
+                                        .every((w) => agName.includes(w))));
+
+                                return matchDigits || matchText;
+                              });
+                            });
+                          }
+                        }
 
                         const visibleIds = filteredInModal.map((ag: any) => ag.idAgente || ag.id);
                         const allVisibleSelected =
@@ -1257,7 +1454,9 @@ export default function LiquidationDetailClient({
                                 <span className="text-muted-foreground text-xs">
                                   {hasQuery
                                     ? `${filteredInModal.length} resultado(s) encontrados`
-                                    : "Ingrese un término y haga clic en Buscar"}
+                                    : searchTab === "single"
+                                    ? "Ingrese un término y haga clic en Buscar"
+                                    : "Pegue los datos y haga clic en Buscar Coincidencias"}
                                 </span>
                               )}
                               {hasQuery && selectedAgentIdsInModal.length > 0 && (
@@ -1300,10 +1499,14 @@ export default function LiquidationDetailClient({
                     {/* List of Agents */}
                     <div className="flex-1 overflow-y-auto max-h-[50vh] p-4 sm:p-5 space-y-2.5">
                       {(() => {
-                        const hasQuery = hasSearched && submittedSearchQuery.length > 0;
                         const availableInModal = agents.filter(
                           (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
                         );
+
+                        const hasQuery =
+                          searchTab === "single"
+                            ? hasSearched && submittedSearchQuery.length > 0
+                            : hasSearched && submittedBatchTerms.length > 0;
 
                         // If user has not performed a search yet
                         if (!hasQuery) {
@@ -1371,109 +1574,180 @@ export default function LiquidationDetailClient({
                           return (
                             <div className="py-14 text-center flex flex-col items-center justify-center gap-3 text-muted-foreground">
                               <div className="h-12 w-12 rounded-2xl bg-muted/60 flex items-center justify-center text-muted-foreground/80">
-                                <Search className="h-6 w-6" />
+                                {searchTab === "single" ? (
+                                  <Search className="h-6 w-6" />
+                                ) : (
+                                  <FileSpreadsheet className="h-6 w-6 text-emerald-500" />
+                                )}
                               </div>
                               <div className="max-w-xs space-y-1">
-                                <p className="font-semibold text-foreground text-sm">Buscador de Profesionales</p>
+                                <p className="font-semibold text-foreground text-sm">
+                                  {searchTab === "single"
+                                    ? "Buscador de Profesionales"
+                                    : "Pegar Lote de Excel"}
+                                </p>
                                 <p className="text-xs text-muted-foreground">
-                                  Ingrese un término de búsqueda y haga clic en <strong>Buscar</strong> para encontrar los profesionales.
+                                  {searchTab === "single"
+                                    ? "Ingrese un término de búsqueda y haga clic en Buscar para encontrar profesionales."
+                                    : "Copie y pegue una lista de CUILs o nombres y haga clic en Buscar Coincidencias en Excel."}
                                 </p>
                               </div>
                             </div>
                           );
                         }
 
-                        const filteredInModal = availableInModal.filter((ag: any) => {
-                          const q = submittedSearchQuery.toLowerCase().trim();
-                          const nombre = (ag.nombre || "").toLowerCase();
-                          const cuil = (ag.cuil || "").toLowerCase();
-                          const legajo = (ag.legajo || "").toLowerCase();
-                          const cargo = (ag.cargo || "").toLowerCase();
-                          const hospital = (ag.hospitalNombre || "").toLowerCase();
-                          return (
-                            nombre.includes(q) ||
-                            cuil.includes(q) ||
-                            legajo.includes(q) ||
-                            cargo.includes(q) ||
-                            hospital.includes(q)
-                          );
-                        });
+                        let filteredInModal: any[] = [];
 
-                        if (filteredInModal.length === 0) {
-                          return (
-                            <div className="py-14 text-center text-xs text-muted-foreground">
-                              No se encontraron profesionales que coincidan con &ldquo;
-                              <strong className="text-foreground">{submittedSearchQuery}</strong>
-                              &rdquo;.
-                            </div>
-                          );
+                        if (searchTab === "single") {
+                          const q = submittedSearchQuery.toLowerCase().trim();
+                          filteredInModal = availableInModal.filter((ag: any) => {
+                            const nombre = (ag.nombre || "").toLowerCase();
+                            const cuil = (ag.cuil || "").toLowerCase();
+                            const legajo = (ag.legajo || "").toLowerCase();
+                            const cargo = (ag.cargo || "").toLowerCase();
+                            const hospital = (ag.hospitalNombre || "").toLowerCase();
+                            return (
+                              nombre.includes(q) ||
+                              cuil.includes(q) ||
+                              legajo.includes(q) ||
+                              cargo.includes(q) ||
+                              hospital.includes(q)
+                            );
+                          });
+                        } else {
+                          filteredInModal = availableInModal.filter((ag: any) => {
+                            const agName = (ag.nombre || "").toLowerCase();
+                            const agCuilDigits = (ag.cuil || "").replace(/[^\d]/g, "");
+                            const agLegajo = (ag.legajo || "").toLowerCase().trim();
+                            const agLegajoDigits = (ag.legajo || "").replace(/[^\d]/g, "");
+                            const agIdStr = String(ag.idAgente || ag.id || "");
+
+                            return submittedBatchTerms.some((term) => {
+                              const cleanText = term.toLowerCase().trim();
+                              const cleanDigits = term.replace(/[^\d]/g, "");
+
+                              const matchDigits =
+                                cleanDigits.length >= 6 &&
+                                ((agCuilDigits && (agCuilDigits === cleanDigits || agCuilDigits.includes(cleanDigits))) ||
+                                  (agLegajoDigits && agLegajoDigits === cleanDigits) ||
+                                  (agIdStr && agIdStr === cleanDigits));
+
+                              const matchText =
+                                cleanText.length >= 3 &&
+                                (agName.includes(cleanText) ||
+                                  cleanText.includes(agName) ||
+                                  agLegajo.includes(cleanText) ||
+                                  (cleanText.includes(" ") &&
+                                    cleanText
+                                      .split(" ")
+                                      .filter((w) => w.length > 2)
+                                      .every((w) => agName.includes(w))));
+
+                              return matchDigits || matchText;
+                            });
+                          });
                         }
 
-                        return filteredInModal.map((ag: any) => {
-                          const agId = ag.idAgente || ag.id;
-                          const isSelected = selectedAgentIdsInModal.includes(agId);
-
-                          return (
-                            <div
-                              key={`${agId}-${ag.legajo}`}
-                              onClick={() => handleToggleAgentInModal(agId)}
-                              className={cn(
-                                "flex items-center justify-between p-3.5 sm:p-4 rounded-xl cursor-pointer transition-all duration-150 border text-xs sm:text-sm select-none",
-                                isSelected
-                                  ? "bg-teal-500/10 border-teal-500/50 shadow-xs ring-1 ring-teal-500/20"
-                                  : "bg-card border-border/80 hover:bg-muted/40 hover:border-border shadow-2xs"
-                              )}
-                            >
-                              <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => {}} // handled by row click
-                                  className="h-5 w-5 rounded border-border text-teal-600 focus:ring-teal-500 cursor-pointer shrink-0"
-                                />
-                                <div className="min-w-0">
-                                  <p className="font-bold text-foreground text-sm truncate">
-                                    {ag.nombre}
-                                  </p>
-                                  <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
-                                    {ag.legajo && (
-                                      <span className="px-2 py-0.5 rounded bg-muted/80 font-mono text-xs">
-                                        Legajo: <strong className="text-foreground">{ag.legajo}</strong>
-                                      </span>
-                                    )}
-                                    {ag.cuil && (
-                                      <span className="px-2 py-0.5 rounded bg-muted/80 font-mono text-xs">
-                                        CUIL: <strong className="text-foreground">{ag.cuil}</strong>
-                                      </span>
-                                    )}
-                                    <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs font-semibold">
-                                      {ag.cargo}
-                                    </span>
-                                    {ag.hospitalNombre && (
-                                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
-                                        {ag.hospitalNombre}
-                                      </span>
-                                    )}
-                                  </div>
+                        return (
+                          <div className="space-y-3">
+                            {/* Batch Unmatched Alert */}
+                            {searchTab === "batch" && unmatchedBatchTerms.length > 0 && (
+                              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                                <div className="flex items-center gap-1.5 font-bold">
+                                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                                  <span>
+                                    {unmatchedBatchTerms.length} término(s) de su Excel no tuvieron coincidencias en la nómina:
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-muted-foreground font-mono bg-background/50 p-2 rounded-lg max-h-20 overflow-y-auto">
+                                  {unmatchedBatchTerms.join(", ")}
                                 </div>
                               </div>
+                            )}
 
-                              <div className="shrink-0 ml-3">
-                                <span
-                                  className={cn(
-                                    "inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full transition-colors",
-                                    isSelected
-                                      ? "bg-teal-600 text-white shadow-xs"
-                                      : "bg-muted text-muted-foreground"
-                                  )}
-                                >
-                                  {isSelected && <Check className="h-3.5 w-3.5" />}
-                                  {isSelected ? "Seleccionado" : "Elegir"}
-                                </span>
+                            {filteredInModal.length === 0 ? (
+                              <div className="py-14 text-center text-xs text-muted-foreground">
+                                {searchTab === "single" ? (
+                                  <>
+                                    No se encontraron profesionales que coincidan con &ldquo;
+                                    <strong className="text-foreground">{submittedSearchQuery}</strong>
+                                    &rdquo;.
+                                  </>
+                                ) : (
+                                  <>
+                                    No se encontraron profesionales para ninguno de los términos pegados desde Excel.
+                                  </>
+                                )}
                               </div>
-                            </div>
-                          );
-                        });
+                            ) : (
+                              filteredInModal.map((ag: any) => {
+                                const agId = ag.idAgente || ag.id;
+                                const isSelected = selectedAgentIdsInModal.includes(agId);
+
+                                return (
+                                  <div
+                                    key={`${agId}-${ag.legajo}`}
+                                    onClick={() => handleToggleAgentInModal(agId)}
+                                    className={cn(
+                                      "flex items-center justify-between p-3.5 sm:p-4 rounded-xl cursor-pointer transition-all duration-150 border text-xs sm:text-sm select-none",
+                                      isSelected
+                                        ? "bg-teal-500/10 border-teal-500/50 shadow-xs ring-1 ring-teal-500/20"
+                                        : "bg-card border-border/80 hover:bg-muted/40 hover:border-border shadow-2xs"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => {}} // handled by row click
+                                        className="h-5 w-5 rounded border-border text-teal-600 focus:ring-teal-500 cursor-pointer shrink-0"
+                                      />
+                                      <div className="min-w-0">
+                                        <p className="font-bold text-foreground text-sm truncate">
+                                          {ag.nombre}
+                                        </p>
+                                        <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                          {ag.legajo && (
+                                            <span className="px-2 py-0.5 rounded bg-muted/80 font-mono text-xs">
+                                              Legajo: <strong className="text-foreground">{ag.legajo}</strong>
+                                            </span>
+                                          )}
+                                          {ag.cuil && (
+                                            <span className="px-2 py-0.5 rounded bg-muted/80 font-mono text-xs">
+                                              CUIL: <strong className="text-foreground">{ag.cuil}</strong>
+                                            </span>
+                                          )}
+                                          <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs font-semibold">
+                                            {ag.cargo}
+                                          </span>
+                                          {ag.hospitalNombre && (
+                                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                                              {ag.hospitalNombre}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div className="shrink-0 ml-3">
+                                      <span
+                                        className={cn(
+                                          "inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full transition-colors",
+                                          isSelected
+                                            ? "bg-teal-600 text-white shadow-xs"
+                                            : "bg-muted text-muted-foreground"
+                                        )}
+                                      >
+                                        {isSelected && <Check className="h-3.5 w-3.5" />}
+                                        {isSelected ? "Seleccionado" : "Elegir"}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+                        );
                       })()}
                     </div>
 

@@ -73,9 +73,23 @@ export async function fetchAgentsData(
 
     if (searchQuery && searchQuery.trim()) {
       const q = searchQuery.trim();
+      const cleanDigits = q.replace(/[^\d]/g, "");
+      let cuilSearchBigInt: bigint | null = null;
+      if (cleanDigits.length >= 6) {
+        try {
+          cuilSearchBigInt = BigInt(cleanDigits);
+        } catch {}
+      }
+
       where.OR = [
         { apellidoyNombre: { contains: q } },
         { legajo: { contains: q } },
+        ...(cuilSearchBigInt !== null
+          ? [
+              { cuil: { equals: cuilSearchBigInt } },
+              { idAgente: { equals: cuilSearchBigInt } },
+            ]
+          : []),
       ];
     }
 
@@ -104,7 +118,8 @@ export async function fetchAgentsData(
       periodo: ag.periodo.toISOString().split("T")[0],
       idEmpresa: ag.idEmpresa,
       legajo: ag.legajo.trim(),
-      idAgente: ag.idAgente,
+      idAgente: ag.idAgente ? ag.idAgente.toString() : (ag.cuil ? ag.cuil.toString() : null),
+      cuil: ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : null),
       apellidoyNombre: ag.apellidoyNombre?.trim() || "",
       empresa: ag.empresa
         ? {
@@ -186,7 +201,8 @@ export async function importAgentsFromExcel(formData: FormData) {
       periodo: Date;
       idEmpresa: number;
       legajo: string;
-      idAgente: number | null;
+      idAgente: bigint | null;
+      cuil: bigint | null;
       apellidoyNombre: string;
     }[] = [];
 
@@ -245,12 +261,41 @@ export async function importAgentsFromExcel(formData: FormData) {
         ""
       ).trim();
 
-      // 4. Extract Puesto Laboral / IdAgente
-      const puestoRaw = row["Puesto Laboral"] || row["Puesto laboral"] || row["IdAgente"];
-      let idAgente: number | null = null;
-      if (puestoRaw !== undefined && puestoRaw !== null) {
-        const pNum = parseInt(String(puestoRaw).replace(/[^\d]/g, ""), 10);
-        if (!isNaN(pNum)) idAgente = pNum;
+      // 4. Extract CUIL / DNI / IdAgente (From now on, Agent ID is the CUIL)
+      const rawCuil =
+        row["CUIL"] ||
+        row["Cuil"] ||
+        row["cuil"] ||
+        row["C.U.I.L."] ||
+        row["C.U.I.L"] ||
+        row["DNI"] ||
+        row["Dni"] ||
+        row["Nro. Documento"] ||
+        row["Documento"] ||
+        "";
+      
+      const cleanCuil = String(rawCuil || "").replace(/[^\d]/g, "");
+      let cuilBigInt: bigint | null = null;
+
+      if (cleanCuil.length > 0) {
+        try {
+          cuilBigInt = BigInt(cleanCuil);
+        } catch {
+          cuilBigInt = null;
+        }
+      }
+
+      // Fallback to Puesto Laboral if CUIL column is absent
+      if (!cuilBigInt) {
+        const puestoRaw = row["Puesto Laboral"] || row["Puesto laboral"] || row["IdAgente"];
+        if (puestoRaw !== undefined && puestoRaw !== null) {
+          const pClean = String(puestoRaw).replace(/[^\d]/g, "");
+          if (pClean) {
+            try {
+              cuilBigInt = BigInt(pClean);
+            } catch {}
+          }
+        }
       }
 
       // Avoid duplicates for composite primary key (Periodo, IdEmpresa, Legago)
@@ -262,16 +307,16 @@ export async function importAgentsFromExcel(formData: FormData) {
         periodo: periodDate,
         idEmpresa,
         legajo,
-        idAgente,
+        idAgente: cuilBigInt,
+        cuil: cuilBigInt,
         apellidoyNombre: nombre.substring(0, 300),
       });
 
       // Also prepare legacy Agent sync for liquidations
-      const rawCuil = row["CUIL"] ? String(row["CUIL"]).replace(/[^\d]/g, "") : "";
       agentsLegacyToSync.push({
-        cuil: rawCuil,
+        cuil: cleanCuil,
         nombre: nombre.substring(0, 200),
-        cargo: idAgente ? String(idAgente) : "PROFESIONAL",
+        cargo: cleanCuil ? `CUIL ${cleanCuil}` : "PROFESIONAL",
         establecimiento: String(lugarPago).substring(0, 200),
         hospitalId: idEmpresa,
       });

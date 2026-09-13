@@ -133,17 +133,19 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     agentsPeriodOrigin = "current";
     const seen = new Set<string>();
     for (const ag of mspAgents) {
-      const agId = ag.idAgente || parseInt(ag.legajo.replace(/[^\d]/g, ""), 10) || 0;
-      // Key by unique agent ID to avoid duplicate lines in the selection modal
+      const rawCuil = ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ag.legajo.trim());
+      const agId = rawCuil;
+      // Key by unique agent ID (CUIL) to avoid duplicate lines in the selection modal
       const key = `${agId}`;
       if (!seen.has(key)) {
         seen.add(key);
         agents.push({
           id: agId,
           idAgente: agId,
+          cuil: ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ""),
           legajo: ag.legajo.trim(),
           nombre: ag.apellidoyNombre?.trim() || "",
-          cargo: ag.idAgente ? `Puesto ${ag.idAgente}` : "PROFESIONAL",
+          cargo: ag.cuil ? `CUIL ${ag.cuil.toString()}` : (ag.idAgente ? `ID ${ag.idAgente.toString()}` : "PROFESIONAL"),
           hospitalId: ag.idEmpresa,
           hospitalNombre: ag.empresa?.descripcion?.trim() || "",
         });
@@ -157,43 +159,66 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
       orderBy: { nombre: "asc" },
     });
     agents = legacyAgents.map((ag) => ({
-      id: ag.id,
-      idAgente: ag.id,
+      id: ag.cuil || ag.id,
+      idAgente: ag.cuil || ag.id,
+      cuil: ag.cuil || "",
       legajo: "",
       nombre: ag.nombre,
-      cargo: ag.cargo || "PROFESIONAL",
+      cargo: ag.cuil ? `CUIL ${ag.cuil}` : (ag.cargo || "PROFESIONAL"),
       hospitalId: ag.hospitalId || undefined,
       hospitalNombre: ag.establecimiento || "",
     }));
   }
 
   // If there are already saved distributions for this liquidation, fetch their metadata to always display names & hospitals correctly
-  const savedAgenteIds = (liquidation.personalDistributions || [])
-    .map((p: any) => p.idAgente)
+  const savedAgenteCuils = (liquidation.personalDistributions || [])
+    .map((p: any) => p.cuil || p.idAgente)
     .filter(Boolean);
 
-  if (savedAgenteIds.length > 0) {
-    const savedMsp = await prisma.imPersonalMsp.findMany({
-      where: {
-        idAgente: { in: savedAgenteIds },
-      },
-      include: {
-        empresa: {
-          select: { id: true, descripcion: true },
-        },
-      },
-      distinct: ["idAgente"],
-    });
+  if (savedAgenteCuils.length > 0) {
+    const bigIntCuils: bigint[] = [];
+    for (const c of savedAgenteCuils) {
+      try {
+        const clean = String(c).replace(/[^\d]/g, "");
+        if (clean) bigIntCuils.push(BigInt(clean));
+      } catch {}
+    }
 
-    extraSavedAgents = savedMsp.map((ag) => ({
-      id: ag.idAgente || parseInt(ag.legajo.replace(/[^\d]/g, ""), 10) || 0,
-      idAgente: ag.idAgente || parseInt(ag.legajo.replace(/[^\d]/g, ""), 10) || 0,
-      legajo: ag.legajo.trim(),
-      nombre: ag.apellidoyNombre?.trim() || "",
-      cargo: ag.idAgente ? `Puesto ${ag.idAgente}` : "PROFESIONAL",
-      hospitalId: ag.idEmpresa,
-      hospitalNombre: ag.empresa?.descripcion?.trim() || "",
-    }));
+    if (bigIntCuils.length > 0) {
+      const savedMsp = await prisma.imPersonalMsp.findMany({
+        where: {
+          OR: [
+            { cuil: { in: bigIntCuils } },
+            { idAgente: { in: bigIntCuils } },
+          ],
+        },
+        include: {
+          empresa: {
+            select: { id: true, descripcion: true },
+          },
+        },
+      });
+
+      const seenSaved = new Set<string>();
+      extraSavedAgents = [];
+      for (const ag of savedMsp) {
+        const rawCuil = ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ag.legajo.trim());
+        const key = `${rawCuil}`;
+        if (!seenSaved.has(key)) {
+          seenSaved.add(key);
+          extraSavedAgents.push({
+            id: rawCuil,
+            idAgente: rawCuil,
+            cuil: ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ""),
+            legajo: ag.legajo.trim(),
+            nombre: ag.apellidoyNombre?.trim() || "",
+            cargo: ag.cuil ? `CUIL ${ag.cuil.toString()}` : (ag.idAgente ? `ID ${ag.idAgente.toString()}` : "PROFESIONAL"),
+            hospitalId: ag.idEmpresa,
+            hospitalNombre: ag.empresa?.descripcion?.trim() || "",
+          });
+        }
+      }
+    }
   }
 
   return (

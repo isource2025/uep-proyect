@@ -127,7 +127,8 @@ function sanitizarLiquidacionCabecera(liq: any) {
 
   const personalDistributions = (liq.personalDistributions || []).map((p: any) => ({
     idLiquidacion: p.idLiquidacion,
-    idAgente: p.idAgente,
+    idAgente: p.idAgente ? p.idAgente.toString() : (p.cuil ? p.cuil.toString() : ""),
+    cuil: p.cuil ? p.cuil.toString() : (p.idAgente ? p.idAgente.toString() : ""),
     honorarios: toNum(p.honorarios),
     sobreasignacion: toNum(p.sobreasignacion),
   }));
@@ -733,7 +734,8 @@ export async function fetchLiquidationById(id: number) {
 export async function saveLiquidacionPersonalDistributions(
   liquidationId: number,
   distributions: {
-    idAgente: number;
+    idAgente?: string | number;
+    cuil?: string | number;
     honorarios: number;
     sobreasignacion: number;
   }[],
@@ -757,14 +759,34 @@ export async function saveLiquidacionPersonalDistributions(
     });
 
     // 2. Insert valid distribution rows
-    const validRows = distributions
-      .filter((d) => d.idAgente && (d.honorarios > 0 || d.sobreasignacion > 0))
-      .map((d) => ({
-        idLiquidacion: liquidationId,
-        idAgente: d.idAgente,
-        honorarios: d.honorarios,
-        sobreasignacion: d.sobreasignacion,
-      }));
+    const validRows: {
+      idLiquidacion: number;
+      idAgente: bigint;
+      cuil: bigint;
+      honorarios: number;
+      sobreasignacion: number;
+    }[] = [];
+
+    for (const d of distributions) {
+      const rawId = d.cuil || d.idAgente;
+      if (!rawId) continue;
+      const cleanDigits = String(rawId).replace(/[^\d]/g, "");
+      if (!cleanDigits) continue;
+
+      const cuilBigInt = BigInt(cleanDigits);
+      const honNum = Number(d.honorarios || 0);
+      const sobrNum = Number(d.sobreasignacion || 0);
+
+      if (honNum > 0 || sobrNum > 0) {
+        validRows.push({
+          idLiquidacion: liquidationId,
+          idAgente: cuilBigInt,
+          cuil: cuilBigInt,
+          honorarios: honNum,
+          sobreasignacion: sobrNum,
+        });
+      }
+    }
 
     if (validRows.length > 0) {
       // [RECORDATORIO PENDIENTE]: Activar validación en backend de período (mes en curso / mes previo) al finalizar desarrollo.

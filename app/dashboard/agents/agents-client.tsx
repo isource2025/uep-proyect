@@ -37,7 +37,8 @@ interface AgentItem {
   periodo: string;
   idEmpresa: number;
   legajo: string;
-  idAgente: number | null;
+  idAgente: string | number | null;
+  cuil?: string | number | null;
   apellidoyNombre: string;
   empresa: {
     id: number;
@@ -467,7 +468,7 @@ export default function AgentsClient({
                 <TableRow className="hover:bg-transparent border-border">
                   <TableHead className="font-semibold text-3xs uppercase py-2.5">LEGAJO</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase">APELLIDO Y NOMBRE</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-center">PUESTO / ID AGENTE</TableHead>
+                  <TableHead className="font-semibold text-3xs uppercase text-center">CUIL / ID AGENTE</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase">ESTABLECIMIENTO (EMPRESA)</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase">LOCALIDAD</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">PERÍODO</TableHead>
@@ -513,7 +514,7 @@ export default function AgentsClient({
                       </TableCell>
                       <TableCell className="text-center">
                         <span className="inline-block px-2 py-0.5 rounded-full bg-muted font-mono text-3xs font-semibold">
-                          {ag.idAgente !== null ? `Puesto ${ag.idAgente}` : "Personal"}
+                          {ag.cuil || ag.idAgente ? `${ag.cuil || ag.idAgente}` : "Personal"}
                         </span>
                       </TableCell>
                       <TableCell className="text-3xs max-w-[280px] whitespace-normal break-words">

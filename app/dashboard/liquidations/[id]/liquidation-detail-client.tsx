@@ -101,7 +101,7 @@ export default function LiquidationDetailClient({
   const [submittedBatchTerms, setSubmittedBatchTerms] = useState<string[]>([]);
   const [unmatchedBatchTerms, setUnmatchedBatchTerms] = useState<string[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
-  const [selectedAgentIdsInModal, setSelectedAgentIdsInModal] = useState<number[]>([]);
+  const [selectedAgentIdsInModal, setSelectedAgentIdsInModal] = useState<any[]>([]);
 
   const getInputDisplayValue = (val: any) => {
     if (val === 0 || val === "0" || val === "") return "";
@@ -143,8 +143,8 @@ export default function LiquidationDetailClient({
   // Initialise agents state starting ONLY with previously saved distributions for this liquidation (or empty)
   const initialDistRows = (liq.personalDistributions || []).map((p: any) => {
     const agMeta =
-      (agents || []).find((a: any) => (a.idAgente || a.id) === p.idAgente) ||
-      (extraSavedAgents || []).find((a: any) => (a.idAgente || a.id) === p.idAgente);
+      (agents || []).find((a: any) => String(a.idAgente || a.id || a.cuil) === String(p.idAgente || p.cuil)) ||
+      (extraSavedAgents || []).find((a: any) => String(a.idAgente || a.id || a.cuil) === String(p.idAgente || p.cuil));
 
     let hospName = agMeta?.hospitalNombre || "";
     if (!hospName && agMeta?.hospitalId && liq.details) {
@@ -165,10 +165,10 @@ export default function LiquidationDetailClient({
     }
 
     return {
-      agentId: p.idAgente,
+      agentId: p.idAgente || p.cuil,
       legajo: agMeta?.legajo || "",
-      nombre: agMeta?.nombre || `Agente #${p.idAgente}`,
-      cuil: agMeta?.cuil || "",
+      nombre: agMeta?.nombre || `Agente #${p.idAgente || p.cuil}`,
+      cuil: agMeta?.cuil || p.cuil || "",
       cargo: agMeta?.cargo || "PROFESIONAL",
       hospitalNombre: hospName,
       honorarios: Math.max(0, Number(p.honorarios || 0)),
@@ -180,13 +180,13 @@ export default function LiquidationDetailClient({
   const [agentSearchQuery, setAgentSearchQuery] = useState("");
 
   // Modal handlers
-  const handleToggleAgentInModal = (agentId: number) => {
+  const handleToggleAgentInModal = (agentId: any) => {
     setSelectedAgentIdsInModal((prev) =>
       prev.includes(agentId) ? prev.filter((id) => id !== agentId) : [...prev, agentId]
     );
   };
 
-  const handleSelectAllVisibleInModal = (visibleAgentIds: number[]) => {
+  const handleSelectAllVisibleInModal = (visibleAgentIds: any[]) => {
     setSelectedAgentIdsInModal((prev) => {
       const allSelected = visibleAgentIds.every((id) => prev.includes(id));
       if (allSelected) {
@@ -319,8 +319,8 @@ export default function LiquidationDetailClient({
     setSuccessMsg(`Se añadieron ${newRows.length} profesional(es) a la grilla de distribución.`);
   };
 
-  const handleRemoveAgent = (agentId: number) => {
-    setAgentDistRows((prev) => prev.filter((r) => r.agentId !== agentId));
+  const handleRemoveAgent = (agentId: any) => {
+    setAgentDistRows((prev) => prev.filter((r) => String(r.agentId) !== String(agentId)));
     setErrorMsg(null);
     setSuccessMsg(null);
   };
@@ -422,11 +422,11 @@ export default function LiquidationDetailClient({
     );
   };
 
-  const handleAgentInputChange = (agentId: number, field: string, value: string) => {
+  const handleAgentInputChange = (agentId: any, field: string, value: string) => {
     const num = Math.max(0, parseFloat(value) || 0);
     setAgentDistRows((prev) =>
       prev.map((row) => {
-        if (row.agentId === agentId) {
+        if (String(row.agentId) === String(agentId)) {
           // Mutually exclusive: if setting honorarios > 0, reset sobreasignaciones to 0
           if (field === "honorarios" && num > 0) {
             return { ...row, honorarios: num, sobreasignaciones: 0 };

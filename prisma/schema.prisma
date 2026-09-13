@@ -326,7 +326,8 @@ model ImPersonalMsp {
   periodo         DateTime @map("Periodo") @db.Date
   idEmpresa       Int      @map("IdEmpresa")
   legajo          String   @map("Legago") @db.VarChar(10)
-  idAgente        Int?     @map("IdAgente")
+  idAgente        BigInt?  @map("IdAgente")
+  cuil            BigInt?  @map("Cuil")
   apellidoyNombre String?  @map("ApellidoyNombre") @db.VarChar(300)
 
   empresa         Empresa  @relation(fields: [idEmpresa], references: [id])
@@ -347,12 +348,13 @@ model ImPersonalEmpresas {
 
 model LiquidacionPersonal {
   idLiquidacion   Int         @map("IdLiquidacion")
-  idAgente        Int         @map("IdAgente")
+  idAgente        BigInt      @map("IdAgente")
+  cuil            BigInt      @map("Cuil")
   honorarios      Decimal?    @map("Honorarios") @db.Decimal(15, 2)
   sobreasignacion Decimal?    @map("Sobreasignacion") @db.Decimal(15, 2)
 
   liquidacion     Liquidacion @relation(fields: [idLiquidacion], references: [id], onDelete: Cascade)
 
-  @@id([idLiquidacion, idAgente])
+  @@id([idLiquidacion, cuil])
   @@map("LiquidacionPersonal")
 }

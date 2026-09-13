@@ -116,8 +116,10 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
 
   let agents: any[] = [];
   let extraSavedAgents: any[] = [];
+  let agentsPeriodOrigin: "current" | "previous" | "none" = "none";
 
-  // Temporarily relaxed period filter for client demo (TODO: restore strict period check tomorrow)
+  // [RECORDATORIO PENDIENTE]: Activar control estricto de período (mes en curso con fallback a 1 mes previo; no permitir 2+ meses).
+  // Temporalmente relajado para facilitar desarrollo y carga de pruebas.
   if (targetEmpresaIds.length > 0) {
     const mspAgents = await prisma.imPersonalMsp.findMany({
       where: {
@@ -132,6 +134,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     });
 
     if (mspAgents.length > 0) {
+      agentsPeriodOrigin = "current";
       const seen = new Set<string>();
       for (const ag of mspAgents) {
         const agId = ag.idAgente || parseInt(ag.legajo.replace(/[^\d]/g, ""), 10) || 0;
@@ -152,7 +155,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     }
   }
 
-  // Fallback to Agente table if imPersonalMsp is empty
+  // Fallback to legacy Agente table if imPersonalMsp is empty
   if (agents.length === 0 && (user?.hospitalId || targetEmpresaId || targetEmpresaIds.length > 0)) {
     const hospIds = targetEmpresaIds.length > 0 ? targetEmpresaIds : [user?.hospitalId || targetEmpresaId];
     const legacyAgents = await prisma.agente.findMany({
@@ -205,6 +208,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
       currentUser={session?.user as any}
       agents={serializeData(agents)}
       extraSavedAgents={serializeData(extraSavedAgents)}
+      agentsPeriodOrigin={agentsPeriodOrigin}
       hospitalId={targetEmpresaId || user?.hospitalId}
     />
   );

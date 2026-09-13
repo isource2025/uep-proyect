@@ -51,6 +51,7 @@ interface LiquidationDetailClientProps {
   };
   agents?: any[];
   extraSavedAgents?: any[];
+  agentsPeriodOrigin?: "current" | "previous" | "none";
   hospitalId?: number | null;
 }
 
@@ -59,6 +60,7 @@ export default function LiquidationDetailClient({
   currentUser,
   agents = [],
   extraSavedAgents = [],
+  agentsPeriodOrigin = "none",
   hospitalId: initialHospitalId,
 }: LiquidationDetailClientProps) {
   const router = useRouter();
@@ -1102,20 +1104,30 @@ export default function LiquidationDetailClient({
                   <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-amber-600 dark:text-amber-400 text-xs">
                     <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                     <div>
-                      <span className="font-bold">Sin agentes registrados:</span> No se encontraron profesionales cargados para este establecimiento. Puede importar la nómina correspondiente desde la sección de Agentes.
+                      <span className="font-bold">Sin profesionales disponibles para este período:</span> No se encontraron registros de personal cargados en el padrón SISPER para el <strong>mes en curso</strong> ni para el <strong>mes anterior</strong> en este establecimiento.
                     </div>
                   </div>
                 ) : (
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-muted/40 rounded-lg border border-border">
-                    <div className="text-xs text-muted-foreground flex items-center gap-2">
+                    <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
                       <span className="inline-flex h-2 w-2 rounded-full bg-teal-500" />
                       <span>
                         Profesionales disponibles:{" "}
                         <strong className="text-foreground">
                           {agents.filter((ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))).length}
                         </strong>{" "}
-                        (de {agents.length} en el establecimiento)
+                        (de {agents.length} en el padrón)
                       </span>
+                      {agentsPeriodOrigin === "current" && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                          Padrón: Mes en curso
+                        </span>
+                      )}
+                      {agentsPeriodOrigin === "previous" && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                          Padrón: Mes anterior (suplente)
+                        </span>
+                      )}
                     </div>
 
                     <Button

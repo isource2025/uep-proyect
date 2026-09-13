@@ -64,4 +64,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
   - **Exportación SISPER**: Al vencer la fecha límite, el sistema consolida todos los agentes de todos los hospitales con sus montos asignados en una sola planilla exportable para los recibos de haberes.
   - **Reporte de Tesorería**: Genera el informe de `GASTOS` a transferir por Obra Social a cada Hospital para transferencias bancarias.
 
-
+## Recordatorios & Pendientes Activos
+- **Validación Estricta de Período para Agentes SISPER (Portal Hospital)**:
+  - *Regla*: Permitir únicamente profesionales del **mes en curso** de la liquidación o, en su defecto, del **mes inmediatamente anterior** (1 mes de gracia). Prohibir terminantemente agentes de 2 o más meses atrás.
+  - *Estado*: Diseñado y listo para activarse una vez finalizado el desarrollo de las demás pantallas. Recordar al usuario periódicamente su activación.

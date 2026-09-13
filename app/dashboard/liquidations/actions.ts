@@ -782,6 +782,7 @@ export async function saveLiquidacionPersonalDistributions(
       }));
 
     if (validRows.length > 0) {
+      // [RECORDATORIO PENDIENTE]: Activar validación en backend de período (mes en curso / mes previo) al finalizar desarrollo.
       await prisma.liquidacionPersonal.createMany({
         data: validRows,
       });

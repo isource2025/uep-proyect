@@ -26,6 +26,7 @@ import {
   FileSpreadsheet,
   ClipboardPaste,
   AlertTriangle,
+  Percent,
 } from "lucide-react";
 import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -108,19 +109,32 @@ export default function LiquidationDetailClient({
   // Store current liquidation state locally to dynamically display updates
   const [liq, setLiq] = useState(liquidation);
   const [mesCarga, setMesCarga] = useState(liq.mesCarga || "");
+  const [globalGaPercent, setGlobalGaPercent] = useState("6");
+  const [customGlobalGaPercent, setCustomGlobalGaPercent] = useState("");
 
   // Initialise editable detail rows ensuring no negative values (minimum is 0)
   const [editableDetails, setEditableDetails] = useState<any[]>(
-    liq.details.map((d: any) => ({
-      id: d.id,
-      totalFacturado: Math.max(0, Number(d.totalFacturado)),
-      creditos: Math.max(0, Number(d.creditos)),
-      debitos: Math.max(0, Number(d.debitos)),
-      ajustesOs: Math.max(0, Number(d.ajustesOs)),
-      pendientesCobro: Math.max(0, Number(d.pendientesCobro)),
-      ga: Math.max(0, Number(d.ga)),
-      ajusteRecupero: Math.max(0, Number(d.ajusteRecupero)),
-    }))
+    liq.details.map((d: any) => {
+      const totalFact = Math.max(0, Number(d.totalFacturado));
+      const gaVal = Math.max(0, Number(d.ga));
+      let initPct: number | string = 6;
+      if (totalFact > 0) {
+        initPct = Math.round(((gaVal / totalFact) * 100) * 10) / 10;
+      } else if (gaVal === 0) {
+        initPct = 0;
+      }
+      return {
+        id: d.id,
+        totalFacturado: totalFact,
+        creditos: Math.max(0, Number(d.creditos)),
+        debitos: Math.max(0, Number(d.debitos)),
+        ajustesOs: Math.max(0, Number(d.ajustesOs)),
+        pendientesCobro: Math.max(0, Number(d.pendientesCobro)),
+        ga: gaVal,
+        gaPercent: initPct,
+        ajusteRecupero: Math.max(0, Number(d.ajusteRecupero)),
+      };
+    })
   );
 
   // Initialise agents state starting ONLY with previously saved distributions for this liquidation (or empty)
@@ -308,6 +322,59 @@ export default function LiquidationDetailClient({
     setSuccessMsg(null);
   };
 
+  const handleGaPercentChange = (id: string, pctVal: string) => {
+    const pctNum = parseFloat(pctVal);
+    if (isNaN(pctNum) || pctNum < 0) return;
+
+    setEditableDetails((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const totalFact = Number(item.totalFacturado || 0);
+        const cred = Number(item.creditos || 0);
+        const deb = Number(item.debitos || 0);
+        const ajOs = Number(item.ajustesOs || 0);
+        const pend = Number(item.pendientesCobro || 0);
+        const bruto = totalFact + cred - deb + ajOs - pend;
+        const base = totalFact > 0 ? totalFact : Math.max(0, bruto);
+        const calculatedGa = Math.max(0, Number(((base * pctNum) / 100).toFixed(2)));
+        return {
+          ...item,
+          gaPercent: pctNum,
+          ga: calculatedGa,
+        };
+      })
+    );
+  };
+
+  const handleApplyGlobalGaPercent = () => {
+    let pctNum = parseFloat(globalGaPercent);
+    if (globalGaPercent === "custom") {
+      pctNum = parseFloat(customGlobalGaPercent);
+    }
+    if (isNaN(pctNum) || pctNum < 0) {
+      setErrorMsg("Ingrese un porcentaje válido para aplicar.");
+      return;
+    }
+    setEditableDetails((prev) =>
+      prev.map((item) => {
+        const totalFact = Number(item.totalFacturado || 0);
+        const cred = Number(item.creditos || 0);
+        const deb = Number(item.debitos || 0);
+        const ajOs = Number(item.ajustesOs || 0);
+        const pend = Number(item.pendientesCobro || 0);
+        const bruto = totalFact + cred - deb + ajOs - pend;
+        const base = totalFact > 0 ? totalFact : Math.max(0, bruto);
+        const calculatedGa = Math.max(0, Number(((base * pctNum) / 100).toFixed(2)));
+        return {
+          ...item,
+          gaPercent: pctNum,
+          ga: calculatedGa,
+        };
+      })
+    );
+    setSuccessMsg(`Gastos Administrativos del ${pctNum}% aplicados a todos los renglones.`);
+  };
+
   const handleDetailInputChange = (id: string, field: string, value: string) => {
     if (value === "") {
       setEditableDetails((prev) =>
@@ -325,7 +392,30 @@ export default function LiquidationDetailClient({
     }
 
     setEditableDetails((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+      prev.map((item) => {
+        if (item.id !== id) return item;
+
+        if (field === "totalFacturado") {
+          const pctNum = typeof item.gaPercent === "number" ? item.gaPercent : parseFloat(item.gaPercent);
+          if (!isNaN(pctNum) && pctNum >= 0 && item.gaPercent !== "custom") {
+            const newTotal = Number(value || 0);
+            const newGa = Math.max(0, Number(((newTotal * pctNum) / 100).toFixed(2)));
+            return { ...item, totalFacturado: value, ga: newGa };
+          }
+        }
+
+        if (field === "ga") {
+          const newGa = Number(value || 0);
+          const totalFact = Number(item.totalFacturado || 0);
+          let newPct = 0;
+          if (totalFact > 0) {
+            newPct = Number(((newGa / totalFact) * 100).toFixed(2));
+          }
+          return { ...item, ga: value, gaPercent: newPct };
+        }
+
+        return { ...item, [field]: value };
+      })
     );
   };
 
@@ -932,7 +1022,7 @@ export default function LiquidationDetailClient({
 
       {/* SECTION 2 - TABLA DE LIQUIDACIÓN POR HOSPITAL / PRESTADOR */}
       <Card className="border-border bg-card">
-        <CardHeader className="p-4 pb-3 border-b border-border/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <CardHeader className="p-4 pb-3 border-b border-border/80 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div>
             <CardTitle className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Building2 className="h-4 w-4 text-emerald-500" />
@@ -941,17 +1031,66 @@ export default function LiquidationDetailClient({
             <CardDescription className="text-3xs text-muted-foreground mt-0.5">
               {isHospitalUser
                 ? "Valores calculados para su establecimiento de salud."
-                : "Complete las celdas numéricas. Los totales neto y bruto se recalculan de forma segura e instantánea."}
+                : "Complete las celdas numéricas o seleccione el porcentaje de gastos para cada Obra Social."}
             </CardDescription>
           </div>
 
-          <SearchBar
-            placeholder="Buscar por hospital, CUIT, período o FC..."
-            value={searchQuery}
-            onChange={setSearchQuery}
-            size="sm"
-            className="w-full sm:w-80"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            {!isHospitalUser && (
+              <div className="flex items-center gap-1.5 bg-muted/50 border border-border rounded-lg p-1 px-2 text-3xs">
+                <Percent className="h-3.5 w-3.5 text-blue-500" />
+                <span className="font-semibold text-muted-foreground whitespace-nowrap">GA Global:</span>
+                <select
+                  value={globalGaPercent}
+                  onChange={(e) => setGlobalGaPercent(e.target.value)}
+                  className="h-7 text-3xs bg-background border border-border rounded px-1 font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="0">0%</option>
+                  <option value="3">3%</option>
+                  <option value="4">4%</option>
+                  <option value="5">5%</option>
+                  <option value="6">6% (Default)</option>
+                  <option value="7">7%</option>
+                  <option value="8">8%</option>
+                  <option value="10">10%</option>
+                  <option value="12">12%</option>
+                  <option value="15">15%</option>
+                  <option value="20">20%</option>
+                  <option value="custom">Otro %</option>
+                </select>
+                {globalGaPercent === "custom" && (
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    placeholder="%"
+                    value={customGlobalGaPercent}
+                    onChange={(e) => setCustomGlobalGaPercent(e.target.value)}
+                    className="w-14 h-7 text-3xs px-1 text-right bg-background border-border font-semibold"
+                  />
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleApplyGlobalGaPercent}
+                  disabled={saving}
+                  className="h-7 text-3xs px-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/30 font-bold"
+                >
+                  Aplicar a Todos
+                </Button>
+              </div>
+            )}
+
+            <SearchBar
+              placeholder="Buscar por hospital, CUIT, período o FC..."
+              value={searchQuery}
+              onChange={setSearchQuery}
+              size="sm"
+              className="w-full sm:w-64"
+            />
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -970,7 +1109,7 @@ export default function LiquidationDetailClient({
                   <TableHead className="font-semibold text-3xs uppercase text-right">AJUSTES O.S.</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">PEND. COBRO</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">BRUTO A PAGAR</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">GA</TableHead>
+                  <TableHead className="font-semibold text-3xs uppercase text-right">GA (% / $)</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">AJUSTE REC.</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">NETO A PAGAR</TableHead>
                 </TableRow>
@@ -1091,15 +1230,59 @@ export default function LiquidationDetailClient({
 
                         {/* GA */}
                         <TableCell className="text-right px-1 py-1">
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            disabled={isHospitalUser || saving}
-                            value={getInputDisplayValue(editState.ga)}
-                            onChange={(e) => handleDetailInputChange(detail.id, "ga", e.target.value)}
-                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          />
+                          {(() => {
+                            const rowGaPercent =
+                              editState.gaPercent !== undefined &&
+                              editState.gaPercent !== "" &&
+                              !isNaN(Number(editState.gaPercent))
+                                ? Number(editState.gaPercent)
+                                : totalFact > 0
+                                ? Number(((gaVal / totalFact) * 100).toFixed(2))
+                                : 0;
+
+                            const standardPcts = [0, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20];
+                            const isCustomPct = !standardPcts.includes(rowGaPercent);
+
+                            return (
+                              <div className="flex flex-col gap-1 min-w-[90px]">
+                                <div className="flex items-center justify-end gap-1">
+                                  <select
+                                    disabled={isHospitalUser || saving}
+                                    value={String(rowGaPercent)}
+                                    onChange={(e) => handleGaPercentChange(detail.id, e.target.value)}
+                                    className="h-5 text-[10px] bg-muted/70 hover:bg-muted border border-border/80 rounded px-1 text-muted-foreground font-mono font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer disabled:opacity-60"
+                                    title="Porcentaje de Gastos (GA)"
+                                  >
+                                    {isCustomPct && (
+                                      <option value={String(rowGaPercent)}>
+                                        {rowGaPercent}%
+                                      </option>
+                                    )}
+                                    <option value="0">0%</option>
+                                    <option value="3">3%</option>
+                                    <option value="4">4%</option>
+                                    <option value="5">5%</option>
+                                    <option value="6">6%</option>
+                                    <option value="7">7%</option>
+                                    <option value="8">8%</option>
+                                    <option value="10">10%</option>
+                                    <option value="12">12%</option>
+                                    <option value="15">15%</option>
+                                    <option value="20">20%</option>
+                                  </select>
+                                </div>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  disabled={isHospitalUser || saving}
+                                  value={getInputDisplayValue(editState.ga)}
+                                  onChange={(e) => handleDetailInputChange(detail.id, "ga", e.target.value)}
+                                  className="w-full text-right h-7 text-2xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                              </div>
+                            );
+                          })()}
                         </TableCell>
 
                         {/* AJUSTE RECUPERO */}

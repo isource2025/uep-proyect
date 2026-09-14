@@ -75,21 +75,27 @@ export async function fetchAgentsData(
       const q = searchQuery.trim();
       const cleanDigits = q.replace(/[^\d]/g, "");
       let cuilSearchBigInt: bigint | null = null;
+      let idAgenteSearchNum: number | null = null;
+
       if (cleanDigits.length >= 6) {
         try {
           cuilSearchBigInt = BigInt(cleanDigits);
+        } catch {}
+      }
+      if (cleanDigits.length > 0 && cleanDigits.length <= 9) {
+        try {
+          const parsed = parseInt(cleanDigits, 10);
+          if (!isNaN(parsed) && parsed < 2147483647) {
+            idAgenteSearchNum = parsed;
+          }
         } catch {}
       }
 
       where.OR = [
         { apellidoyNombre: { contains: q } },
         { legajo: { contains: q } },
-        ...(cuilSearchBigInt !== null
-          ? [
-              { cuil: { equals: cuilSearchBigInt } },
-              { idAgente: { equals: cuilSearchBigInt } },
-            ]
-          : []),
+        ...(cuilSearchBigInt !== null ? [{ cuil: { equals: cuilSearchBigInt } }] : []),
+        ...(idAgenteSearchNum !== null ? [{ idAgente: { equals: idAgenteSearchNum } }] : []),
       ];
     }
 
@@ -118,8 +124,8 @@ export async function fetchAgentsData(
       periodo: ag.periodo.toISOString().split("T")[0],
       idEmpresa: ag.idEmpresa,
       legajo: ag.legajo.trim(),
-      idAgente: ag.idAgente ? ag.idAgente.toString() : (ag.cuil ? ag.cuil.toString() : null),
-      cuil: ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : null),
+      idAgente: ag.idAgente !== null && ag.idAgente !== undefined ? ag.idAgente.toString() : null,
+      cuil: ag.cuil ? ag.cuil.toString() : null,
       apellidoyNombre: ag.apellidoyNombre?.trim() || "",
       empresa: ag.empresa
         ? {
@@ -161,6 +167,7 @@ export async function fetchAgentsData(
 export async function importAgentsFromExcel(formData: FormData) {
   try {
     const file = formData.get("file") as File;
+    const replaceExisting = formData.get("replaceExisting") === "true";
     let rawPeriod = (formData.get("period") as string)?.trim() || new Date().toISOString().substring(0, 7);
     let periodDate: Date;
 
@@ -178,6 +185,20 @@ export async function importAgentsFromExcel(formData: FormData) {
 
     if (!file) {
       return { error: "No se seleccionó ningún archivo." };
+    }
+
+    // Check if there are already records in DB for this period
+    const existingCount = await prisma.imPersonalMsp.count({
+      where: { periodo: periodDate },
+    });
+
+    if (existingCount > 0 && !replaceExisting) {
+      return {
+        exists: true,
+        existingCount,
+        period: periodStr,
+        message: `Ya existen ${existingCount.toLocaleString("es-AR")} agentes registrados para el período ${periodStr}. ¿Desea reemplazar la nómina existente con los datos de esta nueva planilla?`,
+      };
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -201,7 +222,7 @@ export async function importAgentsFromExcel(formData: FormData) {
       periodo: Date;
       idEmpresa: number;
       legajo: string;
-      idAgente: bigint | null;
+      idAgente: number;
       cuil: bigint | null;
       apellidoyNombre: string;
     }[] = [];
@@ -237,7 +258,6 @@ export async function importAgentsFromExcel(formData: FormData) {
       }
 
       if (!idEmpresa || !validEmpresaIds.has(idEmpresa)) {
-        // Fallback: If not found, use a default hospital or skip
         unmatchedEmpresasCount++;
         continue;
       }
@@ -252,8 +272,8 @@ export async function importAgentsFromExcel(formData: FormData) {
       const legajo = String(rawLegajo).trim().substring(0, 10);
       if (!legajo) continue;
 
-      // 3. Extract Apellido y Nombre
-      const nombre = (
+      // 3. Extract IdAgente & Apellido y Nombre from "Agente" column (structure: "id - nombre agente")
+      const rawAgente = String(
         row["Agente"] ||
         row["Agente_1"] ||
         row["APELLIDO Y NOMBRE"] ||
@@ -261,8 +281,34 @@ export async function importAgentsFromExcel(formData: FormData) {
         ""
       ).trim();
 
-      // 4. Extract CUIL / DNI / IdAgente (From now on, Agent ID is the CUIL)
-      const rawCuil =
+      let idAgente: number = 0;
+      let nombre = rawAgente;
+
+      const matchAgentePrefix = rawAgente.match(/^\(?\s*(\d+)\s*\)?\s*[-–—:]\s*(.*)$/);
+      if (matchAgentePrefix) {
+        idAgente = parseInt(matchAgentePrefix[1], 10);
+        nombre = (matchAgentePrefix[2] || "").trim() || rawAgente;
+      } else {
+        const matchLeadingDigits = rawAgente.match(/^(\d+)\s+(.+)$/);
+        if (matchLeadingDigits) {
+          idAgente = parseInt(matchLeadingDigits[1], 10);
+          nombre = matchLeadingDigits[2].trim();
+        } else if (typeof row["IdAgente"] === "number") {
+          idAgente = row["IdAgente"];
+        } else if (row["Puesto Laboral"] && !isNaN(parseInt(row["Puesto Laboral"], 10))) {
+          idAgente = parseInt(row["Puesto Laboral"], 10);
+        } else if (legajo && !isNaN(parseInt(legajo, 10))) {
+          idAgente = parseInt(legajo, 10);
+        }
+      }
+
+      // Validate 32-bit integer boundary for SQL Server 'int'
+      if (isNaN(idAgente) || idAgente > 2147483647 || idAgente < 0) {
+        idAgente = 0;
+      }
+
+      // 4. Extract CUIL (11 digits, stored as BigInt)
+      let rawCuil =
         row["CUIL"] ||
         row["Cuil"] ||
         row["cuil"] ||
@@ -273,6 +319,17 @@ export async function importAgentsFromExcel(formData: FormData) {
         row["Nro. Documento"] ||
         row["Documento"] ||
         "";
+
+      if (!rawCuil) {
+        // Case-insensitive fallback for column key containing cuil
+        const cuilKey = Object.keys(row).find((k) => {
+          const lk = k.toLowerCase().trim();
+          return lk.includes("cuil") || lk.includes("c.u.i.l");
+        });
+        if (cuilKey) {
+          rawCuil = row[cuilKey];
+        }
+      }
       
       const cleanCuil = String(rawCuil || "").replace(/[^\d]/g, "");
       let cuilBigInt: bigint | null = null;
@@ -285,19 +342,6 @@ export async function importAgentsFromExcel(formData: FormData) {
         }
       }
 
-      // Fallback to Puesto Laboral if CUIL column is absent
-      if (!cuilBigInt) {
-        const puestoRaw = row["Puesto Laboral"] || row["Puesto laboral"] || row["IdAgente"];
-        if (puestoRaw !== undefined && puestoRaw !== null) {
-          const pClean = String(puestoRaw).replace(/[^\d]/g, "");
-          if (pClean) {
-            try {
-              cuilBigInt = BigInt(pClean);
-            } catch {}
-          }
-        }
-      }
-
       // Avoid duplicates for composite primary key (Periodo, IdEmpresa, Legago)
       const key = `${idEmpresa}_${legajo}_${periodDate.toISOString().split("T")[0]}`;
       if (seenKeys.has(key)) continue;
@@ -307,7 +351,7 @@ export async function importAgentsFromExcel(formData: FormData) {
         periodo: periodDate,
         idEmpresa,
         legajo,
-        idAgente: cuilBigInt,
+        idAgente,
         cuil: cuilBigInt,
         apellidoyNombre: nombre.substring(0, 300),
       });
@@ -316,7 +360,7 @@ export async function importAgentsFromExcel(formData: FormData) {
       agentsLegacyToSync.push({
         cuil: cleanCuil,
         nombre: nombre.substring(0, 200),
-        cargo: cleanCuil ? `CUIL ${cleanCuil}` : "PROFESIONAL",
+        cargo: cleanCuil ? `CUIL ${cleanCuil}` : `ID ${idAgente}`,
         establecimiento: String(lugarPago).substring(0, 200),
         hospitalId: idEmpresa,
       });
@@ -328,33 +372,22 @@ export async function importAgentsFromExcel(formData: FormData) {
       };
     }
 
-    // 1. Fetch existing keys for this period in DB to prevent duplicate primary key collisions
-    const existingRows = await prisma.imPersonalMsp.findMany({
-      where: {
-        periodo: periodDate,
-      },
-      select: {
-        idEmpresa: true,
-        legajo: true,
-      },
+    // Atomic transaction: if insertion fails, the deletion is rolled back
+    await prisma.$transaction(async (tx) => {
+      if (replaceExisting && existingCount > 0) {
+        await tx.imPersonalMsp.deleteMany({
+          where: { periodo: periodDate },
+        });
+      }
+
+      const chunkSize = 1000;
+      for (let i = 0; i < recordsToInsert.length; i += chunkSize) {
+        const chunk = recordsToInsert.slice(i, i + chunkSize);
+        await tx.imPersonalMsp.createMany({
+          data: chunk,
+        });
+      }
     });
-
-    const existingKeys = new Set(
-      existingRows.map((r) => `${r.idEmpresa}_${r.legajo.trim()}`)
-    );
-
-    const newRecords = recordsToInsert.filter(
-      (r) => !existingKeys.has(`${r.idEmpresa}_${r.legajo}`)
-    );
-
-    // 2. High-performance batch insertion in chunks of 1000
-    const chunkSize = 1000;
-    for (let i = 0; i < newRecords.length; i += chunkSize) {
-      const chunk = newRecords.slice(i, i + chunkSize);
-      await prisma.imPersonalMsp.createMany({
-        data: chunk,
-      });
-    }
 
     revalidatePath("/dashboard/agents");
     revalidatePath("/dashboard/hospital-portal");
@@ -362,9 +395,10 @@ export async function importAgentsFromExcel(formData: FormData) {
 
     return {
       success: true,
-      count: newRecords.length > 0 ? newRecords.length : recordsToInsert.length,
+      count: recordsToInsert.length,
       unmatched: unmatchedEmpresasCount,
       period: periodStr,
+      replaced: replaceExisting && existingCount > 0,
     };
   } catch (e: any) {
     console.error("Error importing agents from Excel:", e);

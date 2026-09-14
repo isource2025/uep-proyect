@@ -38,6 +38,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Database Safety & Integrity**: 
   - **CONSULTA Y APROBACIÓN PREVIA OBLIGATORIA**: **NUNCA** realizar ningún cambio en la base de datos (crear tablas, modificar o eliminar tablas, agregar campos, cambiar nombres de columnas, alterar tipos de datos, índices, relaciones o ejecutar migraciones DDL) sin **consultar primero al usuario y obtener su confirmación explícita**, detallando previamente el cambio propuesto y su justificación.
   - **NUNCA** borrar datos de la base de datos (operaciones como `deleteMany`, `DELETE`, `TRUNCATE` o `DROP` están terminantemente prohibidas en seeds o scripts generales).
+  - **Transacciones Atómicas Obligatorias (`prisma.$transaction`)**: **TODA** operación en el backend que conste de múltiples pasos (ej. reemplazo de registros, limpieza e inserción, o inserción masiva en chunks) **DEBE** ejecutarse indefectiblemente dentro de `prisma.$transaction(async (tx) => { ... })`. Está terminantemente prohibido ejecutar sentencias de borrado/modificación sueltas fuera de una transacción, garantizando rollback inmediato ante cualquier fallo o excepción para que nunca se pierdan datos.
   - La base de datos de producción (`iSource`) es estrictamente de **sólo lectura/inspección**. No realizar modificaciones de esquema ni agregar registros en ella para mantener la paridad estructural idéntica con desarrollo.
 - **Consolidación e Intermediación de Facturación**:
   - Los comprobantes individuales emitidos por hospitales se almacenan en la tabla `Compras`.

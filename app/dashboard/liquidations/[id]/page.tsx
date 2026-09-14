@@ -187,10 +187,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     if (bigIntCuils.length > 0) {
       const savedMsp = await prisma.imPersonalMsp.findMany({
         where: {
-          OR: [
-            { cuil: { in: bigIntCuils } },
-            { idAgente: { in: bigIntCuils } },
-          ],
+          cuil: { in: bigIntCuils },
         },
         include: {
           empresa: {

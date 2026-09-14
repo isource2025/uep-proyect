@@ -326,7 +326,7 @@ model ImPersonalMsp {
   periodo         DateTime @map("Periodo") @db.Date
   idEmpresa       Int      @map("IdEmpresa")
   legajo          String   @map("Legago") @db.VarChar(10)
-  idAgente        BigInt?  @map("IdAgente")
+  idAgente        Int?     @map("IdAgente")
   cuil            BigInt?  @map("Cuil")
   apellidoyNombre String?  @map("ApellidoyNombre") @db.VarChar(300)
 

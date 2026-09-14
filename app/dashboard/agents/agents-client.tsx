@@ -12,6 +12,7 @@ import {
   Search,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Stethoscope,
   Filter,
 } from "lucide-react";
@@ -99,6 +100,12 @@ export default function AgentsClient({
   );
   const [uploading, setUploading] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [confirmReplacePrompt, setConfirmReplacePrompt] = useState<{
+    show: boolean;
+    message: string;
+    existingCount: number;
+    period: string;
+  } | null>(null);
 
   // Fetch updated data when filters change
   const loadData = async (
@@ -157,8 +164,8 @@ export default function AgentsClient({
     loadData(selectedPeriod, selectedHospital, searchQuery, 1, newLimit);
   };
 
-  const handleUploadExcel = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUploadExcel = async (e?: React.FormEvent, forceReplace: boolean = false) => {
+    if (e) e.preventDefault();
     if (!uploadFile) {
       setFeedbackMsg({ type: "error", text: "Por favor seleccione un archivo Excel (.xlsx)." });
       return;
@@ -166,22 +173,42 @@ export default function AgentsClient({
 
     setUploading(true);
     setFeedbackMsg(null);
+    if (!forceReplace) {
+      setConfirmReplacePrompt(null);
+    }
 
     const formData = new FormData();
     formData.append("file", uploadFile);
     formData.append("period", uploadPeriod);
+    if (forceReplace) {
+      formData.append("replaceExisting", "true");
+    }
 
     try {
       const res = await importAgentsFromExcel(formData);
       if (res.error) {
         setFeedbackMsg({ type: "error", text: res.error });
+        setConfirmReplacePrompt(null);
         return;
       }
 
+      if (res.exists) {
+        setConfirmReplacePrompt({
+          show: true,
+          message: res.message || `Ya existen ${res.existingCount} agentes para este período.`,
+          existingCount: res.existingCount || 0,
+          period: res.period || uploadPeriod,
+        });
+        return;
+      }
+
+      setConfirmReplacePrompt(null);
       const countNum = res.count || 0;
       setFeedbackMsg({
         type: "success",
-        text: `¡Importación exitosa! Se procesaron ${countNum.toLocaleString("es-AR")} agentes para el período ${res.period || uploadPeriod}.`,
+        text: res.replaced
+          ? `¡Nómina reemplazada con éxito! Se cargaron ${countNum.toLocaleString("es-AR")} agentes para el período ${res.period || uploadPeriod}.`
+          : `¡Importación exitosa! Se procesaron ${countNum.toLocaleString("es-AR")} agentes para el período ${res.period || uploadPeriod}.`,
       });
 
       // Refresh list
@@ -192,9 +219,11 @@ export default function AgentsClient({
       setTimeout(() => {
         setIsUploadOpen(false);
         setUploadFile(null);
+        setConfirmReplacePrompt(null);
       }, 2000);
     } catch (err: any) {
       setFeedbackMsg({ type: "error", text: "Error inesperado al importar el archivo Excel." });
+      setConfirmReplacePrompt(null);
     } finally {
       setUploading(false);
     }
@@ -228,6 +257,15 @@ export default function AgentsClient({
     return pStr;
   };
 
+  const formatCuil = (val: string | number | null | undefined) => {
+    if (!val) return "-";
+    const clean = String(val).replace(/[^\d]/g, "");
+    if (clean.length === 11) {
+      return `${clean.slice(0, 2)}-${clean.slice(2, 10)}-${clean.slice(10)}`;
+    }
+    return clean || "-";
+  };
+
   return (
     <div className="space-y-6 text-foreground">
       {/* Header */}
@@ -248,7 +286,16 @@ export default function AgentsClient({
 
         {/* Upload Button for Admin */}
         {isAdmin && (
-          <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+          <Dialog
+            open={isUploadOpen}
+            onOpenChange={(open) => {
+              setIsUploadOpen(open);
+              if (!open && !uploading) {
+                setFeedbackMsg(null);
+                setConfirmReplacePrompt(null);
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-2 text-xs h-9 cursor-pointer shadow-sm">
                 <FileSpreadsheet className="h-4 w-4" />
@@ -284,64 +331,125 @@ export default function AgentsClient({
                 </div>
               )}
 
-              <form onSubmit={handleUploadExcel} className="space-y-4 py-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="uploadPeriod" className="text-xs font-semibold">
-                    Período (Mes / Año):
-                  </Label>
-                  <Input
-                    id="uploadPeriod"
-                    type="month"
-                    value={uploadPeriod}
-                    onChange={(e) => setUploadPeriod(e.target.value)}
-                    required
-                    className="bg-muted/40 border-border text-foreground text-xs h-9 cursor-pointer"
-                  />
-                </div>
+              {confirmReplacePrompt ? (
+                <div className="space-y-4 py-2">
+                  <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/20 text-foreground space-y-3">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <h4 className="font-bold text-xs text-amber-600 dark:text-amber-400">
+                          Nómina existente detectada
+                        </h4>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {confirmReplacePrompt.message}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="bg-background/80 rounded-lg p-2.5 border border-border text-xs text-muted-foreground space-y-1">
+                      <p className="font-semibold text-foreground text-3xs">
+                        ⚠️ Al reemplazar la nómina:
+                      </p>
+                      <ul className="list-disc list-inside text-3xs space-y-0.5">
+                        <li>
+                          Se sobrescribirán los {confirmReplacePrompt.existingCount.toLocaleString("es-AR")} agentes del período {confirmReplacePrompt.period}.
+                        </li>
+                        <li>
+                          Se insertarán todos los agentes y CUILs extraídos de la nueva planilla.
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="excelFile" className="text-xs font-semibold">
-                    Archivo Excel (.xlsx, .xls, .csv):
-                  </Label>
-                  <Input
-                    id="excelFile"
-                    type="file"
-                    accept=".xlsx, .xls, .csv"
-                    onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                    required
-                    className="bg-muted/40 border-border text-foreground text-xs h-9 cursor-pointer file:cursor-pointer"
-                  />
+                  <DialogFooter className="pt-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setConfirmReplacePrompt(null)}
+                      disabled={uploading}
+                      className="border-border text-xs h-9 cursor-pointer"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => handleUploadExcel(undefined, true)}
+                      disabled={uploading}
+                      className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs h-9 cursor-pointer gap-2 shadow-sm"
+                    >
+                      {uploading ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          Reemplazando Nómina...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4" />
+                          Sí, reemplazar nómina existente
+                        </>
+                      )}
+                    </Button>
+                  </DialogFooter>
                 </div>
+              ) : (
+                <form onSubmit={(e) => handleUploadExcel(e, false)} className="space-y-4 py-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="uploadPeriod" className="text-xs font-semibold">
+                      Período (Mes / Año):
+                    </Label>
+                    <Input
+                      id="uploadPeriod"
+                      type="month"
+                      value={uploadPeriod}
+                      onChange={(e) => setUploadPeriod(e.target.value)}
+                      required
+                      className="bg-muted/40 border-border text-foreground text-xs h-9 cursor-pointer"
+                    />
+                  </div>
 
-                <DialogFooter className="pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsUploadOpen(false)}
-                    disabled={uploading}
-                    className="border-border text-xs h-9 cursor-pointer"
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={uploading || !uploadFile}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold text-xs h-9 cursor-pointer gap-2"
-                  >
-                    {uploading ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                        Procesando Excel...
-                      </>
-                    ) : (
-                      <>
-                        <UploadCloud className="h-4 w-4" />
-                        Importar Agentes
-                      </>
-                    )}
-                  </Button>
-                </DialogFooter>
-              </form>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="excelFile" className="text-xs font-semibold">
+                      Archivo Excel (.xlsx, .xls, .csv):
+                    </Label>
+                    <Input
+                      id="excelFile"
+                      type="file"
+                      accept=".xlsx, .xls, .csv"
+                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                      required
+                      className="bg-muted/40 border-border text-foreground text-xs h-9 cursor-pointer file:cursor-pointer"
+                    />
+                  </div>
+
+                  <DialogFooter className="pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsUploadOpen(false)}
+                      disabled={uploading}
+                      className="border-border text-xs h-9 cursor-pointer"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={uploading || !uploadFile}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold text-xs h-9 cursor-pointer gap-2"
+                    >
+                      {uploading ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          Procesando Excel...
+                        </>
+                      ) : (
+                        <>
+                          <UploadCloud className="h-4 w-4" />
+                          Importar Agentes
+                        </>
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              )}
             </DialogContent>
           </Dialog>
         )}
@@ -451,7 +559,7 @@ export default function AgentsClient({
 
           {/* SearchBar */}
           <SearchBar
-            placeholder="Buscar por apellido, nombre o legajo..."
+            placeholder="Buscar por CUIL, apellido, nombre o legajo..."
             value={searchQuery}
             onChange={setSearchQuery}
             onSubmit={handleSearchSubmit}
@@ -466,9 +574,9 @@ export default function AgentsClient({
             <Table>
               <TableHeader className="bg-muted/50 text-muted-foreground">
                 <TableRow className="hover:bg-transparent border-border">
-                  <TableHead className="font-semibold text-3xs uppercase py-2.5">LEGAJO</TableHead>
+                  <TableHead className="font-semibold text-3xs uppercase py-2.5">CUIL</TableHead>
+                  <TableHead className="font-semibold text-3xs uppercase">LEGAJO</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase">APELLIDO Y NOMBRE</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-center">CUIL / ID AGENTE</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase">ESTABLECIMIENTO (EMPRESA)</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase">LOCALIDAD</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">PERÍODO</TableHead>
@@ -506,16 +614,14 @@ export default function AgentsClient({
                       key={`${ag.idEmpresa}-${ag.legajo}-${ag.periodo}-${idx}`}
                       className="hover:bg-muted/40 border-border text-foreground text-xs"
                     >
-                      <TableCell className="font-mono text-3xs font-bold text-foreground py-2.5">
+                      <TableCell className="font-mono text-3xs font-bold text-teal-600 dark:text-teal-400 py-2.5 whitespace-nowrap">
+                        {formatCuil(ag.cuil || ag.idAgente)}
+                      </TableCell>
+                      <TableCell className="font-mono text-3xs font-bold text-foreground">
                         {ag.legajo}
                       </TableCell>
                       <TableCell className="font-semibold text-3xs max-w-[240px] whitespace-normal break-words">
                         {ag.apellidoyNombre}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <span className="inline-block px-2 py-0.5 rounded-full bg-muted font-mono text-3xs font-semibold">
-                          {ag.cuil || ag.idAgente ? `${ag.cuil || ag.idAgente}` : "Personal"}
-                        </span>
                       </TableCell>
                       <TableCell className="text-3xs max-w-[280px] whitespace-normal break-words">
                         <div className="flex items-center gap-1.5">

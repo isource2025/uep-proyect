@@ -753,47 +753,49 @@ export async function saveLiquidacionPersonalDistributions(
       };
     }
 
-    // 1. Clean previous distribution rows for this liquidation
-    await prisma.liquidacionPersonal.deleteMany({
-      where: { idLiquidacion: liquidationId },
-    });
+    // Atomic transaction: cleans previous and inserts new rows safely
+    await prisma.$transaction(async (tx) => {
+      // 1. Clean previous distribution rows for this liquidation
+      await tx.liquidacionPersonal.deleteMany({
+        where: { idLiquidacion: liquidationId },
+      });
 
-    // 2. Insert valid distribution rows
-    const validRows: {
-      idLiquidacion: number;
-      idAgente: bigint;
-      cuil: bigint;
-      honorarios: number;
-      sobreasignacion: number;
-    }[] = [];
+      // 2. Insert valid distribution rows
+      const validRows: {
+        idLiquidacion: number;
+        idAgente: bigint;
+        cuil: bigint;
+        honorarios: number;
+        sobreasignacion: number;
+      }[] = [];
 
-    for (const d of distributions) {
-      const rawId = d.cuil || d.idAgente;
-      if (!rawId) continue;
-      const cleanDigits = String(rawId).replace(/[^\d]/g, "");
-      if (!cleanDigits) continue;
+      for (const d of distributions) {
+        const rawId = d.cuil || d.idAgente;
+        if (!rawId) continue;
+        const cleanDigits = String(rawId).replace(/[^\d]/g, "");
+        if (!cleanDigits) continue;
 
-      const cuilBigInt = BigInt(cleanDigits);
-      const honNum = Number(d.honorarios || 0);
-      const sobrNum = Number(d.sobreasignacion || 0);
+        const cuilBigInt = BigInt(cleanDigits);
+        const honNum = Number(d.honorarios || 0);
+        const sobrNum = Number(d.sobreasignacion || 0);
 
-      if (honNum > 0 || sobrNum > 0) {
-        validRows.push({
-          idLiquidacion: liquidationId,
-          idAgente: cuilBigInt,
-          cuil: cuilBigInt,
-          honorarios: honNum,
-          sobreasignacion: sobrNum,
+        if (honNum > 0 || sobrNum > 0) {
+          validRows.push({
+            idLiquidacion: liquidationId,
+            idAgente: cuilBigInt,
+            cuil: cuilBigInt,
+            honorarios: honNum,
+            sobreasignacion: sobrNum,
+          });
+        }
+      }
+
+      if (validRows.length > 0) {
+        await tx.liquidacionPersonal.createMany({
+          data: validRows,
         });
       }
-    }
-
-    if (validRows.length > 0) {
-      // [RECORDATORIO PENDIENTE]: Activar validación en backend de período (mes en curso / mes previo) al finalizar desarrollo.
-      await prisma.liquidacionPersonal.createMany({
-        data: validRows,
-      });
-    }
+    });
 
     revalidatePath(`/dashboard/liquidations/${liquidationId}`);
     revalidatePath("/dashboard/liquidations");

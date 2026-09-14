@@ -738,11 +738,17 @@ export default function LiquidationDetailClient({
               <Calculator className="h-5 w-5 text-emerald-500" />
               Planilla de Liquidación y Débitos (LIQ-{String(liq.id).padStart(4, "0")})
             </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {isHospitalUser
-                ? `Liquidación asignada a ${currentUser?.name || "Hospital"}`
-                : "Administración de débitos, créditos, GA y ajustes por recupero para la Obra Social."}
-            </p>
+            <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-foreground">Obra Social:</span>
+              <span className="font-extrabold text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/25">
+                {liq.rc?.cliente?.nombre || "Obra Social"}
+              </span>
+              {liq.rc?.cliente?.cuit && (
+                <span className="font-mono text-3xs text-muted-foreground">
+                  (CUIT: {liq.rc.cliente.cuit})
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2 self-start sm:self-center">
@@ -787,8 +793,27 @@ export default function LiquidationDetailClient({
       )}
 
       {/* SECTION 1 - CABECERA DE LIQUIDACIÓN */}
-      <Card className="border-border bg-card">
-        <CardContent className="p-5 grid grid-cols-1 sm:grid-cols-4 gap-6 text-xs">
+      <Card className="border-border bg-card shadow-sm">
+        <CardContent className="p-5 grid grid-cols-1 sm:grid-cols-4 gap-5 text-xs">
+          {/* COL 1: Obra Social Destacada */}
+          <div className="space-y-1.5 sm:col-span-1">
+            <span className="text-[10px] text-muted-foreground uppercase font-bold flex items-center gap-1.5">
+              <Building2 className="h-3.5 w-3.5 text-emerald-500" />
+              Obra Social
+            </span>
+            <div className="p-3 rounded-lg bg-emerald-500/10 dark:bg-emerald-950/20 border border-emerald-500/25 space-y-1">
+              <p className="font-extrabold text-foreground text-xs leading-snug">
+                {liq.rc.cliente?.nombre || "Obra Social"}
+              </p>
+              {liq.rc.cliente?.cuit && (
+                <p className="font-mono text-3xs text-muted-foreground font-semibold">
+                  CUIT: {liq.rc.cliente.cuit}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* COL 2: Liquidación N° & Liquidador */}
           <div className="space-y-1">
             <span className="text-[10px] text-muted-foreground uppercase font-bold">Liquidación N°</span>
             <p className="font-mono font-bold text-foreground text-sm">
@@ -802,22 +827,33 @@ export default function LiquidationDetailClient({
             )}
           </div>
 
-          <div className="space-y-1">
-            <span className="text-[10px] text-muted-foreground uppercase font-bold">Recibo UEP</span>
-            <p className="font-mono font-bold text-foreground text-sm">
-              {liq.rc.puntoVenta}-{liq.rc.numero}
-            </p>
-            <p className="text-[11px] text-muted-foreground font-semibold mt-0.5">
-              {liq.rc.cliente?.nombre}
-            </p>
+          {/* COL 3: Recibo UEP & Mes Carga */}
+          <div className="space-y-2">
+            <div>
+              <span className="text-[10px] text-muted-foreground uppercase font-bold">Recibo UEP</span>
+              <p className="font-mono font-bold text-foreground text-sm">
+                {liq.rc.puntoVenta}-{liq.rc.numero}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground uppercase font-bold">Mes Carga</Label>
+              <Input
+                type="text"
+                value={mesCarga}
+                onChange={(e) => setMesCarga(e.target.value)}
+                placeholder="e.g. 06/2026"
+                className="h-8 text-xs bg-background border-border font-semibold text-foreground max-w-[130px]"
+              />
+            </div>
 
             {/* FC Ventas unificadas associated with this receipt */}
             {liq.rc?.appliedAsRc && liq.rc.appliedAsRc.length > 0 && (
-              <div className="mt-2 bg-muted/40 p-2 rounded-lg border border-border/30 text-[10px] space-y-1 max-h-[100px] overflow-y-auto">
+              <div className="bg-muted/40 p-2 rounded-lg border border-border/30 text-[10px] space-y-1 max-h-[80px] overflow-y-auto">
                 <span className="text-[9px] text-muted-foreground uppercase font-bold block">
                   FC Ventas Asociadas:
                 </span>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1">
                   {liq.rc.appliedAsRc.map((app: any) => {
                     const fc = app.fc;
                     if (!fc) return null;
@@ -833,17 +869,6 @@ export default function LiquidationDetailClient({
                 </div>
               </div>
             )}
-          </div>
-
-          <div className="space-y-1.5 flex flex-col justify-start">
-            <Label className="text-[10px] text-muted-foreground uppercase font-bold">Mes Carga</Label>
-            <Input
-              type="text"
-              value={mesCarga}
-              onChange={(e) => setMesCarga(e.target.value)}
-              placeholder="e.g. 06/2026"
-              className="h-8 text-xs bg-background border-border font-semibold text-foreground max-w-[140px]"
-            />
           </div>
 
           {/* PDF DEBITS UPLOAD MODULE */}
@@ -1129,11 +1154,10 @@ export default function LiquidationDetailClient({
             <Table>
               <TableHeader className="bg-muted/50 text-muted-foreground">
                 <TableRow className="hover:bg-transparent border-border">
-                  <TableHead className="font-semibold text-3xs uppercase py-2">OBRA SOCIAL</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase">PERIODO</TableHead>
+                  <TableHead className="font-semibold text-3xs uppercase py-2">PRESTADOR</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase">CUIT N°</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase">PRESTADOR</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase">LOCALIDAD</TableHead>
+                  <TableHead className="font-semibold text-3xs uppercase">PERIODO</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase">FC N° HOSP.</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">TOTAL FACT.</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">CRÉDITOS</TableHead>
@@ -1149,7 +1173,7 @@ export default function LiquidationDetailClient({
               <TableBody>
                 {filteredDetails.length === 0 ? (
                   <TableRow className="border-border">
-                    <TableCell colSpan={15} className="text-center text-muted-foreground text-xs py-8">
+                    <TableCell colSpan={14} className="text-center text-muted-foreground text-xs py-8">
                       {searchQuery.trim()
                         ? "No se encontraron renglones que coincidan con la búsqueda."
                         : "No hay renglones para mostrar."}
@@ -1171,20 +1195,17 @@ export default function LiquidationDetailClient({
 
                     return (
                       <TableRow key={detail.id} className="hover:bg-muted/40 border-border text-foreground text-xs">
-                        <TableCell className="font-medium text-3xs whitespace-nowrap">
-                          {detail.cliente?.nombre || liq.rc?.cliente?.nombre || "OS"}
-                        </TableCell>
-                        <TableCell className="font-mono text-3xs text-muted-foreground whitespace-nowrap">
-                          {detail.periodo || liq.mesCarga || "-"}
+                        <TableCell className="font-semibold text-3xs max-w-[180px] whitespace-normal break-words py-2.5">
+                          {detail.prestadorNombre || detail.hospital?.nombre || "Hospital"}
                         </TableCell>
                         <TableCell className="font-mono text-3xs text-muted-foreground whitespace-nowrap">
                           {detail.hospital?.cuit || detail.cuit || "-"}
                         </TableCell>
-                        <TableCell className="font-semibold text-3xs max-w-[160px] whitespace-normal break-words">
-                          {detail.prestadorNombre || detail.hospital?.nombre || "Hospital"}
-                        </TableCell>
                         <TableCell className="text-3xs text-muted-foreground whitespace-nowrap">
                           {detail.localidad || "CAPITAL"}
+                        </TableCell>
+                        <TableCell className="font-mono text-3xs text-muted-foreground whitespace-nowrap">
+                          {detail.periodo || liq.mesCarga || "-"}
                         </TableCell>
                         <TableCell className="font-mono text-3xs font-semibold whitespace-nowrap">
                           {detail.fcHospital || `FC-${detail.compraId || ""}`}

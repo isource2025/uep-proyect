@@ -373,21 +373,27 @@ export async function importAgentsFromExcel(formData: FormData) {
     }
 
     // Atomic transaction: if insertion fails, the deletion is rolled back
-    await prisma.$transaction(async (tx) => {
-      if (replaceExisting && existingCount > 0) {
-        await tx.imPersonalMsp.deleteMany({
-          where: { periodo: periodDate },
-        });
-      }
+    await prisma.$transaction(
+      async (tx) => {
+        if (replaceExisting && existingCount > 0) {
+          await tx.imPersonalMsp.deleteMany({
+            where: { periodo: periodDate },
+          });
+        }
 
-      const chunkSize = 1000;
-      for (let i = 0; i < recordsToInsert.length; i += chunkSize) {
-        const chunk = recordsToInsert.slice(i, i + chunkSize);
-        await tx.imPersonalMsp.createMany({
-          data: chunk,
-        });
+        const chunkSize = 1000;
+        for (let i = 0; i < recordsToInsert.length; i += chunkSize) {
+          const chunk = recordsToInsert.slice(i, i + chunkSize);
+          await tx.imPersonalMsp.createMany({
+            data: chunk,
+          });
+        }
+      },
+      {
+        maxWait: 20000, // 20 seconds to acquire connection
+        timeout: 120000, // 120 seconds for large bulk insertions
       }
-    });
+    );
 
     revalidatePath("/dashboard/agents");
     revalidatePath("/dashboard/hospital-portal");

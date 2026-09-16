@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { Database, UploadCloud, CheckCircle, RefreshCw, FileSpreadsheet, AlertCircle, Info, Landmark } from "lucide-react";
+import { Database, UploadCloud, CheckCircle, RefreshCw, FileSpreadsheet, AlertCircle, Info, ShieldCheck } from "lucide-react";
+import { SisperImportModal } from "@/components/sisper-import-modal";
 
 interface ErpStatusData {
   fcCount: number;
@@ -13,22 +13,11 @@ interface ErpStatusData {
   purchasesCount: number;
 }
 
-interface SisperImportResult {
-  createdCount: number;
-  updatedCount: number;
-  totalCount: number;
-}
-
 export default function ImportPage() {
   const [erpLoading, setErpLoading] = useState(false);
   const [erpStatus, setErpStatus] = useState<ErpStatusData | null>(null);
   const [erpError, setErpError] = useState("");
-
-  const [sisperLoading, setSisperLoading] = useState(false);
-  const [sisperResult, setSisperResult] = useState<SisperImportResult | null>(null);
-  const [sisperError, setSisperError] = useState("");
-  const [fileName, setFileName] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
+  const [lastImportInfo, setLastImportInfo] = useState<{ period: string; count: number } | null>(null);
 
   const triggerErpSync = async () => {
     setErpLoading(true);
@@ -46,44 +35,6 @@ export default function ImportPage() {
     } finally {
       setErpLoading(false);
     }
-  };
-
-  const processFile = async (file: File) => {
-    setFileName(file.name);
-    setSisperLoading(true);
-    setSisperResult(null);
-    setSisperError("");
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const res = await fetch("/api/import/sisper", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error al importar");
-
-      setSisperResult(data);
-    } catch (e: any) {
-      setSisperError(e.message || "Error de red al procesar el archivo");
-    } finally {
-      setSisperLoading(false);
-    }
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) processFile(file);
-  };
-
-  const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
   };
 
   return (
@@ -180,86 +131,46 @@ export default function ImportPage() {
             </div>
             <CardTitle className="text-foreground text-lg font-bold">Importación SISPER (Excel)</CardTitle>
             <CardDescription className="text-muted-foreground text-xs mt-1 leading-relaxed">
-              Sube la nómina médica de los establecimientos de salud para guardarlos directamente en la tabla `imPersonal`.
+              Sube la nómina médica y de personal sanitario exportada de SISPER para procesarla y guardarla en la tabla <code className="font-mono text-emerald-600 dark:text-emerald-400">imPersonalMsp</code>.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 flex-1 flex flex-col justify-between">
-            {/* File Upload Area */}
-            <div
-              onDragEnter={() => setIsDragging(true)}
-              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={handleFileDrop}
-              className={cn(
-                "relative rounded-lg border-2 border-dashed px-6 py-8 text-center transition-all duration-300 cursor-pointer overflow-hidden",
-                sisperLoading
-                  ? "bg-muted/10 border-border cursor-not-allowed opacity-75"
-                  : isDragging
-                  ? "border-emerald-500 bg-emerald-500/10 scale-[1.02] shadow-lg shadow-emerald-500/10 text-foreground"
-                  : "border-white bg-muted/20 hover:border-zinc-400 dark:hover:border-zinc-700"
-              )}
-            >
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleFileUpload}
-                disabled={sisperLoading}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-              />
-              {sisperLoading ? (
-                <div className="space-y-3 py-2">
-                  <RefreshCw className="mx-auto h-8 w-8 text-emerald-500 animate-spin" />
-                  <div className="text-xs font-semibold text-foreground">Procesando y validando planilla...</div>
-                  <p className="text-[10px] text-muted-foreground">Actualizando agentes en la base de datos UEP.</p>
-                </div>
-              ) : (
-                <>
-                  <UploadCloud className={cn(
-                    "mx-auto h-8 w-8 mb-3 transition-colors duration-300",
-                    isDragging ? "text-emerald-500 animate-bounce" : "text-muted-foreground"
-                  )} />
-                  <div className="text-xs text-muted-foreground">
-                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Haz clic para subir</span> o arrastra y suelta
-                    <p className="text-muted-foreground mt-1 text-[11px]">Planilla Excel de SISPER (.xlsx)</p>
-                  </div>
-                </>
-              )}
+            <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+              <h3 className="text-xs font-bold text-foreground">Características del Proceso:</h3>
+              <ul className="text-xs text-muted-foreground space-y-2 list-disc pl-4">
+                <li><strong className="text-foreground">Matcheo Automático</strong>: Vincula agentes con hospitales mediante el código de Lugar de Pago.</li>
+                <li><strong className="text-foreground">Extracción de CUIL</strong>: Limpia y normaliza el CUIL/DNI de 11 dígitos como identificador único.</li>
+                <li><strong className="text-foreground">Transacción Atómica</strong>: Inserción segura con detección y confirmación de nóminas previas.</li>
+              </ul>
             </div>
 
-            {fileName && (
-              <div className="flex items-center justify-between text-xs rounded-lg border border-border bg-muted/30 p-2.5">
-                <div className="flex items-center gap-2 text-foreground">
-                  <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  <span className="truncate max-w-[180px] font-mono">{fileName}</span>
-                </div>
-                {sisperLoading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-              </div>
-            )}
-
-            {sisperResult && (
-              <div className="flex items-start gap-2.5 rounded-lg bg-teal-500/10 border border-teal-500/20 p-3 text-sm text-teal-650 dark:text-teal-400 animate-fade-in">
+            {lastImportInfo && (
+              <div className="flex items-start gap-2.5 rounded-lg bg-teal-500/10 border border-teal-500/20 p-3 text-xs text-teal-600 dark:text-teal-400 animate-fade-in">
                 <CheckCircle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-bold">Nómina importada con éxito</p>
-                  <div className="text-xs text-muted-foreground space-y-0.5 mt-1 font-mono">
-                    <div>Procesados: {sisperResult.totalCount}</div>
-                    <div>Creados en imPersonal: <span className="text-emerald-600 dark:text-emerald-400 font-bold">{sisperResult.createdCount}</span></div>
-                    <div>Actualizados: <span className="text-teal-600 dark:text-teal-400 font-bold">{sisperResult.updatedCount}</span></div>
-                  </div>
+                  <p className="font-bold">Última importación exitosa</p>
+                  <p className="text-muted-foreground mt-0.5">
+                    Se procesaron <strong className="text-foreground">{lastImportInfo.count.toLocaleString("es-AR")}</strong> agentes para el período <strong className="text-foreground">{lastImportInfo.period}</strong>.
+                  </p>
                 </div>
               </div>
             )}
 
-            {sisperError && (
-              <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600 dark:text-red-400">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <p>{sisperError}</p>
-              </div>
-            )}
+            <SisperImportModal
+              onSuccess={(period, count) => {
+                setLastImportInfo({ period, count });
+              }}
+              trigger={
+                <Button className="w-full mt-4 bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold h-11 cursor-pointer gap-2 shadow-sm">
+                  <UploadCloud className="h-5 w-5" />
+                  Abrir Asistente de Importación SISPER
+                </Button>
+              }
+            />
 
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground border-t border-border pt-4">
-              <Info className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span>El Excel debe tener las columnas: CUIL, Nombre, Cargo, Establecimiento, Hospital.</span>
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground border-t border-border pt-3">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-500" />
+              <span>Compatible con planillas oficiales <span className="font-mono text-foreground">.xlsx / .xls</span> de Arancelamiento SISPER.</span>
             </div>
           </CardContent>
         </Card>

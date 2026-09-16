@@ -75,27 +75,22 @@ export async function fetchAgentsData(
       const q = searchQuery.trim();
       const cleanDigits = q.replace(/[^\d]/g, "");
       let cuilSearchBigInt: bigint | null = null;
-      let idAgenteSearchNum: number | null = null;
 
       if (cleanDigits.length >= 6) {
         try {
           cuilSearchBigInt = BigInt(cleanDigits);
-        } catch {}
-      }
-      if (cleanDigits.length > 0 && cleanDigits.length <= 9) {
-        try {
-          const parsed = parseInt(cleanDigits, 10);
-          if (!isNaN(parsed) && parsed < 2147483647) {
-            idAgenteSearchNum = parsed;
-          }
-        } catch {}
+        } catch { }
       }
 
       where.OR = [
         { apellidoyNombre: { contains: q } },
         { legajo: { contains: q } },
-        ...(cuilSearchBigInt !== null ? [{ cuil: { equals: cuilSearchBigInt } }] : []),
-        ...(idAgenteSearchNum !== null ? [{ idAgente: { equals: idAgenteSearchNum } }] : []),
+        ...(cuilSearchBigInt !== null
+          ? [
+              { cuil: { equals: cuilSearchBigInt } },
+              { idAgente: { equals: cuilSearchBigInt } },
+            ]
+          : []),
       ];
     }
 
@@ -129,11 +124,11 @@ export async function fetchAgentsData(
       apellidoyNombre: ag.apellidoyNombre?.trim() || "",
       empresa: ag.empresa
         ? {
-            id: ag.empresa.id,
-            descripcion: ag.empresa.descripcion?.trim() || "",
-            localidad: ag.empresa.localidad?.trim() || "",
-            cuit: ag.empresa.cuit ? toNum(ag.empresa.cuit) : null,
-          }
+          id: ag.empresa.id,
+          descripcion: ag.empresa.descripcion?.trim() || "",
+          localidad: ag.empresa.localidad?.trim() || "",
+          cuit: ag.empresa.cuit ? toNum(ag.empresa.cuit) : null,
+        }
         : null,
     }));
 
@@ -222,7 +217,7 @@ export async function importAgentsFromExcel(formData: FormData) {
       periodo: Date;
       idEmpresa: number;
       legajo: string;
-      idAgente: number;
+      idAgente: bigint | null;
       cuil: bigint | null;
       apellidoyNombre: string;
     }[] = [];
@@ -272,7 +267,7 @@ export async function importAgentsFromExcel(formData: FormData) {
       const legajo = String(rawLegajo).trim().substring(0, 10);
       if (!legajo) continue;
 
-      // 3. Extract IdAgente & Apellido y Nombre from "Agente" column (structure: "id - nombre agente")
+      // 3. Extract Apellido y Nombre
       const rawAgente = String(
         row["Agente"] ||
         row["Agente_1"] ||
@@ -281,33 +276,13 @@ export async function importAgentsFromExcel(formData: FormData) {
         ""
       ).trim();
 
-      let idAgente: number = 0;
       let nombre = rawAgente;
-
-      const matchAgentePrefix = rawAgente.match(/^\(?\s*(\d+)\s*\)?\s*[-–—:]\s*(.*)$/);
+      const matchAgentePrefix = rawAgente.match(/^\(?\s*\d+\s*\)?\s*[-–—:]\s*(.*)$/);
       if (matchAgentePrefix) {
-        idAgente = parseInt(matchAgentePrefix[1], 10);
-        nombre = (matchAgentePrefix[2] || "").trim() || rawAgente;
-      } else {
-        const matchLeadingDigits = rawAgente.match(/^(\d+)\s+(.+)$/);
-        if (matchLeadingDigits) {
-          idAgente = parseInt(matchLeadingDigits[1], 10);
-          nombre = matchLeadingDigits[2].trim();
-        } else if (typeof row["IdAgente"] === "number") {
-          idAgente = row["IdAgente"];
-        } else if (row["Puesto Laboral"] && !isNaN(parseInt(row["Puesto Laboral"], 10))) {
-          idAgente = parseInt(row["Puesto Laboral"], 10);
-        } else if (legajo && !isNaN(parseInt(legajo, 10))) {
-          idAgente = parseInt(legajo, 10);
-        }
+        nombre = (matchAgentePrefix[1] || "").trim() || rawAgente;
       }
 
-      // Validate 32-bit integer boundary for SQL Server 'int'
-      if (isNaN(idAgente) || idAgente > 2147483647 || idAgente < 0) {
-        idAgente = 0;
-      }
-
-      // 4. Extract CUIL (11 digits, stored as BigInt)
+      // 4. Extract CUIL (11 digits, stored as BigInt and used as idAgente)
       let rawCuil =
         row["CUIL"] ||
         row["Cuil"] ||
@@ -330,7 +305,7 @@ export async function importAgentsFromExcel(formData: FormData) {
           rawCuil = row[cuilKey];
         }
       }
-      
+
       const cleanCuil = String(rawCuil || "").replace(/[^\d]/g, "");
       let cuilBigInt: bigint | null = null;
 
@@ -351,7 +326,7 @@ export async function importAgentsFromExcel(formData: FormData) {
         periodo: periodDate,
         idEmpresa,
         legajo,
-        idAgente,
+        idAgente: cuilBigInt,
         cuil: cuilBigInt,
         apellidoyNombre: nombre.substring(0, 300),
       });
@@ -360,7 +335,7 @@ export async function importAgentsFromExcel(formData: FormData) {
       agentsLegacyToSync.push({
         cuil: cleanCuil,
         nombre: nombre.substring(0, 200),
-        cargo: cleanCuil ? `CUIL ${cleanCuil}` : `ID ${idAgente}`,
+        cargo: cleanCuil ? `CUIL ${cleanCuil}` : "PROFESIONAL",
         establecimiento: String(lugarPago).substring(0, 200),
         hospitalId: idEmpresa,
       });

@@ -216,51 +216,51 @@ export default function AgentsClient({
       </div>
 
       {/* Summary Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-3xs uppercase font-bold text-muted-foreground tracking-wider">
+          <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3 min-w-0">
+            <div className="space-y-1 min-w-0 flex-1">
+              <span className="text-2xs sm:text-3xs uppercase font-bold text-muted-foreground tracking-wider leading-tight block break-words">
                 Total Agentes Registrados
               </span>
-              <p className="text-2xl font-black text-foreground font-mono">
+              <p className="text-2xl sm:text-3xl font-black text-foreground font-mono truncate">
                 {data.totalCount.toLocaleString("es-AR")}
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <Users className="h-6 w-6" />
+            <div className="p-2.5 sm:p-3 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+              <Users className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-3xs uppercase font-bold text-muted-foreground tracking-wider">
+          <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3 min-w-0">
+            <div className="space-y-1 min-w-0 flex-1">
+              <span className="text-2xs sm:text-3xs uppercase font-bold text-muted-foreground tracking-wider leading-tight block break-words">
                 Centros de Salud Mapeados
               </span>
-              <p className="text-2xl font-black text-foreground font-mono">
+              <p className="text-2xl sm:text-3xl font-black text-foreground font-mono truncate">
                 {data.empresas.length}
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-              <Building2 className="h-6 w-6" />
+            <div className="p-2.5 sm:p-3 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
+              <Building2 className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-3xs uppercase font-bold text-muted-foreground tracking-wider">
+          <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3 min-w-0">
+            <div className="space-y-1 min-w-0 flex-1">
+              <span className="text-2xs sm:text-3xs uppercase font-bold text-muted-foreground tracking-wider leading-tight block break-words">
                 Período Activo
               </span>
-              <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+              <p className="text-base sm:text-lg font-bold text-emerald-600 dark:text-emerald-400 truncate">
                 {formatPeriodDisplay(selectedPeriod)}
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-              <CalendarRange className="h-6 w-6" />
+            <div className="p-2.5 sm:p-3 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 shrink-0">
+              <CalendarRange className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
           </CardContent>
         </Card>

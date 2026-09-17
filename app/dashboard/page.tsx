@@ -118,21 +118,21 @@ export default async function DashboardPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
         {statCards.map((card) => {
           const Icon = card.icon;
           const cardContent = (
             <Card className="border-border bg-card text-card-foreground hover:bg-muted/30 transition-all duration-200 h-full">
-              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 gap-2">
+                <CardTitle className="text-2xs sm:text-xs font-semibold text-muted-foreground uppercase tracking-wider leading-snug break-words flex-1">
                   {card.title}
                 </CardTitle>
-                <div className={`rounded-lg p-2 border ${card.color}`}>
+                <div className={`rounded-lg p-2 border ${card.color} shrink-0`}>
                   <Icon className="h-4 w-4" />
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold text-foreground tracking-tight">{card.value}</div>
+                <div className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight truncate">{card.value}</div>
                 <p className="text-xs text-muted-foreground mt-1.5 leading-tight">{card.description}</p>
               </CardContent>
             </Card>
@@ -149,9 +149,9 @@ export default async function DashboardPage() {
       </div>
 
       {/* Main Grid split */}
-      <div className="grid gap-6 md:grid-cols-7">
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-7">
         {/* Recent Invoices / Receipts Table */}
-        <Card className="col-span-4 border-border bg-card text-card-foreground">
+        <Card className="lg:col-span-4 border-border bg-card text-card-foreground">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-lg font-bold text-foreground">Comprobantes Recientes (ERP)</CardTitle>
@@ -217,7 +217,7 @@ export default async function DashboardPage() {
         </Card>
 
         {/* Shortcuts and Quick Actions */}
-        <Card className="col-span-3 border-border bg-card text-card-foreground flex flex-col">
+        <Card className="lg:col-span-3 border-border bg-card text-card-foreground flex flex-col">
           <CardHeader>
             <CardTitle className="text-lg font-bold text-foreground">Acciones Rápidas</CardTitle>
             <CardDescription className="text-muted-foreground text-xs mt-1">

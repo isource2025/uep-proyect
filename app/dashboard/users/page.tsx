@@ -79,51 +79,51 @@ export default async function UsersPage({
       </div>
 
       {/* Summary Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-3xs uppercase font-bold text-muted-foreground tracking-wider">
+          <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3 min-w-0">
+            <div className="space-y-1 min-w-0 flex-1">
+              <span className="text-2xs sm:text-3xs uppercase font-bold text-muted-foreground tracking-wider leading-tight block break-words">
                 Total Operadores
               </span>
-              <p className="text-2xl font-black text-foreground font-mono">
+              <p className="text-2xl sm:text-3xl font-black text-foreground font-mono truncate">
                 {totalCount}
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-              <Users2 className="h-6 w-6" />
+            <div className="p-2.5 sm:p-3 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
+              <Users2 className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-3xs uppercase font-bold text-muted-foreground tracking-wider">
+          <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3 min-w-0">
+            <div className="space-y-1 min-w-0 flex-1">
+              <span className="text-2xs sm:text-3xs uppercase font-bold text-muted-foreground tracking-wider leading-tight block break-words">
                 Operadores Activos
               </span>
-              <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+              <p className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono truncate">
                 {activeCount}
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <UserCheck className="h-6 w-6" />
+            <div className="p-2.5 sm:p-3 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+              <UserCheck className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border bg-card shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-3xs uppercase font-bold text-muted-foreground tracking-wider">
+          <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3 min-w-0">
+            <div className="space-y-1 min-w-0 flex-1">
+              <span className="text-2xs sm:text-3xs uppercase font-bold text-muted-foreground tracking-wider leading-tight block break-words">
                 Inactivos / Dados de Baja
               </span>
-              <p className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
+              <p className="text-2xl sm:text-3xl font-black text-rose-600 dark:text-rose-400 font-mono truncate">
                 {inactiveCount}
               </p>
             </div>
-            <div className="p-3 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
-              <UserX className="h-6 w-6" />
+            <div className="p-2.5 sm:p-3 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
+              <UserX className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
           </CardContent>
         </Card>

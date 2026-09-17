@@ -26,7 +26,18 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
   const email = (formData.get("email") as string || "").trim();
   const password = (formData.get("password") as string || "");
   const confirmPassword = (formData.get("confirmPassword") as string || "");
-  const role = (formData.get("role") as string || "").trim();
+  
+  // Parse multi-role selection
+  const rawRoles = formData.getAll("roles").map((r) => String(r).trim()).filter(Boolean);
+  const rawRoleSingle = (formData.get("role") as string || "").trim();
+  const allRoles = Array.from(
+    new Set([
+      ...rawRoles,
+      ...(rawRoleSingle ? rawRoleSingle.split(",").map((r) => r.trim()).filter(Boolean) : []),
+    ])
+  );
+  const role = allRoles.join(",");
+
   const cuit = (formData.get("cuit") as string || "").trim();
   const hospitalIdStr = (formData.get("hospitalId") as string || "").trim();
   const operador = (formData.get("operador") as string || "").trim();
@@ -62,8 +73,8 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
   }
 
   // 4. Validar Rol
-  if (!role) {
-    fieldErrors.role = "Debe seleccionar un rol para el operador.";
+  if (!role || allRoles.length === 0) {
+    fieldErrors.role = "Debe seleccionar al menos un rol para el operador.";
   }
 
   // 5. Validar Código de Operador
@@ -163,7 +174,18 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
   const email = (formData.get("email") as string || "").trim();
   const password = (formData.get("password") as string || "");
   const confirmPassword = (formData.get("confirmPassword") as string || "");
-  const role = (formData.get("role") as string || "").trim();
+
+  // Parse multi-role selection
+  const rawRoles = formData.getAll("roles").map((r) => String(r).trim()).filter(Boolean);
+  const rawRoleSingle = (formData.get("role") as string || "").trim();
+  const allRoles = Array.from(
+    new Set([
+      ...rawRoles,
+      ...(rawRoleSingle ? rawRoleSingle.split(",").map((r) => r.trim()).filter(Boolean) : []),
+    ])
+  );
+  const role = allRoles.join(",");
+
   const cuit = (formData.get("cuit") as string || "").trim();
   const hospitalIdStr = (formData.get("hospitalId") as string || "").trim();
   const operador = (formData.get("operador") as string || "").trim();
@@ -209,8 +231,8 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
   }
 
   // 4. Validar Rol
-  if (!role) {
-    fieldErrors.role = "Debe seleccionar un rol para el operador.";
+  if (!role || allRoles.length === 0) {
+    fieldErrors.role = "Debe seleccionar al menos un rol para el operador.";
   }
 
   // 5. Validar Código de Operador

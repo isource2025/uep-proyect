@@ -13,7 +13,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserPlus, Pencil, Eye, EyeOff, Loader2, AlertCircle, Shield, KeyRound, UserCheck } from "lucide-react";
+import {
+  UserPlus,
+  Pencil,
+  Eye,
+  EyeOff,
+  Loader2,
+  AlertCircle,
+  Shield,
+  KeyRound,
+  UserCheck,
+  Check,
+} from "lucide-react";
 import { createUserAction, updateUserAction } from "./actions";
 
 export interface RoleOption {
@@ -64,11 +75,12 @@ export function UserModal({
     email: "",
     operador: "",
     cuit: "",
-    role: "",
     hospitalId: "",
     password: "",
     confirmPassword: "",
   });
+
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
 
   const isEdit = mode === "edit" || !!user;
 
@@ -81,22 +93,28 @@ export function UserModal({
           email: user.email || "",
           operador: user.operador || "",
           cuit: user.cuit || "",
-          role: user.role ? String(user.role) : "",
           hospitalId: user.hospitalId ? String(user.hospitalId) : "",
           password: "",
           confirmPassword: "",
         });
+
+        // Parse comma-separated roles
+        const initialRoles = (user.role || "")
+          .split(",")
+          .map((r) => r.trim())
+          .filter(Boolean);
+        setSelectedRoles(initialRoles);
       } else {
         setFormData({
           name: "",
           email: "",
           operador: "",
           cuit: "",
-          role: "",
           hospitalId: "",
           password: "",
           confirmPassword: "",
         });
+        setSelectedRoles([]);
       }
       setError("");
       setFieldErrors({});
@@ -113,6 +131,17 @@ export function UserModal({
         return next;
       });
     }
+  };
+
+  const toggleRole = (roleIdStr: string) => {
+    setSelectedRoles((prev) => {
+      const exists = prev.includes(roleIdStr);
+      const updated = exists
+        ? prev.filter((id) => id !== roleIdStr)
+        : [...prev, roleIdStr];
+      return updated;
+    });
+    clearFieldError("role");
   };
 
   const handleChange = (
@@ -147,7 +176,7 @@ export function UserModal({
     data.append("email", formData.email);
     data.append("operador", formData.operador);
     data.append("cuit", formData.cuit);
-    data.append("role", formData.role);
+    data.append("role", selectedRoles.join(","));
     data.append("hospitalId", formData.hospitalId);
     data.append("password", formData.password);
     data.append("confirmPassword", formData.confirmPassword);
@@ -204,7 +233,7 @@ export function UserModal({
               </DialogTitle>
               <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
                 {isEdit
-                  ? "Modifica los datos del operador en imPersonal y actualiza sus credenciales de acceso."
+                  ? "Modifica los datos del operador en imPersonal, asigna múltiples roles y actualiza sus credenciales."
                   : "Crea un registro de personal en imPersonal en estado Activo y asocia sus credenciales de inicio de sesión."}
               </DialogDescription>
             </div>
@@ -286,32 +315,7 @@ export function UserModal({
                 )}
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="role" className="text-foreground text-xs font-semibold">
-                  Rol Operador <span className="text-red-500">*</span>
-                </Label>
-                <select
-                  id="role"
-                  name="role"
-                  value={formData.role}
-                  onChange={handleChange}
-                  className={`flex h-10 w-full rounded-md border bg-muted/40 text-foreground px-3 py-2 text-xs sm:text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 cursor-pointer ${
-                    fieldErrors.role ? "border-red-500/70 focus-visible:ring-red-500" : "border-input"
-                  }`}
-                >
-                  <option value="" className="bg-card text-foreground">Seleccionar rol...</option>
-                  {roles.map((r) => (
-                    <option key={r.id} value={String(r.id)} className="bg-card text-foreground">
-                      {r.nombre}
-                    </option>
-                  ))}
-                </select>
-                {fieldErrors.role && (
-                  <p className="text-[11px] text-red-500 font-medium">{fieldErrors.role}</p>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="cuit" className="text-foreground text-xs font-semibold">
                   CUIT / CUIL
                 </Label>
@@ -327,6 +331,53 @@ export function UserModal({
                 />
                 {fieldErrors.cuit && (
                   <p className="text-[11px] text-red-500 font-medium">{fieldErrors.cuit}</p>
+                )}
+              </div>
+
+              {/* Selector de Roles Múltiples */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-foreground text-xs font-semibold">
+                    Roles del Operador <span className="text-red-500">*</span>
+                  </Label>
+                  <span className="text-2xs text-muted-foreground font-medium">
+                    (Puede seleccionar uno o varios roles)
+                  </span>
+                </div>
+                <div
+                  className={`grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 rounded-xl bg-muted/20 border transition-colors ${
+                    fieldErrors.role ? "border-red-500/70 bg-red-500/5" : "border-border"
+                  }`}
+                >
+                  {roles.map((r) => {
+                    const isSelected = selectedRoles.includes(String(r.id));
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => toggleRole(String(r.id))}
+                        className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer select-none ${
+                          isSelected
+                            ? "bg-emerald-500/15 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs"
+                            : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        }`}
+                      >
+                        <div
+                          className={`flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-md border transition-all ${
+                            isSelected
+                              ? "bg-emerald-600 border-emerald-600 text-zinc-950"
+                              : "border-muted-foreground/30 bg-transparent"
+                          }`}
+                        >
+                          {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
+                        </div>
+                        <span className="truncate">{r.nombre}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {fieldErrors.role && (
+                  <p className="text-[11px] text-red-500 font-medium">{fieldErrors.role}</p>
                 )}
               </div>
 

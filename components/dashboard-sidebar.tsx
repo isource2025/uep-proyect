@@ -31,8 +31,13 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
   const pathname = usePathname();
   const { isDesktopCollapsed, isMobileOpen, closeMobileSidebar } = useDashboard();
 
-  // An admin (role === "1") is NEVER restricted to a single hospital view
-  const isHospitalUser = user?.role !== "1" && user?.hospitalId !== undefined && user?.hospitalId !== null;
+  // An admin (role contains "1") is NEVER restricted to a single hospital view
+  const userRoles = String(user?.role || "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+  const isAdmin = userRoles.includes("1");
+  const isHospitalUser = !isAdmin && user?.hospitalId !== undefined && user?.hospitalId !== null;
 
   // Submenu items under Configuración
   const configSubItems = [

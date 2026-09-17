@@ -190,9 +190,30 @@ export default async function UsersPage({
                           </div>
                         </TableCell>
                         <TableCell className="text-xs">
-                          <div className="flex items-center gap-1.5">
-                            <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                            <span className="text-xs">{roleMap.get(String(u.role)) || `Rol: ${u.role}`}</span>
+                          <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
+                            {(() => {
+                              const userRoles = (u.role || "").split(",").map((r) => r.trim()).filter(Boolean);
+                              if (userRoles.length === 0) {
+                                return <span className="text-muted-foreground text-3xs italic">Sin rol</span>;
+                              }
+                              return userRoles.map((roleId) => {
+                                const roleName = roleMap.get(roleId) || `Rol: ${roleId}`;
+                                const isAdmin = roleId === "1";
+                                return (
+                                  <span
+                                    key={roleId}
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-3xs font-semibold border ${
+                                      isAdmin
+                                        ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
+                                        : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                                    }`}
+                                  >
+                                    <ShieldCheck className="h-3 w-3 shrink-0" />
+                                    {roleName}
+                                  </span>
+                                );
+                              });
+                            })()}
                           </div>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">

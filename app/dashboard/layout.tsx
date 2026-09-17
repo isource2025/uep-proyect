@@ -24,6 +24,22 @@ export default async function DashboardLayout({
     redirect("/login?error=inactive");
   }
 
+  const userRoles = String((session.user as any).role || "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+  const isAdmin = userRoles.includes("1");
+  const isMedico = userRoles.includes("2");
+  const isHospital = userRoles.includes("4") || Boolean((session.user as any).hospitalId);
+
+  const displayRole = isAdmin
+    ? "ADMIN"
+    : isMedico
+    ? "MEDICO"
+    : isHospital
+    ? "HOSPITAL"
+    : "OPERADOR";
+
   return (
     <DashboardProvider>
       <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground selection:bg-emerald-500 selection:text-zinc-950 font-sans">
@@ -33,14 +49,7 @@ export default async function DashboardLayout({
             user={{
               name: session.user.name,
               email: session.user.email,
-              role:
-                (session.user as any).role === "1"
-                  ? "ADMIN"
-                  : (session.user as any).role === "2"
-                  ? "MEDICO"
-                  : (session.user as any).role === "4" || (session.user as any).hospitalId
-                  ? "HOSPITAL"
-                  : "OPERATOR",
+              role: displayRole,
             }}
           />
           <main className="flex-1 overflow-y-auto bg-background p-4 sm:p-6 md:p-8 dark:bg-[#171717]">

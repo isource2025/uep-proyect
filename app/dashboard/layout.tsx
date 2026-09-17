@@ -19,6 +19,10 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  if ((session.user as any).estado === 0) {
+    redirect("/login?error=inactive");
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground selection:bg-emerald-500 selection:text-zinc-950 font-sans">
       <DashboardSidebar user={session.user as any} />

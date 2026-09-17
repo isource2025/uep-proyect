@@ -49,6 +49,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Seguridad e Información Sensible**:
   - **NUNCA** dejar credenciales, contraseñas, tokens de API o cualquier tipo de información sensible en texto plano dentro del código fuente, carpetas públicas o scripts del proyecto.
   - Cualquier script utilitario temporal que contenga secretos o contraseñas debe ser eliminado inmediatamente tras su ejecución, y en caso de ser necesario conservarlo, se debe requerir la aprobación explícita del usuario informándole la presencia de datos sensibles.
+- **Mensajes de Commit**:
+  - Cada vez que el usuario escriba la palabra "commit", se le debe sugerir un nombre/mensaje para el commit de forma **corta, concisa y directa** resumiendo con precisión lo que se implementó.
 
 ## Especificaciones Oficiales del Sistema (Pliego Funcional)
 - **1. Importación SISPER (Nómina de Agentes)**:

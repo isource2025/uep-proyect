@@ -16,7 +16,7 @@ datasource db {
 // ==========================================
 
 model User {
-  id            Int       @id @map("Valor")
+  id            Int       @id @default(autoincrement()) @map("Valor")
   email         String?   @unique @map("email")
   password      String?   @map("Password")
   name          String    @map("ApellidoNombre")
@@ -30,6 +30,7 @@ model User {
   updatedAt     DateTime? @updatedAt
   hospitalId    Int?      @map("hospitalId")
   hospital      Proveedor? @relation(fields: [hospitalId], references: [id], map: "User_hospitalId_fkey")
+  estado        Int?      @default(1) @map("Estado")
 
   sessions      Session[]
   accounts      Account[]

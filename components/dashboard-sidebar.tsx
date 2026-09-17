@@ -10,6 +10,7 @@ import {
   Settings,
   Building2,
   Users,
+  UserCog,
   UploadCloud,
   FileDown,
   ChevronDown,
@@ -32,6 +33,11 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
 
   // Submenu items under Configuración
   const configSubItems = [
+    {
+      name: "Usuarios",
+      href: "/dashboard/users",
+      icon: UserCog,
+    },
     {
       name: "Hospitales",
       href: "/dashboard/hospitals",

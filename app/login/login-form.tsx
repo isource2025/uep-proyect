@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,10 +11,17 @@ import { Shield, Loader2, AlertCircle } from "lucide-react";
 
 export default function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const errorParam = searchParams.get("error");
+  const initialError =
+    errorParam === "inactive"
+      ? "Su usuario se encuentra inactivo. Comuníquese con el administrador del sistema."
+      : "";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,6 +44,11 @@ export default function LoginForm() {
         setLoading(false);
       } else {
         const u = (data?.user as any) || {};
+        if (u.estado === 0) {
+          setError("Su usuario se encuentra inactivo. Comuníquese con el administrador del sistema.");
+          setLoading(false);
+          return;
+        }
         const destination = u.role !== "1" && u.hospitalId ? "/dashboard/hospital-portal" : "/dashboard";
         router.replace(destination);
       }

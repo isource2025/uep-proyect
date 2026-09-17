@@ -1,4 +1,4 @@
-import { betterAuth } from "better-auth";
+import { betterAuth, APIError } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { getAppUrl, authSecret, getTrustedOrigins } from "./auth-config";
 import { prisma } from "./prisma";
@@ -26,6 +26,28 @@ export const auth = betterAuth({
       operador: {
         type: "string",
         required: false,
+      },
+      estado: {
+        type: "number",
+        defaultValue: 1,
+        required: false,
+      },
+    },
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session) => {
+          const userIdNum = typeof session.userId === "number" ? session.userId : parseInt(session.userId, 10);
+          const user = await prisma.user.findUnique({
+            where: { id: userIdNum },
+          });
+          if (user && user.estado === 0) {
+            throw new APIError("FORBIDDEN", {
+              message: "Su usuario se encuentra inactivo. Comuníquese con el administrador del sistema.",
+            });
+          }
+        },
       },
     },
   },

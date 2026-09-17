@@ -9,7 +9,7 @@ export default async function Home() {
     headers: await headers(),
   });
 
-  if (session) {
+  if (session && (session.user as any).estado !== 0) {
     const user = session.user as any;
     if (user && user.role !== "1" && user.hospitalId) {
       redirect("/dashboard/hospital-portal");

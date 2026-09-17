@@ -935,8 +935,8 @@ export default function LiquidationDetailClient({
             )}
           </div>
 
-          {/* OBSERVACIONES DEL LIQUIDADOR (Solo visible para Administradores / Liquidadores) */}
-          {!isHospitalUser && (
+          {/* OBSERVACIONES DEL LIQUIDADOR */}
+          {!isHospitalUser ? (
             <div className="sm:col-span-4 mt-1 pt-3 border-t border-border/60">
               <div className="flex items-center justify-between mb-1.5">
                 <Label className="text-[10px] text-muted-foreground uppercase font-bold flex items-center gap-1.5">
@@ -956,6 +956,20 @@ export default function LiquidationDetailClient({
                 className="w-full text-xs bg-background border border-border rounded-lg p-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-75 resize-y font-normal"
               />
             </div>
+          ) : (
+            liq.observaciones && liq.observaciones.trim() !== "" && (
+              <div className="sm:col-span-4 mt-1 pt-3 border-t border-border/60">
+                <div className="p-3.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs">
+                  <div className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5 mb-1.5">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    Observaciones del Liquidador
+                  </div>
+                  <p className="text-foreground whitespace-pre-wrap leading-relaxed font-normal text-xs">
+                    {liq.observaciones}
+                  </p>
+                </div>
+              </div>
+            )
           )}
         </CardContent>
       </Card>

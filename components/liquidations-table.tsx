@@ -9,6 +9,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Receipt,
   Eye,
   CheckCircle2,
@@ -64,6 +72,13 @@ export function LiquidationsTable({
   const router = useRouter();
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const [enteringDetailsId, setEnteringDetailsId] = useState<number | null>(null);
+  const [selectedObs, setSelectedObs] = useState<{
+    id: number;
+    title: string;
+    clientName: string;
+    createdByName?: string;
+    text: string;
+  } | null>(null);
 
   const activeSearchQuery = searchQuery !== undefined ? searchQuery : internalSearchQuery;
   const handleSearchChange = onSearchChange || setInternalSearchQuery;
@@ -232,7 +247,56 @@ export function LiquidationsTable({
                       {isHospitalUser ? (
                         <>
                           <TableCell className="text-xs font-semibold whitespace-normal break-words py-3">
-                            {liq.rc?.cliente?.nombre || "Obra Social"}
+                            <div>{liq.rc?.cliente?.nombre || "Obra Social"}</div>
+                            {((liq.createdByName && liq.createdByName.trim() !== "") || (liq.observaciones && liq.observaciones.trim() !== "")) && (
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {liq.createdByName && liq.createdByName.trim() !== "" && (
+                                  <span className="text-3xs text-muted-foreground flex items-center gap-1 font-normal">
+                                    <User className="h-3 w-3 text-emerald-500 shrink-0" />
+                                    {liq.createdByName}
+                                  </span>
+                                )}
+                                {liq.observaciones && liq.observaciones.trim() !== "" && (
+                                  <div className="relative group inline-block">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedObs({
+                                          id: liq.id,
+                                          title: `LIQ-${String(liq.id).padStart(4, "0")}`,
+                                          clientName: liq.rc?.cliente?.nombre || "Obra Social",
+                                          createdByName: liq.createdByName,
+                                          text: liq.observaciones,
+                                        });
+                                      }}
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold cursor-pointer hover:bg-amber-500/20 active:scale-95 transition-all"
+                                      title="Ver observaciones"
+                                    >
+                                      <MessageSquare className="h-3 w-3" />
+                                      Obs
+                                    </button>
+                                    {/* Hover Tooltip Popup for desktop */}
+                                    <div className="absolute left-0 top-full mt-1.5 hidden md:group-hover:flex flex-col z-50 w-72 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95">
+                                      <div className="flex items-center justify-between border-b border-border/60 pb-1.5 mb-1.5">
+                                        <span className="font-bold text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                                          <MessageSquare className="h-3.5 w-3.5" />
+                                          Observaciones
+                                        </span>
+                                        {liq.createdByName && (
+                                          <span className="text-3xs text-muted-foreground">
+                                            {liq.createdByName}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-2xs text-foreground whitespace-pre-wrap leading-relaxed font-normal">
+                                        {liq.observaciones}
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-xs whitespace-nowrap">
                             {liq.mesCarga || (liq.period ? `${getMonthName(liq.period.mes)} ${liq.period.anio}` : "-")}
@@ -264,12 +328,26 @@ export function LiquidationsTable({
                                 )}
                                 {liq.observaciones && liq.observaciones.trim() !== "" && (
                                   <div className="relative group inline-block">
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold cursor-help hover:bg-amber-500/20 transition-colors">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedObs({
+                                          id: liq.id,
+                                          title: `LIQ-${String(liq.id).padStart(4, "0")}`,
+                                          clientName: liq.rc?.cliente?.nombre || "Obra Social",
+                                          createdByName: liq.createdByName,
+                                          text: liq.observaciones,
+                                        });
+                                      }}
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold cursor-pointer hover:bg-amber-500/20 active:scale-95 transition-all"
+                                      title="Ver observaciones"
+                                    >
                                       <MessageSquare className="h-3 w-3" />
                                       Obs
-                                    </span>
-                                    {/* Hover Tooltip Popup */}
-                                    <div className="absolute left-0 top-full mt-1.5 hidden group-hover:flex flex-col z-50 w-72 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95">
+                                    </button>
+                                    {/* Hover Tooltip Popup for desktop */}
+                                    <div className="absolute left-0 top-full mt-1.5 hidden md:group-hover:flex flex-col z-50 w-72 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95">
                                       <div className="flex items-center justify-between border-b border-border/60 pb-1.5 mb-1.5">
                                         <span className="font-bold text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                                           <MessageSquare className="h-3.5 w-3.5" />
@@ -484,6 +562,51 @@ export function LiquidationsTable({
           </div>
         )}
       </CardContent>
+
+      {/* Modal Dialog for Mobile & Desktop when tapping/clicking 'Obs' */}
+      <Dialog open={!!selectedObs} onOpenChange={(open) => !open && setSelectedObs(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
+                <MessageSquare className="h-4 w-4" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-foreground">
+                  Observaciones de la Liquidación
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  {selectedObs?.title} &bull; {selectedObs?.clientName}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="py-2 space-y-3">
+            {selectedObs?.createdByName && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground pb-2 border-b border-border/60">
+                <User className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                <span>Liquidado por: <strong className="text-foreground font-semibold">{selectedObs.createdByName}</strong></span>
+              </div>
+            )}
+            <div className="p-3.5 rounded-lg bg-muted/50 border border-border text-xs sm:text-sm text-foreground whitespace-pre-wrap leading-relaxed font-normal max-h-60 overflow-y-auto">
+              {selectedObs?.text}
+            </div>
+          </div>
+
+          <DialogFooter className="sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedObs(null)}
+              className="w-full sm:w-auto font-medium cursor-pointer"
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

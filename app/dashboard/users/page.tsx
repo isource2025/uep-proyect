@@ -1,22 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  UserPlus,
   ShieldCheck,
   Mail,
   Users2,
@@ -28,6 +14,8 @@ import {
 } from "lucide-react";
 import { SearchBar } from "@/components/search-bar";
 import { cn } from "@/lib/utils";
+import { CreateUserModal, EditUserModal } from "./create-user-modal";
+import { toggleUserStatusAction } from "./actions";
 
 export const revalidate = 0;
 
@@ -63,94 +51,17 @@ export default async function UsersPage({
   // Fetch roles for display
   const roles = await prisma.imRol.findMany({
     where: { activo: true },
+    select: { id: true, nombre: true },
+    orderBy: { nombre: "asc" },
   });
   const roleMap = new Map(roles.map((r) => [String(r.id), r.nombre]));
 
   // Fetch public hospitals/providers
   const hospitals = await prisma.proveedor.findMany({
     where: { tipoProvId: 18 },
+    select: { id: true, nombre: true },
     orderBy: { nombre: "asc" },
   });
-
-  // Server Action to add a user (imPersonal + Account) with estado = 1 (Activo)
-  const handleCreateUser = async (formData: FormData) => {
-    "use server";
-    const name = formData.get("name") as string;
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
-    const role = formData.get("role") as string;
-    const cuit = formData.get("cuit") as string;
-    const hospitalIdStr = formData.get("hospitalId") as string;
-    const operador = formData.get("operador") as string;
-
-    if (!name || !email || !password || !role) return;
-
-    try {
-      // Hash password using Better Auth context helper
-      const authContext = await auth.$context;
-      const hashedPassword = await authContext.password.hash(password);
-
-      // Execute user and account creation atomically in a transaction
-      await prisma.$transaction(async (tx) => {
-        // Create imPersonal record with auto-generated identity Valor and Estado = 1 (Activo)
-        const newUser = await tx.user.create({
-          data: {
-            name: name.toUpperCase(),
-            email: email.toLowerCase(),
-            password: hashedPassword,
-            role,
-            operador: operador || email.split("@")[0].substring(0, 10),
-            cuit,
-            hospitalId: hospitalIdStr ? parseInt(hospitalIdStr, 10) : null,
-            emailVerified: true,
-            estado: 1, // Nuevo usuario creado en modo Activo
-          },
-        });
-
-        // Create credentials Account record for Better Auth login
-        await tx.account.create({
-          data: {
-            id: `account-${newUser.id}`,
-            accountId: email.toLowerCase(),
-            providerId: "credential",
-            userId: newUser.id,
-            password: hashedPassword,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-        });
-      });
-
-      revalidatePath("/dashboard/users");
-    } catch (e) {
-      console.error("Error creating user in imPersonal:", e);
-    }
-  };
-
-  // Server Action to toggle user status (Dar de baja / Reactivar)
-  const handleToggleUserStatus = async (formData: FormData) => {
-    "use server";
-    const userIdStr = formData.get("userId") as string;
-    const currentEstadoStr = formData.get("currentEstado") as string;
-    if (!userIdStr) return;
-
-    const userId = parseInt(userIdStr, 10);
-    const currentEstado = currentEstadoStr ? parseInt(currentEstadoStr, 10) : 1;
-    const newEstado = currentEstado === 0 ? 1 : 0; // 0 = Inactivo (Baja), 1 = Activo
-
-    try {
-      await prisma.$transaction(async (tx) => {
-        await tx.user.update({
-          where: { id: userId },
-          data: { estado: newEstado },
-        });
-      });
-
-      revalidatePath("/dashboard/users");
-    } catch (e) {
-      console.error("Error updating user estado in imPersonal:", e);
-    }
-  };
 
   return (
     <div className="space-y-6 text-foreground">
@@ -163,131 +74,8 @@ export default async function UsersPage({
           </p>
         </div>
 
-        {/* Create User Modal */}
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1.5 self-start md:self-auto h-10 transition-all cursor-pointer shadow-sm">
-              <UserPlus className="h-4.5 w-4.5" />
-              Nuevo Operador
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="border-border bg-card text-card-foreground max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-foreground font-bold">Registrar Nuevo Operador</DialogTitle>
-              <DialogDescription className="text-muted-foreground text-xs">
-                Crea un registro de personal en <code className="font-mono">imPersonal</code> en estado <strong>Activo</strong> y asocia sus credenciales de inicio de sesión.
-              </DialogDescription>
-            </DialogHeader>
-            <form action={handleCreateUser} className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-foreground text-xs font-semibold">
-                  Apellido y Nombre
-                </Label>
-                <Input
-                  id="name"
-                  name="name"
-                  placeholder="GARCIA JUAN CARLOS"
-                  required
-                  className="bg-muted/40 border-border text-foreground placeholder-muted-foreground text-xs h-9 focus-visible:ring-emerald-500"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-foreground text-xs font-semibold">
-                    Email
-                  </Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    placeholder="jgarcia@uep.gov.ar"
-                    required
-                    className="bg-muted/40 border-border text-foreground placeholder-muted-foreground text-xs h-9 focus-visible:ring-emerald-500"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="operador" className="text-foreground text-xs font-semibold">
-                    Código Operador (Max 10)
-                  </Label>
-                  <Input
-                    id="operador"
-                    name="operador"
-                    placeholder="jgarcia"
-                    maxLength={10}
-                    className="bg-muted/40 border-border text-foreground placeholder-muted-foreground text-xs h-9 focus-visible:ring-emerald-500"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-foreground text-xs font-semibold">
-                    Contraseña
-                  </Label>
-                  <Input
-                    id="password"
-                    name="password"
-                    type="password"
-                    placeholder="••••••••"
-                    required
-                    className="bg-muted/40 border-border text-foreground placeholder-muted-foreground text-xs h-9 focus-visible:ring-emerald-500"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="cuit" className="text-foreground text-xs font-semibold">
-                    CUIT (CUIL)
-                  </Label>
-                  <Input
-                    id="cuit"
-                    name="cuit"
-                    placeholder="20123456789"
-                    className="bg-muted/40 border-border text-foreground placeholder-muted-foreground text-xs h-9 focus-visible:ring-emerald-500"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="role" className="text-foreground text-xs font-semibold">
-                    Rol Operador
-                  </Label>
-                  <select
-                    id="role"
-                    name="role"
-                    required
-                    className="flex h-9 w-full rounded-md border border-input bg-muted/40 text-foreground px-3 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 cursor-pointer"
-                  >
-                    {roles.map((r) => (
-                      <option key={r.id} value={String(r.id)} className="bg-card text-foreground">
-                        {r.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="hospitalId" className="text-foreground text-xs font-semibold">
-                    Lugar Trabajo / Efector
-                  </Label>
-                  <select
-                    id="hospitalId"
-                    name="hospitalId"
-                    className="flex h-9 w-full rounded-md border border-input bg-muted/40 text-foreground px-3 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 cursor-pointer"
-                  >
-                    <option value="" className="bg-card text-foreground">Ninguno (Sede UEP)</option>
-                    {hospitals.map((h) => (
-                      <option key={h.id} value={h.id} className="bg-card text-foreground">
-                        {h.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <DialogFooter className="pt-4">
-                <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold h-10 cursor-pointer shadow-sm">
-                  Guardar Operador Activo
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {/* Create User Modal with Eye password toggle */}
+        <CreateUserModal roles={roles} hospitals={hospitals} />
       </div>
 
       {/* Summary Stat Cards */}
@@ -429,31 +217,46 @@ export default async function UsersPage({
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <form action={handleToggleUserStatus} className="inline-block">
-                            <input type="hidden" name="userId" value={u.id} />
-                            <input type="hidden" name="currentEstado" value={isActive ? 1 : 0} />
-                            {isActive ? (
-                              <Button
-                                type="submit"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-3xs border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 hover:text-rose-600 cursor-pointer gap-1 px-2.5 transition-colors"
-                              >
-                                <UserX className="h-3 w-3" />
-                                Dar de baja
-                              </Button>
-                            ) : (
-                              <Button
-                                type="submit"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-3xs border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-600 cursor-pointer gap-1 px-2.5 transition-colors"
-                              >
-                                <UserCheck className="h-3 w-3" />
-                                Reactivar
-                              </Button>
-                            )}
-                          </form>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <EditUserModal
+                              user={{
+                                id: u.id,
+                                name: u.name,
+                                email: u.email,
+                                operador: u.operador,
+                                cuit: u.cuit,
+                                role: u.role,
+                                hospitalId: u.hospitalId,
+                              }}
+                              roles={roles}
+                              hospitals={hospitals}
+                            />
+                            <form action={toggleUserStatusAction} className="inline-block">
+                              <input type="hidden" name="userId" value={u.id} />
+                              <input type="hidden" name="currentEstado" value={isActive ? 1 : 0} />
+                              {isActive ? (
+                                <Button
+                                  type="submit"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-3xs border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 hover:text-rose-600 cursor-pointer gap-1 px-2.5 transition-colors"
+                                >
+                                  <UserX className="h-3 w-3" />
+                                  Dar de baja
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="submit"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-3xs border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-600 cursor-pointer gap-1 px-2.5 transition-colors"
+                                >
+                                  <UserCheck className="h-3 w-3" />
+                                  Reactivar
+                                </Button>
+                              )}
+                            </form>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

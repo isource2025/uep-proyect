@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { DashboardProvider } from "@/components/dashboard-context";
+import { getActivePeriodInfo } from "@/lib/periods";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,10 @@ export default async function DashboardLayout({
   if ((session.user as any).estado === 0) {
     redirect("/login?error=inactive");
   }
+
+  const [activePeriod] = await Promise.all([
+    getActivePeriodInfo(),
+  ]);
 
   const userRoles = String((session.user as any).role || "")
     .split(",")
@@ -51,6 +56,7 @@ export default async function DashboardLayout({
               email: session.user.email,
               role: displayRole,
             }}
+            activePeriodLabel={activePeriod.label}
           />
           <main className="flex-1 overflow-y-auto bg-background p-4 sm:p-6 md:p-8 dark:bg-[#171717]">
             {children}

@@ -22,9 +22,10 @@ interface DashboardHeaderProps {
     email: string;
     role: string;
   };
+  activePeriodLabel?: string;
 }
 
-export function DashboardHeader({ user }: DashboardHeaderProps) {
+export function DashboardHeader({ user, activePeriodLabel = "Junio 2026" }: DashboardHeaderProps) {
   const router = useRouter();
   const { isDesktopCollapsed, toggleDesktopSidebar, toggleMobileSidebar } = useDashboard();
 
@@ -72,7 +73,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
           <Calendar className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate max-w-[140px] sm:max-w-none">
             <span className="hidden sm:inline text-muted-foreground">Período Activo: </span>
-            <strong className="text-foreground">Junio 2026</strong>
+            <strong className="text-foreground">{activePeriodLabel}</strong>
           </span>
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
         </div>

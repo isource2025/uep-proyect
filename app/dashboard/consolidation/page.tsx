@@ -4,6 +4,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ConsolidationClient } from "./consolidation-client";
 
+import { getAvailablePeriods } from "@/lib/periods";
+
 export const revalidate = 0;
 
 export default async function ConsolidationPage() {
@@ -18,14 +20,14 @@ export default async function ConsolidationPage() {
     redirect("/dashboard");
   }
 
-  // Fetch all PeriodoIVA entries to populate selector
-  const periods = await prisma.periodoIVA.findMany({
-    where: { iva: "V" },
-    orderBy: [
-      { anio: "desc" },
-      { mes: "desc" },
-    ],
-  });
+  // Fetch available periods derived from SISPER / Liquidations
+  const rawPeriods = await getAvailablePeriods();
+  const periods = rawPeriods.map((p) => ({
+    anio: p.anio,
+    mes: p.mes,
+    iva: "V",
+    fechaCierre: null,
+  }));
 
   return (
     <div className="space-y-6 text-foreground">

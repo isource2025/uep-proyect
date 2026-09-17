@@ -6,6 +6,7 @@ import path from "path";
 import { put } from "@vercel/blob";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { getActivePeriodInfo } from "@/lib/periods";
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -318,10 +319,7 @@ export async function calculateLiquidation(rcId: number) {
     });
     if (!rc) return { error: "Comprobante no encontrado." };
 
-    const activePeriod = await prisma.periodoIVA.findFirst({
-      where: { fechaCierre: null },
-    });
-    if (!activePeriod) return { error: "No hay un período activo abierto en el sistema." };
+    const activePeriod = await getActivePeriodInfo();
 
     // Find applied sales invoices (FC)
     const applications = await prisma.cbteAplica.findMany({

@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Building2, Users, FileText, Landmark, ArrowUpRight, DollarSign, CalendarDays } from "lucide-react";
 import Link from "next/link";
+import { getActivePeriodInfo } from "@/lib/periods";
 
 export const revalidate = 0; // Force dynamic rendering so database updates show immediately
 
@@ -26,9 +27,7 @@ export default async function DashboardPage() {
     prisma.agente.count(),
     prisma.cbte.count({ where: { type: "FC" } }),
     prisma.cbte.count({ where: { type: "RC" } }),
-    prisma.periodoIVA.findFirst({
-      where: { fechaCierre: null, iva: "V" },
-    }),
+    getActivePeriodInfo(),
     prisma.cbte.findMany({
       take: 5,
       orderBy: { fecha: "desc" },
@@ -46,14 +45,6 @@ export default async function DashboardPage() {
   const formatCurrency = (val: any) => {
     const num = Number(val || 0);
     return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(num);
-  };
-
-  const getMonthName = (monthNum: number) => {
-    const months = [
-      "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
-    ];
-    return months[monthNum - 1] || `Mes ${monthNum}`;
   };
 
   const statCards = [
@@ -103,14 +94,14 @@ export default async function DashboardPage() {
         </div>
         
         {activePeriod && (
-          <div className="flex items-center gap-3 rounded-xl bg-card border border-border p-3 self-start md:self-auto">
+          <div className="flex items-center gap-3 rounded-xl bg-card border border-border p-3 self-start md:self-auto shadow-xs">
             <CalendarDays className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
             <div className="text-left text-xs">
               <p className="font-semibold text-foreground">
-                Período Activo: {getMonthName(activePeriod.mes)} {activePeriod.anio}
+                Período Activo: {activePeriod.label}
               </p>
               <p className="text-muted-foreground mt-0.5">
-                Alta: {activePeriod.fechaAlta ? new Date(activePeriod.fechaAlta).toLocaleDateString("es-AR") : "-"}
+                Nómina SISPER / Período {activePeriod.anio}
               </p>
             </div>
           </div>
@@ -250,14 +241,14 @@ export default async function DashboardPage() {
                 </div>
               </Link>
 
-              <Link href="/dashboard/periods">
+              <Link href="/dashboard/consolidation">
                 <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3 hover:bg-muted/60 cursor-pointer transition-all duration-200">
                   <div className="rounded-lg bg-purple-500/10 border border-purple-500/20 p-2 text-purple-600 dark:text-purple-400">
                     <CalendarDays className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-foreground">Configurar Período</h3>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Abrir o cerrar períodos contables de facturación</p>
+                    <h3 className="text-xs font-bold text-foreground">Consolidación y Cierre</h3>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Reportes SISPER y Tesorería del período</p>
                   </div>
                 </div>
               </Link>

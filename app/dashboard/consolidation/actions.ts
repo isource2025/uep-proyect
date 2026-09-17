@@ -51,33 +51,7 @@ export async function closePeriodLiquidations(periodAnio: number, periodMes: num
       },
     });
 
-    // Also close the period itself in PeriodoIVA by setting fechaCierre if it's not closed
-    const activePeriod = await prisma.periodoIVA.findFirst({
-      where: {
-        anio: periodAnio,
-        mes: periodMes,
-        iva: "V",
-        fechaCierre: null,
-      },
-    });
-
-    if (activePeriod) {
-      await prisma.periodoIVA.update({
-        where: {
-          anio_mes_iva: {
-            anio: periodAnio,
-            mes: periodMes,
-            iva: "V",
-          },
-        },
-        data: {
-          fechaCierre: new Date(),
-        },
-      });
-    }
-
     revalidatePath("/dashboard/consolidation");
-    revalidatePath("/dashboard/periods");
     return { success: true };
   } catch (e: any) {
     console.error("Error closing period liquidations:", e);

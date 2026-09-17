@@ -54,7 +54,7 @@ export default async function SettingsPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Configuración del Sistema</h1>
         <p className="text-sm text-muted-foreground">
-          Módulo 1: Gestión de parámetros contables y del ERP desde la tabla nativa `CParametros`.
+          Gestión de parámetros contables y configuración general del sistema.
         </p>
       </div>
 
@@ -86,7 +86,7 @@ export default async function SettingsPage() {
                   {params.length === 0 ? (
                     <TableRow className="border-border">
                       <TableCell colSpan={5} className="text-center text-muted-foreground text-sm py-12">
-                        No hay parámetros del sistema cargados en CParametros.
+                        No hay parámetros del sistema configurados.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -179,16 +179,16 @@ export default async function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-xs text-muted-foreground">
               <p>
-                Los parámetros definidos en <code className="rounded bg-muted px-1.5 py-0.5 border border-border">CParametros</code> controlan la imputación directa de las facturas de venta y compra procesadas en el portal.
+                Los parámetros contables definidos controlan la imputación directa de las facturas de venta y compra procesadas en el portal.
               </p>
-              <div className="rounded-lg bg-muted/30 border border-border p-3 space-y-1 font-mono text-[10px]">
+              <div className="rounded-lg bg-muted/30 border border-border p-3 space-y-1 text-[11px]">
                 <div className="flex justify-between">
-                  <span>Base de datos:</span>
-                  <span className="text-emerald-500 font-bold">iSource @ SQL Server</span>
+                  <span>Módulo:</span>
+                  <span className="text-emerald-500 font-bold">Auditoría y Parámetros</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Esquema:</span>
-                  <span>dbo.CParametros</span>
+                  <span>Estado:</span>
+                  <span className="text-foreground font-semibold">Activo y Vinculado</span>
                 </div>
               </div>
             </CardContent>

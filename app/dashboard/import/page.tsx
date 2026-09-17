@@ -43,7 +43,7 @@ export default function ImportPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Centro de Importación</h1>
         <p className="text-sm text-muted-foreground">
-          Módulo 2: Sincronización de datos con sistemas ERP y carga de nómina de personal de salud (SISPER).
+          Sincronización de datos con sistemas ERP y carga de nómina de personal de salud (SISPER).
         </p>
       </div>
 
@@ -61,11 +61,11 @@ export default function ImportPage() {
           </CardHeader>
           <CardContent className="space-y-6 flex-1 flex flex-col justify-between">
             <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
-              <h3 className="text-xs font-bold text-foreground">Esquema Contable ERP:</h3>
+              <h3 className="text-xs font-bold text-foreground">Registros y Comprobantes ERP:</h3>
               <ul className="text-xs text-muted-foreground space-y-2 list-disc pl-4">
-                <li><strong className="text-foreground">CBTES</strong>: Facturas de Venta (FC) y Recibos (RC).</li>
-                <li><strong className="text-foreground">CBTES_APLICA</strong>: Imputaciones contables del ERP.</li>
-                <li><strong className="text-foreground">COMPRAS</strong>: Comprobantes de Hospitales cargados.</li>
+                <li><strong className="text-foreground">Facturas y Recibos</strong>: Comprobantes de facturación (FC) y cobro (RC).</li>
+                <li><strong className="text-foreground">Imputaciones Contables</strong>: Aplicaciones y vinculaciones registradas.</li>
+                <li><strong className="text-foreground">Comprobantes Sanitarios</strong>: Facturación emitida por establecimientos de salud.</li>
               </ul>
             </div>
 
@@ -99,24 +99,25 @@ export default function ImportPage() {
             {erpError && (
               <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-600 dark:text-red-400">
                 <AlertCircle className="h-4 w-4 shrink-0" />
-                <p>{erpError}</p>
+                <span>{erpError}</span>
               </div>
             )}
 
             <Button
               onClick={triggerErpSync}
               disabled={erpLoading}
-              className="w-full mt-4 bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-11 cursor-pointer"
+              variant="outline"
+              className="w-full border-border hover:bg-muted font-bold text-xs h-10 cursor-pointer text-foreground"
             >
               {erpLoading ? (
                 <>
-                  <RefreshCw className="mr-2 h-4.5 w-4.5 animate-spin" />
-                  Consultando ERP...
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin text-emerald-500" />
+                  Verificando ERP...
                 </>
               ) : (
                 <>
-                  <RefreshCw className="mr-2 h-4.5 w-4.5" />
-                  Verificar Conexión ERP
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Verificar Estado de Conexión
                 </>
               )}
             </Button>
@@ -131,7 +132,7 @@ export default function ImportPage() {
             </div>
             <CardTitle className="text-foreground text-lg font-bold">Importación SISPER (Excel)</CardTitle>
             <CardDescription className="text-muted-foreground text-xs mt-1 leading-relaxed">
-              Sube la nómina médica y de personal sanitario exportada de SISPER para procesarla y guardarla en la tabla <code className="font-mono text-emerald-600 dark:text-emerald-400">imPersonalMsp</code>.
+              Sube la nómina médica y de personal sanitario exportada de SISPER para procesarla e incorporarla al sistema.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 flex-1 flex flex-col justify-between">

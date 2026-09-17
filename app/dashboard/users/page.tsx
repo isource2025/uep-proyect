@@ -70,7 +70,7 @@ export default async function UsersPage({
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Gestión de Usuarios</h1>
           <p className="text-sm text-muted-foreground">
-            Módulo 1: Control de operadores, roles, estado y asignación de efectores en la tabla <code className="font-mono text-emerald-600 dark:text-emerald-400">imPersonal</code>.
+            Control de operadores, roles, estado y asignación de efectores sanitarios.
           </p>
         </div>
 

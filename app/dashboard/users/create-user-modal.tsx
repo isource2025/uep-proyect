@@ -233,8 +233,8 @@ export function UserModal({
               </DialogTitle>
               <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
                 {isEdit
-                  ? "Modifica los datos del operador en imPersonal, asigna múltiples roles y actualiza sus credenciales."
-                  : "Crea un registro de personal en imPersonal en estado Activo y asocia sus credenciales de inicio de sesión."}
+                  ? "Modifica los datos personales del operador, asigna sus roles y actualiza sus credenciales de acceso."
+                  : "Complete los datos personales, roles y credenciales para registrar al nuevo operador en el sistema."}
               </DialogDescription>
             </div>
           </div>

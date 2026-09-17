@@ -69,6 +69,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
   - **Exportación SISPER**: Al vencer la fecha límite, el sistema consolida todos los agentes de todos los hospitales con sus montos asignados en una sola planilla exportable para los recibos de haberes.
   - **Reporte de Tesorería**: Genera el informe de `GASTOS` a transferir por Obra Social a cada Hospital para transferencias bancarias.
 
+- **Multi-Rol de Usuarios (imPersonal.Rol)**:
+  - Los usuarios pueden tener múltiples roles asignados simultáneamente, almacenados como IDs separados por comas (ej. `"1,2"`) en `imPersonal.Rol`.
+  - En la interfaz se seleccionan mediante un selector de cards/checkboxes interactivo y se representan como badges individuales.
+  - La verificación de permisos en layout y componentes se realiza mediante comprobación de inclusión (ej. `userRoles.includes("1")`).
+- **Resolución de Períodos Activos (Sin Periodos_IVA)**:
+  - La tabla `Periodos_IVA` **NO se utiliza**.
+  - Los períodos se resuelven dinámicamente a través de [`lib/periods.ts`](file:///Users/facundofernandez/Documents/uep-proyect/lib/periods.ts) basándose en la nómina cargada en `imPersonalMsp` (SISPER) y las liquidaciones existentes.
+
 ## Recordatorios & Pendientes Activos
 - **Validación Estricta de Período para Agentes SISPER (Portal Hospital)**:
   - *Regla*: Permitir únicamente profesionales del **mes en curso** de la liquidación o, en su defecto, del **mes inmediatamente anterior** (1 mes de gracia). Prohibir terminantemente agentes de 2 o más meses atrás.

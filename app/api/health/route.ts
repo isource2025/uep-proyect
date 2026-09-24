@@ -22,10 +22,7 @@ function parseDbTarget(raw: string | undefined) {
     port: portStr ? Number(portStr) : 1433,
     database: params.database || null,
     user: params.user || null,
-    // fingerprint only — never expose password
     urlLength: cleaned.length,
-    looksLikeOldDevIp: cleaned.includes("181.98.96.200"),
-    looksLikePublicWebdev: cleaned.includes("190.231.14.131"),
   };
 }
 
@@ -58,11 +55,6 @@ export async function GET() {
 
   return NextResponse.json({
     ok: dbOk,
-    expected: {
-      host: "190.231.14.131",
-      database: "UEP",
-      hint: "If dbTarget.host is still 181.98.96.200, Vercel env was NOT updated for this deployment. Edit Production DATABASE_URL and Redeploy.",
-    },
     env: {
       hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
       hasAuthSecret: Boolean(process.env.BETTER_AUTH_SECRET?.trim()),

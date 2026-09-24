@@ -11,7 +11,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Database Name**: `UEP`
 - **Default Port**: 1433
 - **Connection String (local WEBDEV)**: `sqlserver://192.168.1.47:1433;database=UEP;user=sa;password=isource;encrypt=false;trustServerCertificate=true`
-- **Connection String (Vercel / IP pública WEBDEV)**: `sqlserver://190.231.14.131:1433;database=UEP;user=sa;password=isource;encrypt=false;trustServerCertificate=true`
+- **Connection String (Vercel / IP pública WEBDEV)**: `sqlserver://190.230.52.200:1433;database=UEP;user=sa;password=isource;encrypt=false;trustServerCertificate=true`
 - **Auth env (required on Vercel)**: `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`
 - **ORM**: Prisma (using `@prisma/client` and `prisma`)
 - **Connection Adapter**: Instantiated using `@prisma/adapter-mssql` (PrismaMssql).

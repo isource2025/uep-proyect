@@ -131,8 +131,9 @@ export default function LiquidationDetailClient({
         totalFacturado: totalFact,
         creditos: Math.max(0, Number(d.creditos)),
         debitos: Math.max(0, Number(d.debitos)),
-        ajustesOs: Math.max(0, Number(d.ajustesOs)),
+        ajustesOs: Number(d.ajustesOs) || 0,
         pendientesCobro: Math.max(0, Number(d.pendientesCobro)),
+        pagosParcialesAnteriores: Math.max(0, Number(d.pagosParcialesAnteriores || 0)),
         ga: gaVal,
         gaPercent: initPct,
         ajusteRecupero: Math.max(0, Number(d.ajusteRecupero)),
@@ -337,7 +338,8 @@ export default function LiquidationDetailClient({
         const deb = Number(item.debitos || 0);
         const ajOs = Number(item.ajustesOs || 0);
         const pend = Number(item.pendientesCobro || 0);
-        const bruto = totalFact + cred - deb + ajOs - pend;
+        const pagParc = Number(item.pagosParcialesAnteriores || 0);
+        const bruto = totalFact + cred - deb + ajOs - pend - pagParc;
         const base = totalFact > 0 ? totalFact : Math.max(0, bruto);
         const calculatedGa = Math.max(0, Number(((base * pctNum) / 100).toFixed(2)));
         return {
@@ -365,7 +367,8 @@ export default function LiquidationDetailClient({
         const deb = Number(item.debitos || 0);
         const ajOs = Number(item.ajustesOs || 0);
         const pend = Number(item.pendientesCobro || 0);
-        const bruto = totalFact + cred - deb + ajOs - pend;
+        const pagParc = Number(item.pagosParcialesAnteriores || 0);
+        const bruto = totalFact + cred - deb + ajOs - pend - pagParc;
         const base = totalFact > 0 ? totalFact : Math.max(0, bruto);
         const calculatedGa = Math.max(0, Number(((base * pctNum) / 100).toFixed(2)));
         return {
@@ -379,15 +382,17 @@ export default function LiquidationDetailClient({
   };
 
   const handleDetailInputChange = (id: string, field: string, value: string) => {
-    if (value === "") {
+    if (value === "" || (field === "ajustesOs" && value === "-")) {
       setEditableDetails((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, [field]: "" } : item))
+        prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
       );
       return;
     }
 
     const num = Number(value);
-    if (num < 0) {
+    if (isNaN(num)) return;
+
+    if (num < 0 && field !== "ajustesOs") {
       setEditableDetails((prev) =>
         prev.map((item) => (item.id === id ? { ...item, [field]: 0 } : item))
       );
@@ -456,6 +461,7 @@ export default function LiquidationDetailClient({
         debitos: Number(item.debitos || 0),
         ajustesOs: Number(item.ajustesOs || 0),
         pendientesCobro: Number(item.pendientesCobro || 0),
+        pagosParcialesAnteriores: Number(item.pagosParcialesAnteriores || 0),
         ga: Number(item.ga || 0),
         ajusteRecupero: Number(item.ajusteRecupero || 0),
       }));
@@ -631,10 +637,11 @@ export default function LiquidationDetailClient({
       const deb = Number(edit.debitos ?? detail.debitos ?? 0);
       const ajOs = Number(edit.ajustesOs ?? detail.ajustesOs ?? 0);
       const pend = Number(edit.pendientesCobro ?? detail.pendientesCobro ?? 0);
+      const pagParc = Number(edit.pagosParcialesAnteriores ?? detail.pagosParcialesAnteriores ?? 0);
       const gaVal = Number(edit.ga ?? detail.ga ?? 0);
       const ajRec = Number(edit.ajusteRecupero ?? detail.ajusteRecupero ?? 0);
 
-      const bruto = totalFact + cred - deb + ajOs - pend;
+      const bruto = totalFact + cred - deb + ajOs - pend - pagParc;
       const neto = bruto - gaVal + ajRec;
 
       return {
@@ -643,6 +650,7 @@ export default function LiquidationDetailClient({
         debitos: acc.debitos + deb,
         ajustesOs: acc.ajustesOs + ajOs,
         pendientesCobro: acc.pendientesCobro + pend,
+        pagosParcialesAnteriores: acc.pagosParcialesAnteriores + pagParc,
         brutoAPagar: acc.brutoAPagar + bruto,
         ga: acc.ga + gaVal,
         ajusteRecupero: acc.ajusteRecupero + ajRec,
@@ -655,6 +663,7 @@ export default function LiquidationDetailClient({
       debitos: 0,
       ajustesOs: 0,
       pendientesCobro: 0,
+      pagosParcialesAnteriores: 0,
       brutoAPagar: 0,
       ga: 0,
       ajusteRecupero: 0,
@@ -1178,6 +1187,7 @@ export default function LiquidationDetailClient({
                   <TableHead className="font-semibold text-3xs uppercase text-right">DÉBITOS</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">AJUSTES O.S.</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">PEND. COBRO</TableHead>
+                  <TableHead className="font-semibold text-3xs uppercase text-right">PAGOS PARC. ANT.</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">BRUTO A PAGAR</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">GA (% / $)</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">AJUSTE REC.</TableHead>
@@ -1187,7 +1197,7 @@ export default function LiquidationDetailClient({
               <TableBody>
                 {filteredDetails.length === 0 ? (
                   <TableRow className="border-border">
-                    <TableCell colSpan={14} className="text-center text-muted-foreground text-xs py-8">
+                    <TableCell colSpan={15} className="text-center text-muted-foreground text-xs py-8">
                       {searchQuery.trim()
                         ? "No se encontraron renglones que coincidan con la búsqueda."
                         : "No hay renglones para mostrar."}
@@ -1201,10 +1211,11 @@ export default function LiquidationDetailClient({
                     const deb = Number(editState.debitos ?? detail.debitos ?? 0);
                     const ajOs = Number(editState.ajustesOs ?? detail.ajustesOs ?? 0);
                     const pend = Number(editState.pendientesCobro ?? detail.pendientesCobro ?? 0);
+                    const pagParc = Number(editState.pagosParcialesAnteriores ?? detail.pagosParcialesAnteriores ?? 0);
                     const gaVal = Number(editState.ga ?? detail.ga ?? 0);
                     const ajRec = Number(editState.ajusteRecupero ?? detail.ajusteRecupero ?? 0);
 
-                    const bruto = totalFact + cred - deb + ajOs - pend;
+                    const bruto = totalFact + cred - deb + ajOs - pend - pagParc;
                     const neto = bruto - gaVal + ajRec;
 
                     return (
@@ -1238,7 +1249,7 @@ export default function LiquidationDetailClient({
                           />
                         </TableCell>
 
-                        {/* CREDITOS */}
+                        {/* CREDITOS (Suma -> Verde) */}
                         <TableCell className="text-right px-1 py-1">
                           <Input
                             type="number"
@@ -1247,11 +1258,11 @@ export default function LiquidationDetailClient({
                             disabled={isHospitalUser || saving}
                             value={getInputDisplayValue(editState.creditos)}
                             onChange={(e) => handleDetailInputChange(detail.id, "creditos", e.target.value)}
-                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-emerald-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-emerald-600 dark:text-emerald-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                         </TableCell>
 
-                        {/* DEBITOS */}
+                        {/* DEBITOS (Resta -> Rojo) */}
                         <TableCell className="text-right px-1 py-1">
                           <Input
                             type="number"
@@ -1260,24 +1271,26 @@ export default function LiquidationDetailClient({
                             disabled={isHospitalUser || saving}
                             value={getInputDisplayValue(editState.debitos)}
                             onChange={(e) => handleDetailInputChange(detail.id, "debitos", e.target.value)}
-                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-red-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-red-600 dark:text-red-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                         </TableCell>
 
-                        {/* AJUSTES OS */}
+                        {/* AJUSTES OS (Verde si positivo, Rojo si negativo) */}
                         <TableCell className="text-right px-1 py-1">
                           <Input
                             type="number"
                             step="0.01"
-                            min="0"
                             disabled={isHospitalUser || saving}
                             value={getInputDisplayValue(editState.ajustesOs)}
                             onChange={(e) => handleDetailInputChange(detail.id, "ajustesOs", e.target.value)}
-                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className={cn(
+                              "w-full text-right h-8 text-2xs bg-background border-border font-semibold focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
+                              ajOs < 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
+                            )}
                           />
                         </TableCell>
 
-                        {/* PENDIENTES COBRO */}
+                        {/* PENDIENTES COBRO (Resta -> Rojo) */}
                         <TableCell className="text-right px-1 py-1">
                           <Input
                             type="number"
@@ -1286,7 +1299,20 @@ export default function LiquidationDetailClient({
                             disabled={isHospitalUser || saving}
                             value={getInputDisplayValue(editState.pendientesCobro)}
                             onChange={(e) => handleDetailInputChange(detail.id, "pendientesCobro", e.target.value)}
-                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-red-600 dark:text-red-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                        </TableCell>
+
+                        {/* PAGOS PARCIALES ANTERIORES (Resta -> Rojo) */}
+                        <TableCell className="text-right px-1 py-1">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            disabled={isHospitalUser || saving}
+                            value={getInputDisplayValue(editState.pagosParcialesAnteriores)}
+                            onChange={(e) => handleDetailInputChange(detail.id, "pagosParcialesAnteriores", e.target.value)}
+                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-red-600 dark:text-red-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                         </TableCell>
 
@@ -1295,7 +1321,7 @@ export default function LiquidationDetailClient({
                           {formatCurrency(bruto)}
                         </TableCell>
 
-                        {/* GA */}
+                        {/* GA (Resta -> Rojo) */}
                         <TableCell className="text-right px-1 py-1">
                           {(() => {
                             const rowGaPercent =
@@ -1345,14 +1371,14 @@ export default function LiquidationDetailClient({
                                   disabled={isHospitalUser || saving}
                                   value={getInputDisplayValue(editState.ga)}
                                   onChange={(e) => handleDetailInputChange(detail.id, "ga", e.target.value)}
-                                  className="w-full text-right h-7 text-2xs bg-background border-border font-semibold text-blue-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  className="w-full text-right h-7 text-2xs bg-background border-border font-semibold text-red-600 dark:text-red-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 />
                               </div>
                             );
                           })()}
                         </TableCell>
 
-                        {/* AJUSTE RECUPERO */}
+                        {/* AJUSTE RECUPERO (Suma -> Verde) */}
                         <TableCell className="text-right px-1 py-1">
                           <Input
                             type="number"
@@ -1361,7 +1387,7 @@ export default function LiquidationDetailClient({
                             disabled={isHospitalUser || saving}
                             value={getInputDisplayValue(editState.ajusteRecupero)}
                             onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", e.target.value)}
-                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-purple-600 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-emerald-600 dark:text-emerald-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                         </TableCell>
 

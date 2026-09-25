@@ -238,15 +238,16 @@ model LiquidacionDetalle {
   localidad       String?
   fcHospital      String?     // Invoice number of hospital, e.g. FC-C-0008-00004795
   
-  totalFacturado  Decimal     @default(0) @db.Decimal(15, 2)
-  creditos        Decimal     @default(0) @db.Decimal(15, 2)
-  debitos         Decimal     @default(0) @db.Decimal(15, 2)
-  ajustesOs       Decimal     @default(0) @db.Decimal(15, 2)
-  pendientesCobro Decimal     @default(0) @db.Decimal(15, 2)
-  brutoAPagar     Decimal     @default(0) @db.Decimal(15, 2)
-  ga              Decimal     @default(0) @db.Decimal(15, 2)
-  ajusteRecupero  Decimal     @default(0) @db.Decimal(15, 2)
-  netoAPagar      Decimal     @default(0) @db.Decimal(15, 2)
+  totalFacturado           Decimal     @default(0) @db.Decimal(15, 2)
+  creditos                 Decimal     @default(0) @db.Decimal(15, 2)
+  debitos                  Decimal     @default(0) @db.Decimal(15, 2)
+  ajustesOs                Decimal     @default(0) @db.Decimal(15, 2)
+  pendientesCobro          Decimal     @default(0) @db.Decimal(15, 2)
+  pagosParcialesAnteriores Decimal     @default(0) @db.Decimal(15, 2)
+  brutoAPagar              Decimal     @default(0) @db.Decimal(15, 2)
+  ga                       Decimal     @default(0) @db.Decimal(15, 2)
+  ajusteRecupero           Decimal     @default(0) @db.Decimal(15, 2)
+  netoAPagar               Decimal     @default(0) @db.Decimal(15, 2)
 }
 
 model Distribucion {

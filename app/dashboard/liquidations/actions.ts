@@ -88,6 +88,7 @@ function sanitizarLiquidacionDetalle(d: any) {
     debitos: toNum(d.debitos),
     ajustesOs: toNum(d.ajustesOs),
     pendientesCobro: toNum(d.pendientesCobro),
+    pagosParcialesAnteriores: toNum(d.pagosParcialesAnteriores),
     brutoAPagar: toNum(d.brutoAPagar),
     ga: toNum(d.ga),
     ajusteRecupero: toNum(d.ajusteRecupero),
@@ -121,6 +122,7 @@ function sanitizarLiquidacionCabecera(liq: any) {
   const debitos = details.reduce((sum: number, d: any) => sum + d.debitos, 0);
   const ajustesOs = details.reduce((sum: number, d: any) => sum + d.ajustesOs, 0);
   const pendientesCobro = details.reduce((sum: number, d: any) => sum + d.pendientesCobro, 0);
+  const pagosParcialesAnteriores = details.reduce((sum: number, d: any) => sum + (d.pagosParcialesAnteriores || 0), 0);
   const brutoAPagar = details.reduce((sum: number, d: any) => sum + d.brutoAPagar, 0);
   const ga = details.reduce((sum: number, d: any) => sum + d.ga, 0);
   const ajusteRecupero = details.reduce((sum: number, d: any) => sum + d.ajusteRecupero, 0);
@@ -159,6 +161,7 @@ function sanitizarLiquidacionCabecera(liq: any) {
     debitos,
     ajustesOs,
     pendientesCobro,
+    pagosParcialesAnteriores,
     brutoAPagar,
     ga,
     ajusteRecupero,
@@ -306,10 +309,6 @@ function calculateDefaultGA(totalFacturado: number): number {
   return Number((totalFacturado * 0.06).toFixed(2));
 }
 
-function calculateDefaultAjustesOs(totalFacturado: number): number {
-  return Number((totalFacturado * 0.05).toFixed(2));
-}
-
 // 2. Generate a new Liquidation header and hospital detail rows from an RC
 export async function calculateLiquidation(rcId: number) {
   try {
@@ -386,12 +385,11 @@ export async function calculateLiquidation(rcId: number) {
         const nroCbte = comp.numero ? String(comp.numero).padStart(8, "0") : "";
         const fcNumStr = comp.numero ? `FC-${ptoVta}-${nroCbte}` : `FC-${comp.id}`;
         
-        const defaultAjustesOs = calculateDefaultAjustesOs(total);
         const defaultGa = calculateDefaultGA(total);
         
         // bruto = total + creditos - debitos + ajustesOs - pendientesCobro
-        // since creditos, debitos, pendientesCobro are 0 initially:
-        const defaultBruto = Math.max(0, total + defaultAjustesOs);
+        // since creditos, debitos, ajustesOs, pendientesCobro are 0 initially:
+        const defaultBruto = total;
         // neto = bruto - ga + ajusteRecupero
         // since ajusteRecupero is 0 initially:
         const defaultNeto = Math.max(0, defaultBruto - defaultGa);
@@ -414,8 +412,9 @@ export async function calculateLiquidation(rcId: number) {
             totalFacturado: total,
             creditos: 0,
             debitos: 0,
-            ajustesOs: defaultAjustesOs,
+            ajustesOs: 0,
             pendientesCobro: 0,
+            pagosParcialesAnteriores: 0,
             brutoAPagar: defaultBruto,
             ga: defaultGa,
             ajusteRecupero: 0,
@@ -427,9 +426,8 @@ export async function calculateLiquidation(rcId: number) {
     } else {
       // Create at least 1 default detail row from RC applied invoice if no Compras
       const total = toNum(rc.importe);
-      const defaultAjustesOs = calculateDefaultAjustesOs(total);
       const defaultGa = calculateDefaultGA(total);
-      const defaultBruto = Math.max(0, total + defaultAjustesOs);
+      const defaultBruto = total;
       const defaultNeto = Math.max(0, defaultBruto - defaultGa);
 
       await prisma.liquidacionDetalle.create({
@@ -444,8 +442,9 @@ export async function calculateLiquidation(rcId: number) {
           totalFacturado: total,
           creditos: 0,
           debitos: 0,
-          ajustesOs: defaultAjustesOs,
+          ajustesOs: 0,
           pendientesCobro: 0,
+          pagosParcialesAnteriores: 0,
           brutoAPagar: defaultBruto,
           ga: defaultGa,
           ajusteRecupero: 0,
@@ -471,6 +470,7 @@ export async function updateLiquidationDetails(
     debitos: number;
     ajustesOs: number;
     pendientesCobro: number;
+    pagosParcialesAnteriores?: number;
     ga: number;
     ajusteRecupero: number;
   }>,
@@ -479,50 +479,61 @@ export async function updateLiquidationDetails(
   observaciones?: string
 ) {
   try {
-    const detailIds = details.map((d) => d.id);
-    // Fetch all current details in a single query
-    const currentRecords = await prisma.liquidacionDetalle.findMany({
-      where: { id: { in: detailIds } },
-    });
-    const recordsMap = new Map(currentRecords.map((r) => [r.id, r]));
-
-    // Perform updates in parallel to prevent Vercel execution timeouts
-    const updatePromises = details.map((d) => {
-      const record = recordsMap.get(d.id);
-      if (!record) return Promise.resolve();
-
-      const totalFacturado = toNum(record.totalFacturado);
-      const brutoAPagar = Math.max(0, totalFacturado + d.creditos - d.debitos + d.ajustesOs - d.pendientesCobro);
-      const netoAPagar = Math.max(0, brutoAPagar - d.ga + d.ajusteRecupero);
-
-      return prisma.liquidacionDetalle.update({
-        where: { id: d.id },
-        data: {
-          creditos: d.creditos,
-          debitos: d.debitos,
-          ajustesOs: d.ajustesOs,
-          pendientesCobro: d.pendientesCobro,
-          brutoAPagar,
-          ga: d.ga,
-          ajusteRecupero: d.ajusteRecupero,
-          netoAPagar,
-        },
-      });
-    });
-
-    await Promise.all(updatePromises);
-
     const session = await auth.api.getSession({ headers: await headers() });
     const currentUserName = session?.user?.name || session?.user?.email || (session?.user as any)?.operador;
 
-    await prisma.liquidacion.update({
-      where: { id: liquidationId },
-      data: {
-        ...(status ? { status } : {}),
-        ...(mesCarga !== undefined ? { mesCarga } : {}),
-        ...(observaciones !== undefined ? { observaciones } : {}),
-        ...(currentUserName ? { createdByName: currentUserName } : {}),
-      },
+    await prisma.$transaction(async (tx) => {
+      const detailIds = details.map((d) => d.id);
+      const currentRecords = await tx.liquidacionDetalle.findMany({
+        where: { id: { in: detailIds } },
+      });
+      const recordsMap = new Map(currentRecords.map((r) => [r.id, r]));
+
+      for (const d of details) {
+        const record = recordsMap.get(d.id);
+        if (!record) continue;
+
+        const totalFacturado = toNum(record.totalFacturado);
+        // Sumas/Restas (+/-): ajustesOs puede ser positivo o negativo
+        const creditos = Math.max(0, Number(d.creditos) || 0);
+        const debitos = Math.max(0, Number(d.debitos) || 0);
+        const ajustesOs = Number(d.ajustesOs) || 0;
+        const pendientesCobro = Math.max(0, Number(d.pendientesCobro) || 0);
+        const pagosParcialesAnteriores = d.pagosParcialesAnteriores !== undefined
+          ? Math.max(0, Number(d.pagosParcialesAnteriores) || 0)
+          : Math.max(0, toNum(record.pagosParcialesAnteriores));
+        const ga = Math.max(0, Number(d.ga) || 0);
+        const ajusteRecupero = Math.max(0, Number(d.ajusteRecupero) || 0);
+
+        // Control aritmético estricto en servidor
+        const brutoAPagar = Math.max(0, totalFacturado + creditos - debitos + ajustesOs - pendientesCobro - pagosParcialesAnteriores);
+        const netoAPagar = Math.max(0, brutoAPagar - ga + ajusteRecupero);
+
+        await tx.liquidacionDetalle.update({
+          where: { id: d.id },
+          data: {
+            creditos,
+            debitos,
+            ajustesOs,
+            pendientesCobro,
+            pagosParcialesAnteriores,
+            brutoAPagar,
+            ga,
+            ajusteRecupero,
+            netoAPagar,
+          },
+        });
+      }
+
+      await tx.liquidacion.update({
+        where: { id: liquidationId },
+        data: {
+          ...(status ? { status } : {}),
+          ...(mesCarga !== undefined ? { mesCarga } : {}),
+          ...(observaciones !== undefined ? { observaciones } : {}),
+          ...(currentUserName ? { createdByName: currentUserName } : {}),
+        },
+      });
     });
 
     revalidatePath("/dashboard/liquidations");

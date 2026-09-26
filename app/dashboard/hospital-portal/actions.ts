@@ -58,27 +58,96 @@ export async function bulkSaveDistributions(
     // 3. Perform delete and insert in a transaction to prevent partial updates
     const agentIds = distributions.map((d) => d.agentId);
 
-    await prisma.$transaction([
+    await prisma.$transaction(async (tx) => {
       // Remove previous distributions for this liquidation and these agents
-      prisma.distribucion.deleteMany({
+      await tx.distribucion.deleteMany({
         where: {
           liquidationId,
           agentId: { in: agentIds },
         },
-      }),
+      });
+
       // Insert new distributions
-      prisma.distribucion.createMany({
-        data: distributions.map((d) => ({
-          liquidationId,
-          agentId: d.agentId,
-          honorarios: d.honorarios,
-          sobreasignaciones: d.sobreasignaciones,
-          gastos: d.gastos,
-        })),
-      }),
-    ]);
+      if (distributions.length > 0) {
+        await tx.distribucion.createMany({
+          data: distributions.map((d) => ({
+            liquidationId,
+            agentId: d.agentId,
+            honorarios: d.honorarios,
+            sobreasignaciones: d.sobreasignaciones,
+            gastos: d.gastos,
+          })),
+        });
+      }
+
+      // Check liquidation details and all saved distributions to update liquidation status
+      const allDetails = await tx.liquidacionDetalle.findMany({
+        where: { liquidationId },
+        include: { compra: true },
+      });
+
+      const allDistributions = await tx.distribucion.findMany({
+        where: { liquidationId },
+        include: { agent: true },
+      });
+
+      // Group net amount per hospital in liquidation details
+      const hospitalMap = new Map<number, { netoAPagar: number; distributed: number }>();
+      for (const d of allDetails) {
+        const hid = d.hospitalId || d.compra?.hospitalId;
+        if (hid) {
+          const prev = hospitalMap.get(hid) || { netoAPagar: 0, distributed: 0 };
+          prev.netoAPagar += Number(d.netoAPagar || 0);
+          hospitalMap.set(hid, prev);
+        }
+      }
+
+      for (const dist of allDistributions) {
+        const hid = dist.agent?.hospitalId;
+        if (hid && hospitalMap.has(hid)) {
+          const prev = hospitalMap.get(hid)!;
+          prev.distributed += Number(dist.honorarios || 0) + Number(dist.sobreasignaciones || 0) + Number(dist.gastos || 0);
+        }
+      }
+
+      const totalHospitals = hospitalMap.size;
+      let completedHospitals = 0;
+      let totalDistributed = 0;
+
+      for (const [, data] of hospitalMap.entries()) {
+        totalDistributed += data.distributed;
+        if (data.netoAPagar > 0 && data.distributed >= data.netoAPagar - 0.01) {
+          completedHospitals++;
+        }
+      }
+
+      const currentLiq = await tx.liquidacion.findUnique({
+        where: { id: liquidationId },
+        select: { status: true },
+      });
+
+      if (currentLiq && currentLiq.status !== "CERRADA") {
+        let newStatus = currentLiq.status;
+        if (totalHospitals > 0 && completedHospitals >= totalHospitals) {
+          newStatus = "DISTRIBUIDA";
+        } else if (totalDistributed > 0) {
+          newStatus = "EN_PROCESO";
+        } else if (currentLiq.status === "DISTRIBUIDA" || currentLiq.status === "EN_PROCESO") {
+          newStatus = "NOTIFICADO";
+        }
+
+        if (newStatus !== currentLiq.status) {
+          await tx.liquidacion.update({
+            where: { id: liquidationId },
+            data: { status: newStatus },
+          });
+        }
+      }
+    });
 
     revalidatePath("/dashboard/hospital-portal");
+    revalidatePath("/dashboard/liquidations");
+    revalidatePath("/dashboard/consolidation");
     return { success: true };
   } catch (e: any) {
     console.error("Error bulk saving distributions:", e);

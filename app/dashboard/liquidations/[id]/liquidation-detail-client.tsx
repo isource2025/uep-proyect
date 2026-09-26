@@ -776,9 +776,13 @@ export default function LiquidationDetailClient({
           <span
             className={`text-2xs font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${
               liq.status === "PENDIENTE"
-                ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
+                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
                 : liq.status === "NOTIFICADO"
                 ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                : liq.status === "EN_PROCESO"
+                ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
+                : liq.status === "DISTRIBUIDA" || liq.status === "DISTRIBUIDO"
+                ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20"
                 : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
             }`}
           >

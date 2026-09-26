@@ -1190,7 +1190,7 @@ export default function LiquidationDetailClient({
                   <TableHead className="font-semibold text-3xs uppercase text-right">PAGOS PARC. ANT.</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">BRUTO A PAGAR</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">GA (% / $)</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">AJUSTE REC.</TableHead>
+                  <TableHead className="font-semibold text-3xs uppercase text-right">ADELANTOS</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">NETO A PAGAR</TableHead>
                 </TableRow>
               </TableHeader>

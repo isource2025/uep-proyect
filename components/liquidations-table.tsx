@@ -102,6 +102,7 @@ export function LiquidationsTable({
     : liquidations.filter((liq) => {
         if (!activeSearchQuery.trim()) return true;
         const q = activeSearchQuery.toLowerCase().trim();
+        const cleanDigits = q.replace(/\D/g, "");
         const liqNum = `liq-${String(liq.id).padStart(4, "0")}`.toLowerCase();
         const idStr = String(liq.id);
         const mesCarga = (liq.mesCarga || "").toLowerCase();
@@ -112,6 +113,39 @@ export function LiquidationsTable({
         const createdByName = (liq.createdByName || "").toLowerCase();
         const observaciones = (liq.observaciones || "").toLowerCase();
 
+        // Check FC-Ventas asociadas
+        const fcMatches = (liq.rc?.appliedAsRc || []).some((app: any) => {
+          const fc = app.fc;
+          if (!fc) return false;
+          const fcPto = String(fc.puntoVenta || "");
+          const fcPtoPad = fcPto.padStart(4, "0");
+          const fcNro = String(fc.numero || "");
+          const fcNroPad = fcNro.padStart(8, "0");
+          const fcFull = `fc-${fcPtoPad}-${fcNroPad}`.toLowerCase();
+          const fcShort = `fc-${fcPto}-${fcNro}`.toLowerCase();
+          const fcDash = `${fcPtoPad}-${fcNroPad}`.toLowerCase();
+          const fcDashShort = `${fcPto}-${fcNro}`.toLowerCase();
+
+          return (
+            fcNro.includes(q) ||
+            fcNroPad.includes(q) ||
+            (cleanDigits && (fcNro === cleanDigits || Number(fcNro) === Number(cleanDigits))) ||
+            fcFull.includes(q) ||
+            fcShort.includes(q) ||
+            fcDash.includes(q) ||
+            fcDashShort.includes(q) ||
+            String(fc.id).includes(q)
+          );
+        });
+
+        // Check details (FC Hospital, prestador, etc.)
+        const detailMatches = (liq.details || []).some((d: any) => {
+          const fcHosp = (d.fcHospital || "").toLowerCase();
+          const prest = (d.prestadorNombre || "").toLowerCase();
+          const cuit = (d.cuit || "").toLowerCase();
+          return fcHosp.includes(q) || prest.includes(q) || cuit.includes(q);
+        });
+
         return (
           liqNum.includes(q) ||
           idStr.includes(q) ||
@@ -121,7 +155,9 @@ export function LiquidationsTable({
           clienteName.includes(q) ||
           status.includes(q) ||
           createdByName.includes(q) ||
-          observaciones.includes(q)
+          observaciones.includes(q) ||
+          fcMatches ||
+          detailMatches
         );
       });
 
@@ -134,7 +170,7 @@ export function LiquidationsTable({
 
   return (
     <Card className="border-border bg-card text-card-foreground">
-      <CardHeader className="p-5 pb-3 border-b border-border/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <CardHeader className="p-5 pb-3 border-b border-border/80 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5">
         <div>
           <CardTitle className="text-lg font-bold text-foreground">
             {title || defaultTitle}
@@ -147,15 +183,15 @@ export function LiquidationsTable({
         <SearchBar
           placeholder={
             isHospitalUser
-              ? "Buscar por liquidación, período, recibo u O.S..."
-              : "Buscar por Obra Social, Recibo o Mes..."
+              ? "Buscar por Obra Social, Liq. N°, FC, período o recibo..."
+              : "Buscar por Obra Social, Liq. N°, Factura (FC) o Recibo..."
           }
           value={activeSearchQuery}
           onChange={handleSearchChange}
           onSubmit={onSearchSubmit}
           isLoading={isLoading}
           size="sm"
-          className="w-full sm:w-80"
+          className="w-full lg:w-[460px] xl:w-[520px] shrink-0"
         />
       </CardHeader>
 
@@ -177,7 +213,7 @@ export function LiquidationsTable({
                 ) : (
                   <>
                     <TableHead className="font-semibold text-xs min-w-[220px]">Obra Social (Cliente)</TableHead>
-                    <TableHead className="font-semibold text-xs w-[120px]">Mes Carga</TableHead>
+                    <TableHead className="font-semibold text-xs min-w-[140px]">Facturas de Venta</TableHead>
                     <TableHead className="font-semibold text-xs w-[130px]">Recibo UEP</TableHead>
                     <TableHead className="font-semibold text-xs text-right w-[140px]">Neto Inicial</TableHead>
                     <TableHead className="font-semibold text-xs text-right w-[140px]">Neto a Pagar</TableHead>
@@ -368,8 +404,28 @@ export function LiquidationsTable({
                               </div>
                             )}
                           </TableCell>
-                          <TableCell className="text-xs font-mono whitespace-nowrap">
-                            {liq.mesCarga || (liq.periodMes ? `${liq.periodMes}/${liq.periodAnio}` : "-")}
+                          <TableCell className="text-xs font-mono py-2.5">
+                            {liq.rc?.appliedAsRc && liq.rc.appliedAsRc.length > 0 ? (
+                              <div className="flex flex-wrap gap-1 items-center">
+                                {liq.rc.appliedAsRc.map((app: any, idx: number) => {
+                                  const fc = app.fc;
+                                  if (!fc) return null;
+                                  const pto = String(fc.puntoVenta || "1").padStart(4, "0");
+                                  const nro = String(fc.numero || "").padStart(8, "0");
+                                  return (
+                                    <span
+                                      key={idx}
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 text-3xs font-semibold whitespace-nowrap font-mono"
+                                      title={`FC-${pto}-${nro}`}
+                                    >
+                                      FC-{pto}-{nro}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-xs font-mono">-</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-xs font-mono whitespace-nowrap">
                             {liq.rc?.puntoVenta}-{liq.rc?.numero}

@@ -203,15 +203,85 @@ export async function fetchLiquidationData(
           contains: trimmed,
         },
       },
+      {
+        observaciones: {
+          contains: trimmed,
+        },
+      },
+      {
+        createdByName: {
+          contains: trimmed,
+        },
+      },
+      {
+        details: {
+          some: {
+            OR: [
+              { fcHospital: { contains: trimmed } },
+              { prestadorNombre: { contains: trimmed } },
+              { cuit: { contains: trimmed } },
+            ],
+          },
+        },
+      },
     ];
 
-    const num = parseInt(trimmed, 10);
-    if (!isNaN(num)) {
+    // Check for pure number or FC string patterns
+    const cleanDigits = trimmed.replace(/\D/g, "");
+    const cleanNum = cleanDigits ? parseInt(cleanDigits, 10) : NaN;
+
+    if (!isNaN(cleanNum)) {
+      // Direct search by Liquidacion ID, RC numero or FC-Venta numero / id
+      whereClause.OR.push({ id: cleanNum });
       whereClause.OR.push({
         rc: {
-          numero: num,
+          numero: cleanNum,
         },
       });
+      whereClause.OR.push({
+        rc: {
+          appliedAsRc: {
+            some: {
+              fc: {
+                OR: [
+                  { numero: cleanNum },
+                  { id: cleanNum },
+                ],
+              },
+            },
+          },
+        },
+      });
+    }
+
+    // Check for "PuntoVenta - Numero" pattern (e.g. 0001-00004795, 1-4795, FC-0001-00004795)
+    const cleanPtoNro = trimmed.replace(/^[fF][cC][-\s]*/, "");
+    if (cleanPtoNro.includes("-")) {
+      const parts = cleanPtoNro.split("-");
+      if (parts.length >= 2) {
+        const pto = parseInt(parts[0], 10);
+        const nro = parseInt(parts[1], 10);
+        if (!isNaN(pto) && !isNaN(nro)) {
+          whereClause.OR.push({
+            rc: {
+              appliedAsRc: {
+                some: {
+                  fc: {
+                    puntoVenta: pto,
+                    numero: nro,
+                  },
+                },
+              },
+            },
+          });
+          whereClause.OR.push({
+            rc: {
+              puntoVenta: pto,
+              numero: nro,
+            },
+          });
+        }
+      }
     }
   }
 
@@ -236,11 +306,49 @@ export async function fetchLiquidationData(
       },
     ];
 
-    const num = parseInt(trimmed, 10);
+    const cleanDigits = trimmed.replace(/\D/g, "");
+    const num = cleanDigits ? parseInt(cleanDigits, 10) : NaN;
     if (!isNaN(num)) {
       pendingWhereClause.AND[0].OR.push({
         numero: num,
       });
+      pendingWhereClause.AND[0].OR.push({
+        appliedAsRc: {
+          some: {
+            fc: {
+              OR: [
+                { numero: num },
+                { id: num },
+              ],
+            },
+          },
+        },
+      });
+    }
+
+    const cleanPtoNro = trimmed.replace(/^[fF][cC][-\s]*/, "");
+    if (cleanPtoNro.includes("-")) {
+      const parts = cleanPtoNro.split("-");
+      if (parts.length >= 2) {
+        const pto = parseInt(parts[0], 10);
+        const nro = parseInt(parts[1], 10);
+        if (!isNaN(pto) && !isNaN(nro)) {
+          pendingWhereClause.AND[0].OR.push({
+            appliedAsRc: {
+              some: {
+                fc: {
+                  puntoVenta: pto,
+                  numero: nro,
+                },
+              },
+            },
+          });
+          pendingWhereClause.AND[0].OR.push({
+            puntoVenta: pto,
+            numero: nro,
+          });
+        }
+      }
     }
   }
 
@@ -258,9 +366,20 @@ export async function fetchLiquidationData(
         rc: {
           include: {
             cliente: true,
+            appliedAsRc: {
+              include: {
+                fc: true,
+              },
+            },
           },
         },
-        details: true,
+        details: {
+          include: {
+            hospital: true,
+            cliente: true,
+            compra: true,
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
       skip,

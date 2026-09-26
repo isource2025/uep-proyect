@@ -380,6 +380,12 @@ export async function fetchLiquidationData(
             compra: true,
           },
         },
+        distributions: {
+          include: {
+            agent: true,
+          },
+        },
+        personalDistributions: true,
       },
       orderBy: { createdAt: "desc" },
       skip,

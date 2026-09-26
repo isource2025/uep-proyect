@@ -25,6 +25,7 @@ import {
   FileDown,
   User,
   MessageSquare,
+  Building2,
 } from "lucide-react";
 
 export interface LiquidationsTableProps {
@@ -78,6 +79,15 @@ export function LiquidationsTable({
     clientName: string;
     createdByName?: string;
     text: string;
+  } | null>(null);
+  const [selectedHospitalProgress, setSelectedHospitalProgress] = useState<{
+    id: number;
+    title: string;
+    clientName: string;
+    completed: number;
+    total: number;
+    list: any[];
+    pending: any[];
   } | null>(null);
 
   const activeSearchQuery = searchQuery !== undefined ? searchQuery : internalSearchQuery;
@@ -530,6 +540,136 @@ export function LiquidationsTable({
                                 )}
                               </Button>
 
+                              {/* Hospital distribution progress button (e.g. 4/10) */}
+                              {(() => {
+                                const details = liq.details || [];
+                                const distributions = liq.distributions || [];
+
+                                const hospitalMap = new Map<string, {
+                                  id?: number;
+                                  name: string;
+                                  netoAPagar: number;
+                                  distributed: number;
+                                }>();
+
+                                for (const d of details) {
+                                  const hid = d.hospitalId || d.compra?.hospitalId;
+                                  const name = d.prestadorNombre || d.hospital?.nombre || `Hospital #${hid || '?'}`;
+                                  const key = hid ? `id-${hid}` : `name-${name}`;
+                                  
+                                  const existing = hospitalMap.get(key) || {
+                                    id: hid,
+                                    name,
+                                    netoAPagar: 0,
+                                    distributed: 0,
+                                  };
+                                  existing.netoAPagar += Number(d.netoAPagar || 0);
+                                  hospitalMap.set(key, existing);
+                                }
+
+                                for (const dist of distributions) {
+                                  const hid = dist.agent?.hospitalId;
+                                  if (hid) {
+                                    const key = `id-${hid}`;
+                                    if (hospitalMap.has(key)) {
+                                      const existing = hospitalMap.get(key)!;
+                                      existing.distributed += Number(dist.honorarios || 0) + Number(dist.sobreasignaciones || 0) + Number(dist.gastos || 0);
+                                    }
+                                  }
+                                }
+
+                                const list = Array.from(hospitalMap.values()).map((h) => {
+                                  const isCompleted = h.netoAPagar > 0 && h.distributed >= (h.netoAPagar - 0.01);
+                                  const hasStarted = h.distributed > 0;
+                                  const remaining = Math.max(0, h.netoAPagar - h.distributed);
+                                  return {
+                                    ...h,
+                                    isCompleted,
+                                    hasStarted,
+                                    remaining,
+                                  };
+                                });
+
+                                const total = list.length;
+                                const completed = list.filter((h) => h.isCompleted).length;
+                                const pending = list.filter((h) => !h.isCompleted);
+
+                                if (total === 0) return null;
+
+                                return (
+                                  <div className="relative group inline-block">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedHospitalProgress({
+                                          id: liq.id,
+                                          title: `LIQ-${String(liq.id).padStart(4, "0")}`,
+                                          clientName: liq.rc?.cliente?.nombre || "Obra Social",
+                                          completed,
+                                          total,
+                                          list,
+                                          pending,
+                                        });
+                                      }}
+                                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-bold cursor-pointer transition-all active:scale-95 h-8 ${
+                                        completed === total
+                                          ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25 hover:bg-teal-500/20"
+                                          : completed > 0
+                                          ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25 hover:bg-purple-500/20"
+                                          : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25 hover:bg-amber-500/20"
+                                      }`}
+                                      title="Ver progreso de distribución por hospital"
+                                    >
+                                      <Building2 className="h-3.5 w-3.5 shrink-0" />
+                                      <span>{completed}/{total}</span>
+                                    </button>
+
+                                    {/* Hover Tooltip Popup for desktop */}
+                                    <div className="absolute right-0 top-full mt-1.5 hidden md:group-hover:flex flex-col z-50 w-80 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95">
+                                      <div className="flex items-center justify-between border-b border-border/60 pb-1.5 mb-2">
+                                        <span className="font-bold text-xs flex items-center gap-1.5 text-foreground">
+                                          <Building2 className="h-3.5 w-3.5 text-purple-500" />
+                                          Progreso ({completed}/{total})
+                                        </span>
+                                        <span className={`text-3xs font-semibold px-1.5 py-0.5 rounded ${
+                                          completed === total ? "bg-teal-500/15 text-teal-600 dark:text-teal-400" : "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                                        }`}>
+                                          {completed === total ? "Completado" : `${pending.length} pendiente(s)`}
+                                        </span>
+                                      </div>
+
+                                      {pending.length > 0 ? (
+                                        <div className="space-y-1.5">
+                                          <p className="text-3xs font-semibold text-muted-foreground uppercase tracking-wider">Hospitales que faltan:</p>
+                                          <div className="max-h-40 overflow-y-auto space-y-1">
+                                            {pending.map((h, i) => (
+                                              <div key={i} className="flex items-center justify-between text-2xs p-1.5 rounded bg-muted/50 border border-border/40">
+                                                <span className="font-medium text-foreground truncate max-w-[170px]" title={h.name}>
+                                                  {h.name}
+                                                </span>
+                                                <span className={`text-3xs font-mono font-semibold ${
+                                                  h.hasStarted ? "text-blue-600 dark:text-blue-400" : "text-amber-600 dark:text-amber-400"
+                                                }`}>
+                                                  {h.hasStarted ? "En carga" : "Sin iniciar"}
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <p className="text-2xs text-teal-600 dark:text-teal-400 font-medium">
+                                          ✓ Todos los hospitales cargaron sus honorarios y sobreasignaciones.
+                                        </p>
+                                      )}
+                                      <p className="text-3xs text-muted-foreground mt-2 border-t border-border/40 pt-1.5 text-center font-normal">
+                                        Clic para ver el detalle completo
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
                               {liq.status !== "NOTIFICADO" && liq.status !== "CERRADA" && onNotifyHospital && (
                                 <Button
                                   size="sm"
@@ -660,6 +800,111 @@ export function LiquidationsTable({
               variant="outline"
               size="sm"
               onClick={() => setSelectedObs(null)}
+              className="w-full sm:w-auto font-medium cursor-pointer"
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Modal Dialog for Hospital Distribution Progress */}
+      <Dialog
+        open={!!selectedHospitalProgress}
+        onOpenChange={(open) => !open && setSelectedHospitalProgress(null)}
+      >
+        <DialogContent className="w-full max-w-[95vw] sm:max-w-3xl lg:max-w-4xl max-h-[88vh] flex flex-col p-4 sm:p-6">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 shrink-0">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
+                  Estado de Carga por Hospital
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                  {selectedHospitalProgress?.title} &bull; {selectedHospitalProgress?.clientName}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="py-2 space-y-4 flex-1 overflow-y-auto">
+            {/* Summary progress bar */}
+            <div className="p-3.5 sm:p-4 rounded-lg bg-muted/40 border border-border space-y-2.5">
+              <div className="flex items-center justify-between text-xs sm:text-sm">
+                <span className="font-semibold text-foreground">
+                  {selectedHospitalProgress?.completed} de {selectedHospitalProgress?.total} hospitales completados
+                </span>
+                <span className="font-mono text-xs sm:text-sm font-bold text-purple-600 dark:text-purple-400">
+                  {Math.round(((selectedHospitalProgress?.completed || 0) / (selectedHospitalProgress?.total || 1)) * 100)}%
+                </span>
+              </div>
+              <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden border border-border/60">
+                <div
+                  className="h-full bg-purple-600 dark:bg-purple-500 transition-all duration-300 rounded-full"
+                  style={{
+                    width: `${Math.round(((selectedHospitalProgress?.completed || 0) / (selectedHospitalProgress?.total || 1)) * 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Hospitals table */}
+            <div className="border border-border rounded-lg overflow-x-auto">
+              <Table className="w-full">
+                <TableHeader className="bg-muted/60 text-muted-foreground">
+                  <TableRow className="border-border">
+                    <TableHead className="text-3xs uppercase font-semibold py-2.5 min-w-[200px]">Hospital / CAPS</TableHead>
+                    <TableHead className="text-3xs uppercase font-semibold text-center w-[120px]">Estado</TableHead>
+                    <TableHead className="text-3xs uppercase font-semibold text-right w-[150px]">Neto Asignado</TableHead>
+                    <TableHead className="text-3xs uppercase font-semibold text-right w-[150px]">Distribuido</TableHead>
+                    <TableHead className="text-3xs uppercase font-semibold text-right w-[150px]">Pendiente</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedHospitalProgress?.list?.map((h: any, idx: number) => (
+                    <TableRow key={idx} className="border-border hover:bg-muted/30 text-xs">
+                      <TableCell className="font-medium text-foreground py-2.5 whitespace-normal break-words">
+                        {h.name}
+                      </TableCell>
+                      <TableCell className="text-center whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-3xs font-semibold border ${
+                            h.isCompleted
+                              ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25"
+                              : h.hasStarted
+                              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25"
+                              : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
+                          }`}
+                        >
+                          {h.isCompleted ? "Completo" : h.hasStarted ? "En Carga" : "Pendiente"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
+                        {formatCurrency(h.netoAPagar)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono tabular-nums text-purple-600 dark:text-purple-400 whitespace-nowrap">
+                        {formatCurrency(h.distributed)}
+                      </TableCell>
+                      <TableCell className={`text-right font-mono tabular-nums font-semibold whitespace-nowrap ${
+                        h.remaining > 0.01 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"
+                      }`}>
+                        {formatCurrency(h.remaining)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <DialogFooter className="sm:justify-end border-t border-border pt-3 mt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedHospitalProgress(null)}
               className="w-full sm:w-auto font-medium cursor-pointer"
             >
               Cerrar

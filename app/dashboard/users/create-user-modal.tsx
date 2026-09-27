@@ -26,6 +26,7 @@ import {
   Check,
 } from "lucide-react";
 import { createUserAction, updateUserAction } from "./actions";
+import { getUserRoleConfig } from "@/lib/constants";
 
 export interface RoleOption {
   id: number;
@@ -351,10 +352,12 @@ export function UserModal({
                 >
                   {roles.map((r) => {
                     const isSelected = selectedRoles.includes(String(r.id));
+                    const roleConfig = getUserRoleConfig(r.id);
                     return (
                       <button
                         key={r.id}
                         type="button"
+                        title={roleConfig.description}
                         onClick={() => toggleRole(String(r.id))}
                         className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer select-none ${
                           isSelected

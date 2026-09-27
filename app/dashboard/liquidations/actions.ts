@@ -1072,6 +1072,8 @@ export async function saveLiquidacionPersonalDistributions(
         sobreasignacion: number;
       }[] = [];
 
+      const round2 = (num: any) => Math.round((Number(num) || 0) * 100) / 100;
+
       for (const d of distributions) {
         const rawId = d.cuil || d.idAgente;
         if (!rawId) continue;
@@ -1079,8 +1081,8 @@ export async function saveLiquidacionPersonalDistributions(
         if (!cleanDigits) continue;
 
         const cuilBigInt = BigInt(cleanDigits);
-        const honNum = Number(d.honorarios || 0);
-        const sobrNum = Number(d.sobreasignacion || 0);
+        const honNum = round2(d.honorarios);
+        const sobrNum = round2(d.sobreasignacion);
 
         if (honNum > 0 || sobrNum > 0) {
           validRows.push({
@@ -1140,12 +1142,12 @@ export async function saveLiquidacionPersonalDistributions(
         const hid = d.hospitalId || d.compra?.hospitalId;
         const key = hid ? `id-${hid}` : `name-${d.prestadorNombre}`;
         const current = hospitalTotals.get(key) || { netoAPagar: 0, distributed: 0 };
-        current.netoAPagar += Number(d.netoAPagar || 0);
+        current.netoAPagar = round2(current.netoAPagar + Number(d.netoAPagar || 0));
         hospitalTotals.set(key, current);
       }
 
       for (const p of allPersonalDist) {
-        const total = Number(p.honorarios || 0) + Number(p.sobreasignacion || 0);
+        const total = round2(Number(p.honorarios || 0) + Number(p.sobreasignacion || 0));
         if (total <= 0) continue;
 
         const empList = cuilToEmpresas.get(p.cuil.toString()) || [];
@@ -1153,10 +1155,10 @@ export async function saveLiquidacionPersonalDistributions(
 
         if (match.hospitalKey && hospitalTotals.has(match.hospitalKey)) {
           const current = hospitalTotals.get(match.hospitalKey)!;
-          current.distributed += total;
+          current.distributed = round2(current.distributed + total);
         } else if (hospitalTotals.size === 1) {
           const first = Array.from(hospitalTotals.values())[0];
-          first.distributed += total;
+          first.distributed = round2(first.distributed + total);
         }
       }
 
@@ -1165,8 +1167,8 @@ export async function saveLiquidacionPersonalDistributions(
       let totalDistributed = 0;
 
       for (const [, hData] of hospitalTotals.entries()) {
-        totalDistributed += hData.distributed;
-        if (hData.netoAPagar > 0 && hData.distributed >= (hData.netoAPagar - 0.01)) {
+        totalDistributed = round2(totalDistributed + hData.distributed);
+        if (hData.netoAPagar > 0 && hData.distributed >= hData.netoAPagar) {
           completedHospitals++;
         }
       }
@@ -1181,8 +1183,8 @@ export async function saveLiquidacionPersonalDistributions(
         if (totalHospitals > 0 && completedHospitals >= totalHospitals) {
           newStatus = "DISTRIBUIDA";
         } else if (totalDistributed > 0) {
-          newStatus = "EN_PROCESO";
-        } else if (currentLiq.status === "DISTRIBUIDA" || currentLiq.status === "EN_PROCESO") {
+          newStatus = "EN PROCESO";
+        } else if (currentLiq.status === "DISTRIBUIDA" || currentLiq.status === "EN PROCESO" || currentLiq.status === "EN_PROCESO") {
           newStatus = "NOTIFICADO";
         }
 

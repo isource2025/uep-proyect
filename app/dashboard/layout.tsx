@@ -6,6 +6,7 @@ import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { DashboardProvider } from "@/components/dashboard-context";
 import { getActivePeriodInfo } from "@/lib/periods";
+import { parseUserRoleIds, isUserAdmin, isUserHospital, getUserRoleConfig } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -39,21 +40,20 @@ export default async function DashboardLayout({
 
   const resolvedHospitalId = personalEmpresa?.idEmpresa ?? (session.user as any).hospitalId;
 
-  const userRoles = String((session.user as any).role || "")
-    .split(",")
-    .map((r) => r.trim())
-    .filter(Boolean);
-  const isAdmin = userRoles.includes("1");
+  const rawRoleStr = (session.user as any).role || "";
+  const userRoles = parseUserRoleIds(rawRoleStr);
+  const isAdmin = isUserAdmin(rawRoleStr);
   const isMedico = userRoles.includes("2");
-  const isHospital = userRoles.includes("4") || Boolean(resolvedHospitalId);
+  const isHospital = isUserHospital(rawRoleStr, resolvedHospitalId);
 
+  const primaryRoleConfig = userRoles.length > 0 ? getUserRoleConfig(userRoles[0]) : null;
   const displayRole = isAdmin
     ? "ADMIN"
     : isMedico
     ? "MEDICO"
     : isHospital
     ? "HOSPITAL"
-    : "OPERADOR";
+    : primaryRoleConfig?.shortCode || "OPERADOR";
 
   return (
     <DashboardProvider>

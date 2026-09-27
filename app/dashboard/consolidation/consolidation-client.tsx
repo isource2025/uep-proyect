@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { fetchConsolidationData, closePeriodLiquidations } from "./actions";
 import * as XLSX from "xlsx";
+import { cn } from "@/lib/utils";
+import { getLiquidationStatusConfig, getLiquidationStatusBadge } from "@/lib/constants";
 
 interface Period {
   anio: number;
@@ -428,18 +430,11 @@ export function ConsolidationClient({ periods }: ConsolidationClientProps) {
                           <TableCell className="font-semibold text-foreground py-2.5">{hospitalName}</TableCell>
                           <TableCell className="text-muted-foreground text-[11px] truncate max-w-[120px]">{clientName}</TableCell>
                           <TableCell>
-                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-3xs font-semibold border ${
-                              liq.status === "PENDIENTE"
-                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
-                                : liq.status === "NOTIFICADO"
-                                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25"
-                                : liq.status === "EN_PROCESO"
-                                ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25"
-                                : liq.status === "DISTRIBUIDA" || liq.status === "DISTRIBUIDO"
-                                ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25"
-                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
-                            }`}>
-                              {liq.status}
+                            <span className={cn(
+                              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-3xs font-semibold border",
+                              getLiquidationStatusBadge(liq.status)
+                            )}>
+                              {getLiquidationStatusConfig(liq.status).label}
                             </span>
                           </TableCell>
                           <TableCell className="text-right py-2.5 font-medium">{formatCurrency(liqNet)}</TableCell>

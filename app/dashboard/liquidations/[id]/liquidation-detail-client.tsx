@@ -44,6 +44,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { getLiquidationStatusConfig, getLiquidationStatusBadge } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { updateLiquidationDetails, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions } from "../actions";
 
@@ -628,8 +629,10 @@ export default function LiquidationDetailClient({
 
   const currentDetails = displayedDetails.length > 0 ? displayedDetails : liq.details;
 
+  const round2 = (val: any) => Math.round((Number(val) || 0) * 100) / 100;
+
   // Compute live calculations from editable details
-  const detailSums = currentDetails.reduce(
+  const detailSumsRaw = currentDetails.reduce(
     (acc: any, detail: any) => {
       const edit = editableDetails.find((e) => e.id === detail.id) || {};
       const totalFact = Number(edit.totalFacturado ?? detail.totalFacturado ?? 0);
@@ -671,6 +674,19 @@ export default function LiquidationDetailClient({
     }
   );
 
+  const detailSums = {
+    totalFacturado: round2(detailSumsRaw.totalFacturado),
+    creditos: round2(detailSumsRaw.creditos),
+    debitos: round2(detailSumsRaw.debitos),
+    ajustesOs: round2(detailSumsRaw.ajustesOs),
+    pendientesCobro: round2(detailSumsRaw.pendientesCobro),
+    pagosParcialesAnteriores: round2(detailSumsRaw.pagosParcialesAnteriores),
+    brutoAPagar: round2(detailSumsRaw.brutoAPagar),
+    ga: round2(detailSumsRaw.ga),
+    ajusteRecupero: round2(detailSumsRaw.ajusteRecupero),
+    netoAPagar: round2(detailSumsRaw.netoAPagar),
+  };
+
   const filteredDetails = currentDetails.filter((d: any) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
@@ -701,21 +717,25 @@ export default function LiquidationDetailClient({
     );
   });
 
-  // Dynamic Live Header Metrics calculated from agent distribution
-  const liveTotalHonorarios =
+  // Dynamic Live Header Metrics calculated from agent distribution with exact cent arithmetic
+  const liveTotalHonorarios = round2(
     agentDistRows.length > 0
       ? agentDistRows.reduce((sum, r) => sum + (Number(r.honorarios) || 0), 0)
-      : Number(liq.totalHonorarios || 0);
+      : Number(liq.totalHonorarios || 0)
+  );
 
-  const liveTotalSobreasignaciones =
+  const liveTotalSobreasignaciones = round2(
     agentDistRows.length > 0
       ? agentDistRows.reduce((sum, r) => sum + (Number(r.sobreasignaciones) || 0), 0)
-      : Number(liq.totalSobreasignaciones || 0);
+      : Number(liq.totalSobreasignaciones || 0)
+  );
 
-  const currentHospitalNeto = detailSums.netoAPagar;
-  const liveTotalGastos = Math.max(0, currentHospitalNeto - (liveTotalHonorarios + liveTotalSobreasignaciones));
-  const liveTotalDistribuido = liveTotalHonorarios + liveTotalSobreasignaciones + liveTotalGastos;
-  const balanceRestante = currentHospitalNeto - (liveTotalHonorarios + liveTotalSobreasignaciones);
+  const currentHospitalNeto = round2(detailSums.netoAPagar);
+  const totalAsignadoPersonal = round2(liveTotalHonorarios + liveTotalSobreasignaciones);
+  const liveTotalGastos = Math.max(0, round2(currentHospitalNeto - totalAsignadoPersonal));
+  const liveTotalDistribuido = round2(totalAsignadoPersonal + liveTotalGastos);
+  const balanceRestante = round2(currentHospitalNeto - totalAsignadoPersonal);
+  const isExcedido = totalAsignadoPersonal > currentHospitalNeto;
 
   return (
     <div className="space-y-6 text-foreground">
@@ -774,19 +794,12 @@ export default function LiquidationDetailClient({
             </a>
           )}
           <span
-            className={`text-2xs font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider ${
-              liq.status === "PENDIENTE"
-                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                : liq.status === "NOTIFICADO"
-                ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
-                : liq.status === "EN_PROCESO"
-                ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20"
-                : liq.status === "DISTRIBUIDA" || liq.status === "DISTRIBUIDO"
-                ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20"
-                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-            }`}
+            className={cn(
+              "text-2xs font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider border",
+              getLiquidationStatusBadge(liq.status)
+            )}
           >
-            {liq.status}
+            {getLiquidationStatusConfig(liq.status).label}
           </span>
         </div>
       </div>
@@ -1045,7 +1058,7 @@ export default function LiquidationDetailClient({
         <Card
           className={cn(
             "border-border bg-card shadow-sm",
-            liveTotalDistribuido > currentHospitalNeto && "border-red-500/50 bg-red-500/5"
+            isExcedido && "border-red-500/50 bg-red-500/5"
           )}
         >
           <CardContent className="p-4 flex flex-col justify-between space-y-2">
@@ -1056,12 +1069,18 @@ export default function LiquidationDetailClient({
               <span
                 className={cn(
                   "px-2 py-0.5 rounded-full font-bold text-3xs border",
-                  liveTotalDistribuido > currentHospitalNeto
+                  isExcedido
                     ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20"
+                    : totalAsignadoPersonal === currentHospitalNeto && currentHospitalNeto > 0
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
                     : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
                 )}
               >
-                {liveTotalDistribuido > currentHospitalNeto ? "Excedido" : "Distribuido"}
+                {isExcedido
+                  ? "Excedido"
+                  : totalAsignadoPersonal === currentHospitalNeto && currentHospitalNeto > 0
+                  ? "100% Distribuido"
+                  : "Distribuido"}
               </span>
             </div>
             <div>

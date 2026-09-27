@@ -16,6 +16,7 @@ import { SearchBar } from "@/components/search-bar";
 import { cn } from "@/lib/utils";
 import { CreateUserModal, EditUserModal } from "./create-user-modal";
 import { toggleUserStatusAction } from "./actions";
+import { parseUserRoleIds, getUserRoleConfig, getUserRoleBadge } from "@/lib/constants";
 
 export const revalidate = 0;
 
@@ -213,21 +214,21 @@ export default async function UsersPage({
                         <TableCell className="text-xs">
                           <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
                             {(() => {
-                              const userRoles = (u.role || "").split(",").map((r) => r.trim()).filter(Boolean);
+                              const userRoles = parseUserRoleIds(u.role);
                               if (userRoles.length === 0) {
                                 return <span className="text-muted-foreground text-3xs italic">Sin rol</span>;
                               }
                               return userRoles.map((roleId) => {
-                                const roleName = roleMap.get(roleId) || `Rol: ${roleId}`;
-                                const isAdmin = roleId === "1";
+                                const config = getUserRoleConfig(roleId);
+                                const roleName = roleMap.get(roleId) || config.name;
                                 return (
                                   <span
                                     key={roleId}
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-3xs font-semibold border ${
-                                      isAdmin
-                                        ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20"
-                                        : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                                    }`}
+                                    title={config.description}
+                                    className={cn(
+                                      "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-3xs font-semibold border",
+                                      getUserRoleBadge(roleId)
+                                    )}
                                   >
                                     <ShieldCheck className="h-3 w-3 shrink-0" />
                                     {roleName}

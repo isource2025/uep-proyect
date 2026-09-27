@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Building2,
 } from "lucide-react";
+import { getLiquidationStatusConfig, getLiquidationStatusBadge } from "@/lib/constants";
 
 export interface LiquidationsTableProps {
   liquidations: any[];
@@ -418,19 +419,12 @@ export function LiquidationsTable({
                       {/* Estado */}
                       <TableCell className="text-center whitespace-nowrap">
                         <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-3xs font-semibold border ${
-                            liq.status === "PENDIENTE"
-                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
-                              : liq.status === "NOTIFICADO"
-                              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25"
-                              : liq.status === "EN_PROCESO"
-                              ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25"
-                              : liq.status === "DISTRIBUIDA" || liq.status === "DISTRIBUIDO"
-                              ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25"
-                              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
-                          }`}
+                          className={cn(
+                            "inline-flex items-center rounded-full px-2.5 py-0.5 text-3xs font-semibold border",
+                            getLiquidationStatusBadge(liq.status)
+                          )}
                         >
-                          {liq.status}
+                          {getLiquidationStatusConfig(liq.status).label}
                         </span>
                       </TableCell>
 
@@ -497,6 +491,7 @@ export function LiquidationsTable({
                                 const distributions = liq.distributions || [];
                                 const personalDistributions = liq.personalDistributions || [];
 
+                                const round2 = (num: any) => Math.round((Number(num) || 0) * 100) / 100;
                                 const hospitalMap = new Map<string, {
                                   id?: number;
                                   name: string;
@@ -515,58 +510,62 @@ export function LiquidationsTable({
                                     netoAPagar: 0,
                                     distributed: 0,
                                   };
-                                  existing.netoAPagar += Number(d.netoAPagar || 0);
+                                  existing.netoAPagar = round2(existing.netoAPagar + Number(d.netoAPagar || 0));
                                   hospitalMap.set(key, existing);
                                 }
 
                                 // 1. Process personalDistributions (LiquidacionPersonal)
                                 for (const p of personalDistributions) {
-                                  const amount = Number(p.honorarios || 0) + Number(p.sobreasignacion || 0);
+                                  const amount = round2(Number(p.honorarios || 0) + Number(p.sobreasignacion || 0));
                                   if (amount <= 0) continue;
 
                                   const key = p.hospitalKey || (p.hospitalId ? `id-${p.hospitalId}` : undefined);
                                   if (key && hospitalMap.has(key)) {
                                     const existing = hospitalMap.get(key)!;
-                                    existing.distributed += amount;
+                                    existing.distributed = round2(existing.distributed + amount);
                                   } else if (p.hospitalId) {
                                     let matched = false;
                                     for (const [, existing] of hospitalMap.entries()) {
                                       if (existing.id === p.hospitalId) {
-                                        existing.distributed += amount;
+                                        existing.distributed = round2(existing.distributed + amount);
                                         matched = true;
                                         break;
                                       }
                                     }
                                     if (!matched && hospitalMap.size === 1) {
                                       const existing = Array.from(hospitalMap.values())[0];
-                                      existing.distributed += amount;
+                                      existing.distributed = round2(existing.distributed + amount);
                                     }
                                   } else if (hospitalMap.size === 1) {
                                     const existing = Array.from(hospitalMap.values())[0];
-                                    existing.distributed += amount;
+                                    existing.distributed = round2(existing.distributed + amount);
                                   }
                                 }
 
                                 // 2. Process legacy distributions (Distribucion)
                                 for (const dist of distributions) {
-                                  const amount = Number(dist.honorarios || 0) + Number(dist.sobreasignaciones || 0) + Number(dist.gastos || 0);
+                                  const amount = round2(Number(dist.honorarios || 0) + Number(dist.sobreasignaciones || 0) + Number(dist.gastos || 0));
                                   if (amount <= 0) continue;
                                   const hid = dist.agent?.hospitalId;
                                   if (hid && hospitalMap.has(`id-${hid}`)) {
                                     const existing = hospitalMap.get(`id-${hid}`)!;
-                                    existing.distributed += amount;
+                                    existing.distributed = round2(existing.distributed + amount);
                                   } else if (hospitalMap.size === 1) {
                                     const existing = Array.from(hospitalMap.values())[0];
-                                    existing.distributed += amount;
+                                    existing.distributed = round2(existing.distributed + amount);
                                   }
                                 }
 
                                 const list = Array.from(hospitalMap.values()).map((h) => {
-                                  const isCompleted = (h.netoAPagar > 0 && h.distributed >= (h.netoAPagar - 0.01)) || (h.distributed > 0 && h.distributed >= h.netoAPagar * 0.99);
-                                  const hasStarted = h.distributed > 0;
-                                  const remaining = Math.max(0, h.netoAPagar - h.distributed);
+                                  const netoRounded = round2(h.netoAPagar);
+                                  const distRounded = round2(h.distributed);
+                                  const isCompleted = netoRounded > 0 && distRounded >= netoRounded;
+                                  const hasStarted = distRounded > 0;
+                                  const remaining = Math.max(0, round2(netoRounded - distRounded));
                                   return {
                                     ...h,
+                                    netoAPagar: netoRounded,
+                                    distributed: distRounded,
                                     isCompleted,
                                     hasStarted,
                                     remaining,

@@ -131,8 +131,8 @@ export async function bulkSaveDistributions(
         if (totalHospitals > 0 && completedHospitals >= totalHospitals) {
           newStatus = "DISTRIBUIDA";
         } else if (totalDistributed > 0) {
-          newStatus = "EN_PROCESO";
-        } else if (currentLiq.status === "DISTRIBUIDA" || currentLiq.status === "EN_PROCESO") {
+          newStatus = "EN PROCESO";
+        } else if (currentLiq.status === "DISTRIBUIDA" || currentLiq.status === "EN PROCESO" || currentLiq.status === "EN_PROCESO") {
           newStatus = "NOTIFICADO";
         }
 

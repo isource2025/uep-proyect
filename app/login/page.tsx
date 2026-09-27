@@ -14,7 +14,12 @@ export default async function LoginPage() {
   // Si el usuario ya está autenticado y activo, redirigir a su panel correspondiente
   if (session && (session.user as any).estado !== 0) {
     const user = session.user as any;
-    if (user.role !== "1" && user.hospitalId) {
+    const userRoles = String(user?.role || "")
+      .split(",")
+      .map((r) => r.trim())
+      .filter(Boolean);
+    const isAdmin = userRoles.includes("1");
+    if (!isAdmin && user.hospitalId) {
       redirect("/dashboard/hospital-portal");
     }
     redirect("/dashboard");

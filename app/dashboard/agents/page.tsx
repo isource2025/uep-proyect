@@ -34,28 +34,13 @@ export default async function AgentsPage() {
     }
 
     if (!targetEmpresaId && hospId && !isNaN(hospId)) {
-      // 2. Check if user.hospitalId matches an EMPRESAS ID
       const empresa = await prisma.empresa.findUnique({
         where: { id: hospId },
       });
       if (empresa) {
         targetEmpresaId = empresa.id;
       } else {
-        // 3. Match by name from Proveedor to EMPRESAS
-        const prov = await prisma.proveedor.findUnique({
-          where: { id: hospId },
-          select: { nombre: true },
-        });
-        if (prov?.nombre) {
-          const matched = await prisma.empresa.findFirst({
-            where: {
-              descripcion: {
-                contains: prov.nombre.split("-")[0].trim(),
-              },
-            },
-          });
-          if (matched) targetEmpresaId = matched.id;
-        }
+        targetEmpresaId = hospId;
       }
     }
   }

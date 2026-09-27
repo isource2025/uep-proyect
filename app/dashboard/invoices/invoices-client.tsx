@@ -661,7 +661,7 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
                   <Table className="w-full">
                     <TableHeader className="bg-muted/50 text-muted-foreground sticky top-0 z-10">
                       <TableRow className="hover:bg-transparent border-border">
-                        <TableHead className="font-semibold text-2xs py-2">Hospital (Proveedor)</TableHead>
+                        <TableHead className="font-semibold text-2xs py-2">Hospital (Establecimiento)</TableHead>
                         <TableHead className="font-semibold text-2xs">Factura Nro.</TableHead>
                         <TableHead className="font-semibold text-2xs">Fecha Emisión</TableHead>
                         <TableHead className="font-semibold text-2xs text-right">Importe</TableHead>
@@ -777,7 +777,7 @@ export default function InvoicesClientPage({ initialPending, initialUnified, ini
                   <Table className="w-full">
                     <TableHeader className="bg-muted/50 text-muted-foreground sticky top-0 z-10">
                       <TableRow className="hover:bg-transparent border-border">
-                        <TableHead className="font-semibold text-2xs py-2">Hospital (Proveedor)</TableHead>
+                        <TableHead className="font-semibold text-2xs py-2">Hospital (Establecimiento)</TableHead>
                         <TableHead className="font-semibold text-2xs">Factura Nro.</TableHead>
                         <TableHead className="font-semibold text-2xs">Fecha Emisión</TableHead>
                         <TableHead className="font-semibold text-2xs text-right">Importe</TableHead>

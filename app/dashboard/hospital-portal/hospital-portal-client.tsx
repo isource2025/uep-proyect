@@ -18,13 +18,15 @@ export default function HospitalPortalClient({
   agents,
   onAddAttachment,
 }: HospitalPortalClientProps) {
+  const hospitalDisplayName = hospital?.descripcion?.trim() || hospital?.nombre?.trim() || `Hospital ${hospitalId}`;
+
   return (
     <div className="space-y-6 text-foreground">
       {/* Header */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2.5 text-emerald-600 dark:text-emerald-400">
           <Building2 className="h-7 w-7" />
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">{hospital.nombre}</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">{hospitalDisplayName}</h1>
         </div>
         <p className="text-sm text-muted-foreground">
           Portal del Hospital / CAPS. Visualice liquidaciones de su establecimiento, distribuya honorarios y adjunte comprobantes.
@@ -36,7 +38,7 @@ export default function HospitalPortalClient({
         liquidations={initialLiquidations}
         isHospitalUser={true}
         hospitalId={hospitalId}
-        hospitalName={hospital.nombre}
+        hospitalName={hospitalDisplayName}
         agents={agents}
         onAddAttachment={onAddAttachment}
       />

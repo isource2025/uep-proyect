@@ -19,10 +19,8 @@ export async function POST(req: NextRequest) {
     let updatedCount = 0;
     let createdCount = 0;
 
-    // Get all public hospitals to match
-    const hospitals = await prisma.proveedor.findMany({
-      where: { tipoProvId: 18 },
-    });
+    // Get all public hospitals from EMPRESAS to match
+    const hospitals = await prisma.empresa.findMany();
 
     for (const row of rows) {
       const cuil = String(row.CUIL || row.cuil || "").trim().replace(/[^0-9]/g, "");
@@ -34,10 +32,10 @@ export async function POST(req: NextRequest) {
 
       if (!cuil || !nombre) continue;
 
-      // Find matching hospital/proveedor
+      // Find matching hospital/empresa
       const matchingHospital = hospitals.find((h) =>
-        h.nombre?.toUpperCase().includes(hospitalName) ||
-        hospitalName.includes(h.nombre?.toUpperCase() || "")
+        h.descripcion?.toUpperCase().includes(hospitalName) ||
+        hospitalName.includes(h.descripcion?.toUpperCase() || "")
       );
 
       const hospitalId = matchingHospital ? matchingHospital.id : null;

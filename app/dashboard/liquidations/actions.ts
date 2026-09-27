@@ -17,6 +17,87 @@ function toNum(val: any): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
+function normalizeHospitalName(str: string): string {
+  return (str || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findMatchingDetailHospital(
+  pCuil: string,
+  cuilEmpresas: { id: number; descripcion: string; cuit: string }[],
+  details: any[]
+): { hospitalId?: number; hospitalKey?: string } {
+  if (!details || details.length === 0) return {};
+  if (details.length === 1) {
+    const d = details[0];
+    const hid = d.hospitalId || d.compra?.hospitalId;
+    return {
+      hospitalId: hid,
+      hospitalKey: hid ? `id-${hid}` : `name-${d.prestadorNombre}`,
+    };
+  }
+
+  if (!cuilEmpresas || cuilEmpresas.length === 0) {
+    return {};
+  }
+
+  // 1. Match by CUIT
+  for (const emp of cuilEmpresas) {
+    if (emp.cuit) {
+      const cleanEmpCuit = emp.cuit.replace(/[^\d]/g, "");
+      if (cleanEmpCuit) {
+        for (const d of details) {
+          const cleanDetCuit = String(d.cuit || d.hospital?.cuit || "").replace(/[^\d]/g, "");
+          if (cleanDetCuit && (cleanDetCuit === cleanEmpCuit || cleanDetCuit.includes(cleanEmpCuit) || cleanEmpCuit.includes(cleanDetCuit))) {
+            const hid = d.hospitalId || d.compra?.hospitalId;
+            return { hospitalId: hid, hospitalKey: hid ? `id-${hid}` : `name-${d.prestadorNombre}` };
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Match by Name keywords
+  for (const emp of cuilEmpresas) {
+    const normEmp = normalizeHospitalName(emp.descripcion);
+    if (!normEmp) continue;
+    const empWords = normEmp.split(" ").filter((w) => w.length > 3 && !["hospital", "sanatorio", "centro", "salud"].includes(w));
+
+    for (const d of details) {
+      const normDet = normalizeHospitalName(d.prestadorNombre || d.hospital?.nombre || "");
+      if (!normDet) continue;
+
+      if (normDet.includes(normEmp) || normEmp.includes(normDet)) {
+        const hid = d.hospitalId || d.compra?.hospitalId;
+        return { hospitalId: hid, hospitalKey: hid ? `id-${hid}` : `name-${d.prestadorNombre}` };
+      }
+
+      const matchesWord = empWords.some((w) => normDet.includes(w));
+      if (matchesWord) {
+        const hid = d.hospitalId || d.compra?.hospitalId;
+        return { hospitalId: hid, hospitalKey: hid ? `id-${hid}` : `name-${d.prestadorNombre}` };
+      }
+    }
+  }
+
+  // 3. Match by ID direct equality
+  for (const emp of cuilEmpresas) {
+    for (const d of details) {
+      const hid = d.hospitalId || d.compra?.hospitalId;
+      if (hid && hid === emp.id) {
+        return { hospitalId: hid, hospitalKey: `id-${hid}` };
+      }
+    }
+  }
+
+  return {};
+}
+
 function sanitizeCliente(c: any) {
   if (!c) return null;
   return {
@@ -411,7 +492,54 @@ export async function fetchLiquidationData(
     }),
   ]);
 
-  const sanitizedLiquidations = liquidations.map(sanitizarLiquidacionCabecera);
+  // Collect all unique cuils from all liquidations' personalDistributions
+  const allCuils: bigint[] = [];
+  for (const liq of liquidations) {
+    for (const p of (liq as any).personalDistributions || []) {
+      if (p.cuil) allCuils.push(p.cuil);
+    }
+  }
+
+  const mspAgents = allCuils.length > 0
+    ? await prisma.imPersonalMsp.findMany({
+        where: { cuil: { in: allCuils } },
+        include: {
+          empresa: {
+            select: { id: true, descripcion: true, cuit: true },
+          },
+        },
+      })
+    : [];
+
+  const cuilToEmpresas = new Map<string, { id: number; descripcion: string; cuit: string }[]>();
+  for (const ag of mspAgents) {
+    if (ag.cuil && ag.empresa) {
+      const cuilStr = ag.cuil.toString();
+      const list = cuilToEmpresas.get(cuilStr) || [];
+      list.push({
+        id: ag.idEmpresa,
+        descripcion: ag.empresa.descripcion || "",
+        cuit: ag.empresa.cuit ? String(ag.empresa.cuit) : "",
+      });
+      cuilToEmpresas.set(cuilStr, list);
+    }
+  }
+
+  const sanitizedLiquidations = liquidations.map((liq) => {
+    const sanitized = sanitizarLiquidacionCabecera(liq);
+    if (sanitized && sanitized.personalDistributions) {
+      sanitized.personalDistributions = sanitized.personalDistributions.map((p: any) => {
+        const empList = cuilToEmpresas.get(String(p.cuil)) || [];
+        const match = findMatchingDetailHospital(String(p.cuil), empList, sanitized.details || []);
+        return {
+          ...p,
+          hospitalId: match.hospitalId,
+          hospitalKey: match.hospitalKey,
+        };
+      });
+    }
+    return sanitized;
+  });
 
   const sanitizedPendingRcs = pendingRcs.map((rc) => ({
     ...sanitizeCbte(rc),
@@ -890,9 +1018,41 @@ export async function saveLiquidacionPersonalDistributions(
     // Atomic transaction: cleans previous and inserts new rows safely
     await prisma.$transaction(async (tx) => {
       // 1. Clean previous distribution rows for this liquidation
-      await tx.liquidacionPersonal.deleteMany({
-        where: { idLiquidacion: liquidationId },
-      });
+      if (hospitalId) {
+        const hospitalAgents = await tx.imPersonalMsp.findMany({
+          where: { idEmpresa: hospitalId },
+          select: { cuil: true },
+        });
+        const cuils = hospitalAgents.map((a) => a.cuil).filter((c): c is bigint => c !== null);
+        if (cuils.length > 0) {
+          await tx.liquidacionPersonal.deleteMany({
+            where: {
+              idLiquidacion: liquidationId,
+              cuil: { in: cuils },
+            },
+          });
+        } else {
+          const incomingCuils = distributions
+            .map((d) => {
+              const raw = String(d.cuil || d.idAgente || "").replace(/[^\d]/g, "");
+              return raw ? BigInt(raw) : null;
+            })
+            .filter((c): c is bigint => c !== null);
+
+          if (incomingCuils.length > 0) {
+            await tx.liquidacionPersonal.deleteMany({
+              where: {
+                idLiquidacion: liquidationId,
+                cuil: { in: incomingCuils },
+              },
+            });
+          }
+        }
+      } else {
+        await tx.liquidacionPersonal.deleteMany({
+          where: { idLiquidacion: liquidationId },
+        });
+      }
 
       // 2. Insert valid distribution rows
       const validRows: {
@@ -929,11 +1089,107 @@ export async function saveLiquidacionPersonalDistributions(
           data: validRows,
         });
       }
+
+      // 3. Automatically evaluate and update liquidation status
+      const allDetails = await tx.liquidacionDetalle.findMany({
+        where: { liquidationId },
+        include: { compra: true },
+      });
+
+      const allPersonalDist = await tx.liquidacionPersonal.findMany({
+        where: { idLiquidacion: liquidationId },
+      });
+
+      const allCuils = allPersonalDist.map((p) => p.cuil);
+      const mspAgents = allCuils.length > 0
+        ? await tx.imPersonalMsp.findMany({
+            where: { cuil: { in: allCuils } },
+            include: {
+              empresa: {
+                select: { id: true, descripcion: true, cuit: true },
+              },
+            },
+          })
+        : [];
+
+      const cuilToEmpresas = new Map<string, { id: number; descripcion: string; cuit: string }[]>();
+      for (const ag of mspAgents) {
+        if (ag.cuil && ag.empresa) {
+          const cuilStr = ag.cuil.toString();
+          const list = cuilToEmpresas.get(cuilStr) || [];
+          list.push({
+            id: ag.idEmpresa,
+            descripcion: ag.empresa.descripcion || "",
+            cuit: ag.empresa.cuit ? String(ag.empresa.cuit) : "",
+          });
+          cuilToEmpresas.set(cuilStr, list);
+        }
+      }
+
+      const hospitalTotals = new Map<string, { netoAPagar: number; distributed: number }>();
+      for (const d of allDetails) {
+        const hid = d.hospitalId || d.compra?.hospitalId;
+        const key = hid ? `id-${hid}` : `name-${d.prestadorNombre}`;
+        const current = hospitalTotals.get(key) || { netoAPagar: 0, distributed: 0 };
+        current.netoAPagar += Number(d.netoAPagar || 0);
+        hospitalTotals.set(key, current);
+      }
+
+      for (const p of allPersonalDist) {
+        const total = Number(p.honorarios || 0) + Number(p.sobreasignacion || 0);
+        if (total <= 0) continue;
+
+        const empList = cuilToEmpresas.get(p.cuil.toString()) || [];
+        const match = findMatchingDetailHospital(p.cuil.toString(), empList, allDetails);
+
+        if (match.hospitalKey && hospitalTotals.has(match.hospitalKey)) {
+          const current = hospitalTotals.get(match.hospitalKey)!;
+          current.distributed += total;
+        } else if (hospitalTotals.size === 1) {
+          const first = Array.from(hospitalTotals.values())[0];
+          first.distributed += total;
+        }
+      }
+
+      const totalHospitals = hospitalTotals.size;
+      let completedHospitals = 0;
+      let totalDistributed = 0;
+
+      for (const [, hData] of hospitalTotals.entries()) {
+        totalDistributed += hData.distributed;
+        if (hData.netoAPagar > 0 && hData.distributed >= (hData.netoAPagar - 0.01)) {
+          completedHospitals++;
+        }
+      }
+
+      const currentLiq = await tx.liquidacion.findUnique({
+        where: { id: liquidationId },
+        select: { status: true },
+      });
+
+      if (currentLiq && currentLiq.status !== "CERRADA") {
+        let newStatus = currentLiq.status;
+        if (totalHospitals > 0 && completedHospitals >= totalHospitals) {
+          newStatus = "DISTRIBUIDA";
+        } else if (totalDistributed > 0) {
+          newStatus = "EN_PROCESO";
+        } else if (currentLiq.status === "DISTRIBUIDA" || currentLiq.status === "EN_PROCESO") {
+          newStatus = "NOTIFICADO";
+        }
+
+        if (newStatus !== currentLiq.status) {
+          await tx.liquidacion.update({
+            where: { id: liquidationId },
+            data: { status: newStatus },
+          });
+        }
+      }
     });
 
     revalidatePath(`/dashboard/liquidations/${liquidationId}`);
     revalidatePath("/dashboard/liquidations");
     revalidatePath("/dashboard/hospital-portal");
+    revalidatePath("/dashboard/consolidation");
 
     return { success: true };
   } catch (e: any) {

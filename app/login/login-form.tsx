@@ -50,7 +50,12 @@ export default function LoginForm() {
           setLoading(false);
           return;
         }
-        const destination = u.role !== "1" && u.hospitalId ? "/dashboard/hospital-portal" : "/dashboard";
+        const userRoles = String(u?.role || "")
+          .split(",")
+          .map((r: string) => r.trim())
+          .filter(Boolean);
+        const isAdmin = userRoles.includes("1");
+        const destination = !isAdmin && u.hospitalId ? "/dashboard/hospital-portal" : "/dashboard";
         router.replace(destination);
       }
     } catch (err: any) {

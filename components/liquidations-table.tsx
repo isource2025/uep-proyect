@@ -120,8 +120,8 @@ export function LiquidationsTable({
         const rcNum = `${liq.rc?.puntoVenta || ""}-${liq.rc?.numero || ""}`.toLowerCase();
         const clienteName = (liq.rc?.cliente?.nombre || "").toLowerCase();
         const status = (liq.status || "").toLowerCase();
-        const createdByName = (liq.createdByName || "").toLowerCase();
-        const observaciones = (liq.observaciones || "").toLowerCase();
+        const createdByName = (!isHospitalUser && liq.createdByName ? liq.createdByName : "").toLowerCase();
+        const observaciones = (!isHospitalUser && liq.observaciones ? liq.observaciones : "").toLowerCase();
 
         // Check FC-Ventas asociadas
         const fcMatches = (liq.rc?.appliedAsRc || []).some((app: any) => {
@@ -164,8 +164,8 @@ export function LiquidationsTable({
           rcNum.includes(q) ||
           clienteName.includes(q) ||
           status.includes(q) ||
-          createdByName.includes(q) ||
-          observaciones.includes(q) ||
+          (!isHospitalUser && createdByName.includes(q)) ||
+          (!isHospitalUser && observaciones.includes(q)) ||
           fcMatches ||
           detailMatches
         );
@@ -294,55 +294,6 @@ export function LiquidationsTable({
                         <>
                           <TableCell className="text-xs font-semibold whitespace-normal break-words py-3">
                             <div>{liq.rc?.cliente?.nombre || "Obra Social"}</div>
-                            {((liq.createdByName && liq.createdByName.trim() !== "") || (liq.observaciones && liq.observaciones.trim() !== "")) && (
-                              <div className="flex items-center gap-2 mt-0.5">
-                                {liq.createdByName && liq.createdByName.trim() !== "" && (
-                                  <span className="text-3xs text-muted-foreground flex items-center gap-1 font-normal">
-                                    <User className="h-3 w-3 text-emerald-500 shrink-0" />
-                                    {liq.createdByName}
-                                  </span>
-                                )}
-                                {liq.observaciones && liq.observaciones.trim() !== "" && (
-                                  <div className="relative group inline-block">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedObs({
-                                          id: liq.id,
-                                          title: `LIQ-${String(liq.id).padStart(4, "0")}`,
-                                          clientName: liq.rc?.cliente?.nombre || "Obra Social",
-                                          createdByName: liq.createdByName,
-                                          text: liq.observaciones,
-                                        });
-                                      }}
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold cursor-pointer hover:bg-amber-500/20 active:scale-95 transition-all"
-                                      title="Ver observaciones"
-                                    >
-                                      <MessageSquare className="h-3 w-3" />
-                                      Obs
-                                    </button>
-                                    {/* Hover Tooltip Popup for desktop */}
-                                    <div className="absolute left-0 top-full mt-1.5 hidden md:group-hover:flex flex-col z-50 w-72 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95">
-                                      <div className="flex items-center justify-between border-b border-border/60 pb-1.5 mb-1.5">
-                                        <span className="font-bold text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
-                                          <MessageSquare className="h-3.5 w-3.5" />
-                                          Observaciones
-                                        </span>
-                                        {liq.createdByName && (
-                                          <span className="text-3xs text-muted-foreground">
-                                            {liq.createdByName}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-2xs text-foreground whitespace-pre-wrap leading-relaxed font-normal">
-                                        {liq.observaciones}
-                                      </p>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
                           </TableCell>
                           <TableCell className="text-xs whitespace-nowrap">
                             {liq.mesCarga || (liq.period ? `${getMonthName(liq.period.mes)} ${liq.period.anio}` : "-")}
@@ -544,6 +495,7 @@ export function LiquidationsTable({
                               {(() => {
                                 const details = liq.details || [];
                                 const distributions = liq.distributions || [];
+                                const personalDistributions = liq.personalDistributions || [];
 
                                 const hospitalMap = new Map<string, {
                                   id?: number;
@@ -567,19 +519,50 @@ export function LiquidationsTable({
                                   hospitalMap.set(key, existing);
                                 }
 
-                                for (const dist of distributions) {
-                                  const hid = dist.agent?.hospitalId;
-                                  if (hid) {
-                                    const key = `id-${hid}`;
-                                    if (hospitalMap.has(key)) {
-                                      const existing = hospitalMap.get(key)!;
-                                      existing.distributed += Number(dist.honorarios || 0) + Number(dist.sobreasignaciones || 0) + Number(dist.gastos || 0);
+                                // 1. Process personalDistributions (LiquidacionPersonal)
+                                for (const p of personalDistributions) {
+                                  const amount = Number(p.honorarios || 0) + Number(p.sobreasignacion || 0);
+                                  if (amount <= 0) continue;
+
+                                  const key = p.hospitalKey || (p.hospitalId ? `id-${p.hospitalId}` : undefined);
+                                  if (key && hospitalMap.has(key)) {
+                                    const existing = hospitalMap.get(key)!;
+                                    existing.distributed += amount;
+                                  } else if (p.hospitalId) {
+                                    let matched = false;
+                                    for (const [, existing] of hospitalMap.entries()) {
+                                      if (existing.id === p.hospitalId) {
+                                        existing.distributed += amount;
+                                        matched = true;
+                                        break;
+                                      }
                                     }
+                                    if (!matched && hospitalMap.size === 1) {
+                                      const existing = Array.from(hospitalMap.values())[0];
+                                      existing.distributed += amount;
+                                    }
+                                  } else if (hospitalMap.size === 1) {
+                                    const existing = Array.from(hospitalMap.values())[0];
+                                    existing.distributed += amount;
+                                  }
+                                }
+
+                                // 2. Process legacy distributions (Distribucion)
+                                for (const dist of distributions) {
+                                  const amount = Number(dist.honorarios || 0) + Number(dist.sobreasignaciones || 0) + Number(dist.gastos || 0);
+                                  if (amount <= 0) continue;
+                                  const hid = dist.agent?.hospitalId;
+                                  if (hid && hospitalMap.has(`id-${hid}`)) {
+                                    const existing = hospitalMap.get(`id-${hid}`)!;
+                                    existing.distributed += amount;
+                                  } else if (hospitalMap.size === 1) {
+                                    const existing = Array.from(hospitalMap.values())[0];
+                                    existing.distributed += amount;
                                   }
                                 }
 
                                 const list = Array.from(hospitalMap.values()).map((h) => {
-                                  const isCompleted = h.netoAPagar > 0 && h.distributed >= (h.netoAPagar - 0.01);
+                                  const isCompleted = (h.netoAPagar > 0 && h.distributed >= (h.netoAPagar - 0.01)) || (h.distributed > 0 && h.distributed >= h.netoAPagar * 0.99);
                                   const hasStarted = h.distributed > 0;
                                   const remaining = Math.max(0, h.netoAPagar - h.distributed);
                                   return {

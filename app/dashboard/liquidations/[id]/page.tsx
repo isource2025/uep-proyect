@@ -51,16 +51,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     if (empresa) {
       targetEmpresaId = empresa.id;
     } else {
-      const prov = await prisma.proveedor.findUnique({
-        where: { id: hospId },
-        select: { nombre: true },
-      });
-      if (prov?.nombre) {
-        const matched = await prisma.empresa.findFirst({
-          where: { descripcion: { contains: prov.nombre.split("-")[0].trim() } },
-        });
-        if (matched) targetEmpresaId = matched.id;
-      }
+      targetEmpresaId = hospId;
     }
   }
 
@@ -68,16 +59,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
   if (!targetEmpresaId && liquidation.details && liquidation.details.length > 0) {
     const detHospitalId = liquidation.details[0]?.hospitalId;
     if (detHospitalId) {
-      const prov = await prisma.proveedor.findUnique({
-        where: { id: detHospitalId },
-        select: { nombre: true },
-      });
-      if (prov?.nombre) {
-        const matched = await prisma.empresa.findFirst({
-          where: { descripcion: { contains: prov.nombre.split("-")[0].trim() } },
-        });
-        if (matched) targetEmpresaId = matched.id;
-      }
+      targetEmpresaId = detHospitalId;
     }
   }
 

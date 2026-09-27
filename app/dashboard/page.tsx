@@ -17,12 +17,19 @@ export default async function DashboardPage() {
   });
 
   const user = session?.user as any;
-  if (user && user.role !== "1" && user.hospitalId) {
+  const userRoles = String(user?.role || "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+  const isAdmin = userRoles.includes("1");
+  const isHospitalOnly = !isAdmin && !!user?.hospitalId;
+
+  if (isHospitalOnly) {
     redirect("/dashboard/hospital-portal");
   }
   // Fetch summary stats, active period, recent cbtes and aggregations in parallel to minimize latency
   const [hospitalCount, mspAgentCount, legacyAgentCount, fcCount, rcCount, activePeriod, recentCbtes, totalInvoiced] = await Promise.all([
-    prisma.proveedor.count({ where: { tipoProvId: 18 } }),
+    prisma.empresa.count(),
     prisma.imPersonalMsp.count(),
     prisma.agente.count(),
     prisma.cbte.count({ where: { type: "FC" } }),
@@ -49,11 +56,11 @@ export default async function DashboardPage() {
 
   const statCards = [
     {
-      title: "Hospitales (Proveedores)",
+      title: "Hospitales (Empresas)",
       value: hospitalCount,
-      description: "Centros médicos activos en el sistema ERP",
+      description: "Establecimientos de salud en el sistema",
       icon: Building2,
-      href: "/dashboard/import",
+      href: "/dashboard/hospitals",
       color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
     },
     {

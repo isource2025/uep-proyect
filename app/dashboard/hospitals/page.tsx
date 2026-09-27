@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Building2, Plus, ShieldCheck } from "lucide-react";
+import { Building2, Plus, ShieldCheck, MapPin } from "lucide-react";
 import { SearchBar } from "@/components/search-bar";
 
 export const revalidate = 0;
@@ -27,45 +27,45 @@ export default async function HospitalsPage({
   const resolvedSearchParams = await searchParams;
   const query = resolvedSearchParams.query || "";
 
-  // Efectores públicos: PROVEEDORES.IDTIPO_PROV = 18 (TIPOS_PROVEEDORES)
-  const hospitals = await prisma.proveedor.findMany({
-    where: {
-      tipoProvId: 18,
-      OR: [
-        { nombre: { contains: query } },
-        { code: { contains: query } },
-      ],
-    },
-    orderBy: { nombre: "asc" },
+  // Efectores públicos: EMPRESAS
+  const hospitals = await prisma.empresa.findMany({
+    where: query
+      ? {
+          OR: [
+            { descripcion: { contains: query } },
+            { localidad: { contains: query } },
+          ],
+        }
+      : undefined,
+    orderBy: { descripcion: "asc" },
   });
 
-  // Server Action to add a hospital (Proveedor)
+  // Server Action to add a hospital (Empresa)
   const handleCreateHospital = async (formData: FormData) => {
     "use server";
     const name = formData.get("name") as string;
-    const code = formData.get("code") as string;
+    const localidad = formData.get("localidad") as string;
     const cuitStr = formData.get("cuit") as string;
 
-    if (!name || !code) return;
+    if (!name) return;
 
     try {
-      const maxId = await prisma.proveedor.aggregate({
-        _max: { id: true }
+      const maxId = await prisma.empresa.aggregate({
+        _max: { id: true },
       });
       const nextId = (maxId._max.id || 0) + 1;
 
-      await prisma.proveedor.create({
+      await prisma.empresa.create({
         data: {
           id: nextId,
-          nombre: name.toUpperCase(),
-          code: code.toUpperCase().replace(/\s+/g, "_"),
-          cuit: cuitStr ? parseFloat(cuitStr) : null,
-          tipoProvId: 18,
+          descripcion: name.toUpperCase().trim(),
+          localidad: localidad ? localidad.toUpperCase().trim() : null,
+          cuit: cuitStr ? parseFloat(cuitStr.replace(/[^0-9]/g, "")) : null,
         },
       });
       revalidatePath("/dashboard/hospitals");
     } catch (e) {
-      console.error("Error creating hospital:", e);
+      console.error("Error creating hospital in EMPRESAS:", e);
     }
   };
 
@@ -76,7 +76,7 @@ export default async function HospitalsPage({
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Gestión de Hospitales</h1>
           <p className="text-sm text-muted-foreground">
-            Efectores públicos (PROVEEDORES con IDTIPO_PROV = 18): hospitales, CAPS y establecimientos de salud.
+            Efectores públicos (EMPRESAS): hospitales, CAPS y establecimientos de salud.
           </p>
         </div>
 
@@ -92,7 +92,7 @@ export default async function HospitalsPage({
             <DialogHeader>
               <DialogTitle className="text-foreground font-bold">Registrar Hospital / CAPS</DialogTitle>
               <DialogDescription className="text-muted-foreground text-xs">
-                Crea un nuevo establecimiento para asociar facturaciones y distribuir honorarios médicos.
+                Crea un nuevo establecimiento en EMPRESAS para asociar facturaciones y distribuir honorarios médicos.
               </DialogDescription>
             </DialogHeader>
             <form action={handleCreateHospital} className="space-y-4 py-2">
@@ -109,14 +109,13 @@ export default async function HospitalsPage({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="code" className="text-foreground">
-                  Código de Identificación (ERP)
+                <Label htmlFor="localidad" className="text-foreground">
+                  Localidad
                 </Label>
                 <Input
-                  id="code"
-                  name="code"
-                  placeholder="HOSP_VIDAL"
-                  required
+                  id="localidad"
+                  name="localidad"
+                  placeholder="Capital / Goya / Paso de los Libres"
                   className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500"
                 />
               </div>
@@ -146,7 +145,7 @@ export default async function HospitalsPage({
         <CardHeader className="pb-4">
           <SearchBar
             name="query"
-            placeholder="Buscar por nombre o código..."
+            placeholder="Buscar por nombre o localidad..."
             defaultValue={query}
             className="max-w-sm"
           />
@@ -156,8 +155,8 @@ export default async function HospitalsPage({
             <Table>
               <TableHeader className="bg-muted/50 text-muted-foreground">
                 <TableRow className="hover:bg-transparent border-border">
-                  <TableHead className="font-semibold text-xs py-3">Nombre</TableHead>
-                  <TableHead className="font-semibold text-xs">Código ERP</TableHead>
+                  <TableHead className="font-semibold text-xs py-3">Nombre / Razón Social</TableHead>
+                  <TableHead className="font-semibold text-xs">Localidad</TableHead>
                   <TableHead className="font-semibold text-xs">CUIT</TableHead>
                 </TableRow>
               </TableHeader>
@@ -175,12 +174,13 @@ export default async function HospitalsPage({
                   hospitals.map((hospital) => (
                     <TableRow key={hospital.id} className="hover:bg-muted/40 border-border text-foreground">
                       <TableCell className="font-semibold text-foreground py-3.5">
-                        {hospital.nombre}
+                        {hospital.descripcion || `Hospital ID ${hospital.id}`}
                       </TableCell>
                       <TableCell>
-                        <code className="rounded bg-muted px-2 py-1 text-xs font-mono text-emerald-600 dark:text-emerald-400 border border-border">
-                          {hospital.code || "-"}
-                        </code>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span>{hospital.localidad?.trim() || "-"}</span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         <div className="flex items-center gap-1.5 font-mono">

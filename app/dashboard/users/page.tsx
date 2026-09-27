@@ -56,12 +56,16 @@ export default async function UsersPage({
   });
   const roleMap = new Map(roles.map((r) => [String(r.id), r.nombre]));
 
-  // Fetch public hospitals/providers
-  const hospitals = await prisma.proveedor.findMany({
-    where: { tipoProvId: 18 },
-    select: { id: true, nombre: true },
-    orderBy: { nombre: "asc" },
+  // Fetch hospitals from EMPRESAS
+  const empresas = await prisma.empresa.findMany({
+    select: { id: true, descripcion: true },
+    orderBy: { descripcion: "asc" },
   });
+  const empresaMap = new Map(empresas.map((e) => [e.id, e.descripcion?.trim()]));
+  const hospitals = empresas.map((e) => ({
+    id: e.id,
+    nombre: e.descripcion?.trim() || `Hospital ${e.id}`,
+  }));
 
   return (
     <div className="space-y-6 text-foreground">
@@ -220,7 +224,7 @@ export default async function UsersPage({
                           <div className="flex items-center gap-1.5">
                             <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             <span className="text-xs truncate max-w-[180px]">
-                              {u.hospital?.nombre || "Unidad Ejecutora (Sede)"}
+                              {(u.hospitalId ? empresaMap.get(u.hospitalId) : null) || "Unidad Ejecutora (Sede)"}
                             </span>
                           </div>
                         </TableCell>

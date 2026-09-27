@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { serializeData } from "@/lib/utils";
 import HospitalPortalClient from "./hospital-portal-client";
+import { Building2 } from "lucide-react";
 
 export const revalidate = 0;
 
@@ -14,21 +15,65 @@ export default async function HospitalPortalPage() {
     headers: await headers(),
   });
 
-  const user = session?.user as any;
-  if (!session || !user?.hospitalId) {
+  if (!session?.user) {
+    redirect("/login");
+  }
+
+  const user = session.user as any;
+  const userRoles = String(user?.role || "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+  const isAdmin = userRoles.includes("1");
+
+  // Parse hospitalId safely as number
+  let rawHospitalId = user.hospitalId ? parseInt(String(user.hospitalId), 10) : undefined;
+  const personalId = parseInt(String(user.id), 10);
+
+  // If no hospitalId directly on user, check imPersonalEmpresas
+  if ((!rawHospitalId || isNaN(rawHospitalId)) && !isNaN(personalId)) {
+    const pe = await prisma.imPersonalEmpresas.findFirst({
+      where: { idPersonal: personalId },
+    });
+    if (pe) {
+      rawHospitalId = pe.idEmpresa;
+    }
+  }
+
+  // If admin user without a specific hospitalId, redirect to full dashboard
+  if (isAdmin && (!rawHospitalId || isNaN(rawHospitalId))) {
     redirect("/dashboard");
   }
 
-  const hospitalId = user.hospitalId;
+  // 2. Fetch the hospital/empresa info
+  const hospital = (rawHospitalId && !isNaN(rawHospitalId))
+    ? await prisma.empresa.findUnique({
+        where: { id: rawHospitalId },
+      })
+    : null;
 
-  // 2. Fetch the hospital/proveedor info
-  const hospital = await prisma.proveedor.findUnique({
-    where: { id: hospitalId },
-  });
-
+  // Gracefully handle if establishment is not found in EMPRESAS (avoids infinite redirect loop)
   if (!hospital) {
-    redirect("/dashboard");
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 space-y-4 text-foreground">
+        <div className="rounded-full bg-amber-500/10 p-4 border border-amber-500/20 text-amber-500">
+          <Building2 className="h-10 w-10" />
+        </div>
+        <div className="space-y-2 max-w-md">
+          <h2 className="text-2xl font-bold tracking-tight">Establecimiento no Asignado</h2>
+          <p className="text-sm text-muted-foreground">
+            Su usuario no tiene un establecimiento válido asignado en la tabla <strong>EMPRESAS</strong> (ID configurado: {user?.hospitalId ?? "ninguno"}).
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Por favor, comuníquese con el administrador para verificar y asignar su efector sanitario en la sección de Gestión de Usuarios.
+          </p>
+        </div>
+      </div>
+    );
   }
+
+  const hospitalId = hospital.id;
+  const hospitalName = hospital.descripcion?.trim() || "";
 
   // 3. Find liquidations and agents that belong to this hospital in parallel
   const [hospitalLiquidations, agents] = await Promise.all([
@@ -39,7 +84,7 @@ export default async function HospitalPortalPage() {
             OR: [
               { hospitalId: hospitalId },
               { compra: { hospitalId: hospitalId } },
-              ...(hospital.nombre ? [{ prestadorNombre: { contains: hospital.nombre } }] : []),
+              ...(hospitalName ? [{ prestadorNombre: { contains: hospitalName } }] : []),
             ],
           },
         },

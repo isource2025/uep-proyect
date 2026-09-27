@@ -119,6 +119,8 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
     const authContext = await auth.$context;
     const hashedPassword = await authContext.password.hash(password);
 
+    const empresaId = hospitalIdStr ? parseInt(hospitalIdStr, 10) : null;
+
     await prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
@@ -128,11 +130,20 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
           role,
           operador: operador || normalizedEmail.split("@")[0].substring(0, 10),
           cuit: cuit ? cuit.replace(/[^\d]/g, "") : null,
-          hospitalId: hospitalIdStr ? parseInt(hospitalIdStr, 10) : null,
+          hospitalId: empresaId, // informative sync with imPersonalEmpresas
           emailVerified: true,
           estado: 1, // Modo Activo
         },
       });
+
+      if (empresaId) {
+        await tx.imPersonalEmpresas.create({
+          data: {
+            idPersonal: newUser.id,
+            idEmpresa: empresaId,
+          },
+        });
+      }
 
       await tx.account.create({
         data: {
@@ -281,6 +292,8 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
       hashedPassword = await authContext.password.hash(password);
     }
 
+    const empresaId = hospitalIdStr ? parseInt(hospitalIdStr, 10) : null;
+
     await prisma.$transaction(async (tx) => {
       // 1. Update user in imPersonal
       const updateData: any = {
@@ -289,7 +302,7 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
         role,
         operador: operador || normalizedEmail.split("@")[0].substring(0, 10),
         cuit: cuit ? cuit.replace(/[^\d]/g, "") : null,
-        hospitalId: hospitalIdStr ? parseInt(hospitalIdStr, 10) : null,
+        hospitalId: empresaId, // informative sync with imPersonalEmpresas
       };
 
       if (hashedPassword) {
@@ -300,6 +313,20 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
         where: { id: userId },
         data: updateData,
       });
+
+      // 2. Sync imPersonalEmpresas intermediate table
+      await tx.imPersonalEmpresas.deleteMany({
+        where: { idPersonal: userId },
+      });
+
+      if (empresaId) {
+        await tx.imPersonalEmpresas.create({
+          data: {
+            idPersonal: userId,
+            idEmpresa: empresaId,
+          },
+        });
+      }
 
       // 2. Update or create Account for Better Auth credentials
       const existingAccount = await tx.account.findFirst({

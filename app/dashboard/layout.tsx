@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { DashboardProvider } from "@/components/dashboard-context";
@@ -25,9 +26,18 @@ export default async function DashboardLayout({
     redirect("/login?error=inactive");
   }
 
-  const [activePeriod] = await Promise.all([
+  const userId = parseInt(String(session.user.id), 10);
+  const [activePeriod, personalEmpresa] = await Promise.all([
     getActivePeriodInfo(),
+    !isNaN(userId)
+      ? prisma.imPersonalEmpresas.findFirst({
+          where: { idPersonal: userId },
+          select: { idEmpresa: true },
+        })
+      : null,
   ]);
+
+  const resolvedHospitalId = personalEmpresa?.idEmpresa ?? (session.user as any).hospitalId;
 
   const userRoles = String((session.user as any).role || "")
     .split(",")
@@ -35,7 +45,7 @@ export default async function DashboardLayout({
     .filter(Boolean);
   const isAdmin = userRoles.includes("1");
   const isMedico = userRoles.includes("2");
-  const isHospital = userRoles.includes("4") || Boolean((session.user as any).hospitalId);
+  const isHospital = userRoles.includes("4") || Boolean(resolvedHospitalId);
 
   const displayRole = isAdmin
     ? "ADMIN"
@@ -48,7 +58,12 @@ export default async function DashboardLayout({
   return (
     <DashboardProvider>
       <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground selection:bg-emerald-500 selection:text-zinc-950 font-sans">
-        <DashboardSidebar user={session.user as any} />
+        <DashboardSidebar
+          user={{
+            ...(session.user as any),
+            hospitalId: resolvedHospitalId,
+          }}
+        />
         <div className="flex flex-1 flex-col overflow-hidden min-w-0">
           <DashboardHeader
             user={{

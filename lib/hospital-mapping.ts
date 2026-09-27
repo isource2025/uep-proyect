@@ -1,0 +1,103 @@
+/**
+ * Tabla intermedia y utilidades de mapeo entre los IDs de proveedores históricos (PROVEEDORES)
+ * y los IDs de efectores sanitarios en la tabla EMPRESAS.
+ * 
+ * Permite mantener compatibilidad retrospectiva con comprobantes ERP y asegurar que
+ * toda nueva entidad apunte siempre a su correspondiente ID de Empresa.
+ */
+
+export const PROVEEDOR_TO_EMPRESA_MAP: Record<number, number> = {
+  // --- Asignaciones corregidas manualmente ---
+  20: 340,   // BANCO DE SANGRE CENTRAL -> CAPITAL - BANCO DE SANGRE CENTRAL
+  15: 335,   // CAPS Nº 2 EMILIO R. CONI -> CAPITAL - CTRO DE SALUD CAPS Nº II - EMILIO R. CONI
+  5: 358,    // CAPS Nº 3 DR. DIEGO TAGLIALEGNE -> CAPITAL - CTRO DE SALUD CAPS Nº III 1000 VIVIENDAS
+  17: 356,   // CAPS Nº 1 Bº SAN JOSÉ -> CAPITAL - CENTRO DE SALUD CAPS Nº I - Bº SAN JOSE
+  6: 382,    // CAPS Nº 9 Bº 17 DE AGOSTO -> CAPITAL - C. DE SALUD CAPS Nº IX Bº 17 DE AGOSTO
+  13: 359,   // CAPS Nº 4 DR. GRACINIANO LUGO -> CAPITAL - C DE SALUD CAPS Nº IV R. DE VENEZUELA
+  18: 348,   // CAPS Nº 8 Bº SANTA TERESITA -> CAPITAL - C.DE SALUD CAPS Nº VIII Bº STA TERESITA
+  12: 405,   // CAPS Nº 7 LAGUNA BRAVA -> CAPITAL - C.DE SALUD CAPS Nº VII LAGUNA BRAVA
+  8: 388,    // CAPS Nº 11 Bº FRAY JOSÉ DE LA QUINTANA -> C. DE SALUD CAPS Nº XI - FRAY JOSE DE LA QUINTANA
+  10: 341,   // CAPS Nº 14 Bº JUAN DE VERA -> CAPITAL - C. DE SALUD CAPS Nº XIV Bº JUAN DE VERA
+  11: 376,   // CAPS Nº 13 Bº JUAN XXIII -> CAPITAL - CENTRO DE SALUD CAPS Nº XIII JUAN XXIII
+  7: 365,    // CAPS Nº 5 Bº DR. MONTAÑA -> CAPITAL - C. DE SALUD CAPS Nº V Bº DR. MONTAÑA
+
+  // --- Hospitales Capital y Referencia ---
+  22: 339,   // HOSPITAL ESCUELA JOSE FCO. DE SAN MARTIN -> CAPITAL-HOSP. C. ESC.-GRAL. JOSE DE SAN MARTIN
+  24: 3728,  // HOSPITAL PEDIATRICO JUAN PABLO II -> CAPITAL - HOSP. C. PEDIATRICO JUAN PABLO II
+  26: 333,   // HOSPITAL DR. J. R. VIDAL -> CAPITAL - HOSPITAL CENTRAL -DR. JOSE RAMON VIDAL
+  21: 337,   // HOSPITAL ANGELA I. DE LLANO -> CAPITAL - HOSP. REG. ANGELA IGLESIA DE LLANO
+  85: 4369,  // HOSPITAL MATERNO NEONATAL ELOISA TORRENT DE VIDAL -> Hosp. Materno Neonatal
+  88: 4431,  // HOSPITAL DE CAMPAÑA ESCUELA HOGAR -> Hospital de Campaña - Hogar Escuela
+  232: 4761, // INSTITUTO ONCOLOGICO DE CORRIENTES -> Instituto Oncológico de Corrientes
+  31: 398,   // LABORATORIO CENTRAL DE REDES Y PROGRAMAS -> CAPITAL - LABORATORIO CENTRAL
+  28: 381,   // INSTITUTO CORRENTINO DE AYUDA AL LISIADO (ICAL) -> CAPITAL - INSTITUTO CORRENTINO AYUDA AL LISIADO
+  23: 334,   // HOSPITAL GERIATRICO JUANA F. CABRAL -> CAPITAL - HOSP. C. GER.-JUANA FRANCISCA CABRAL
+  36: 3869,  // DIRECCION DE EMERGENCIAS SANITARIAS -> CAPITAL - DIRECCION DE EMERGENCIAS SANITARIAS
+
+  // --- Hospitales del Interior ---
+  3: 326,    // HOSPITAL CABECERA - BELLA VISTA -> BELLA VISTA - HOSPITAL CABECERA-EL SALVADOR
+  19: 435,   // HOSPITAL SAN VICENTE DE PAUL (Gral. Paz) -> GENERAL PAZ - HOSP. CAB. -SAN VICENTE DE PAUL
+  33: 519,   // ESTACION SANITARIA CHAVARRIA -> SAN ROQUE - CENTRO DE SALUD CHAVARRIA
+  37: 413,   // HOSPITAL DR. FERNANDO IRASTORZA (Curuzú Cuatiá) -> CURUZU CUATIA - HOSP. REG. DR. FERNANDO IRASTORZA
+  38: 416,   // HOSPITAL JAIME M. DAVILA (Empedrado) -> EMPEDRADO - HOSP. BASE -DR. MARIO JAIME DAVILA-
+  40: 480,   // HOSPITAL FELIPE YOFRE -> MERCEDES - CENTRO DE SALUD FELIPE YOFRE
+  43: 530,   // HOSPITAL DR. MIGUEL SUSSINI (Gdor. Virasoro) -> GDOR. VIRASORO - HOSP. CAB. -DR. MIGUEL SUSSINI
+  44: 445,   // HOSPITAL DR. CAMILO MUNIAGURRIA (Goya) -> GOYA - HOSP. REG. PROF. CAMILO MUNIAGURRIA
+  47: 436,   // HOSPITAL INMACULADA CONCEPCION (Itá Ibaté) -> ITA IBATE - HOSP. BASE-INMACULADA CONCEPCION-
+  48: 454,   // HOSPITAL JUAN Y C. GARCIA (Itatí) -> ITATI - HOSP. CAB. -DRES. J.C.Y ALBERTO J. GARCIA
+  49: 458,   // HOSPITAL DR. RICARDO BILLINGHURST (Ituzaingó) -> ITUZAINGO - HOSP. CAB. -DR. RICARDO BILLINGHURTS
+  50: 510,   // HOSPITAL SAN ANTONIO DE PADUA (La Cruz) -> LA CRUZ - HOSP. BASE-SAN ANTONIO DE PADUA-
+  55: 475,   // HOSPITAL SAN ANTONIO DE PADUA (Mburucuyá) -> MBURUCUYA - HOSP. BASE-SAN ANTONIO DE PADUA-
+  57: 478,   // HOSPITAL LAS MERCEDES (Mercedes) -> MERCEDES - HOSPITAL CABECERA -LAS MERCEDES
+  58: 487,   // HOSPITAL MOCORETA -> MONTE CASEROS - HOSPITAL BASE-MOCORETA
+  59: 486,   // HOSPITAL SAMUEL ROBINSON (Monte Caseros) -> MONTE CASEROS - HOSP. CAB. -SAMUEL W. ROBINSON
+  61: 500,   // HOSPITAL DR. E. A. CICCONETTI (Paso de la Patria) -> P. DE LA PATRIA- HOSP. BASE-DR. CICCONETTI
+  62: 489,   // HOSPITAL SAN JOSE (Paso de los Libres) -> PASO DE LOS LIBRES - HOSP. CAB. -SAN JOSE
+  65: 495,   // HOSPITAL MARIA AUXILIADORA (Saladas) -> SALADAS - HOSP. REG. MARIA AUXILIADORA
+  67: 499,   // HOSPITAL JULIO C. RIVERO (San Cosme) -> SAN COSME - HOSPITAL BASE -DR. JULIO C. RIVERO
+  69: 505,   // HOSPITAL DE SAN LUIS DEL PALMAR -> SAN LUIS DEL PALMAR - HOSPITAL BASE -PROVINCIAL
+  71: 518,   // HOSPITAL SAN ROQUE (San Roque) -> SAN ROQUE - HOSPITAL BASE-SAN ROQUE
+  72: 501,   // ESTACIÓN SANITARIA MARÍA AUXILIADORA -> SAN COSME - C. DE SALUD MARIA AUXILIADORA
+  74: 410,   // HOSPITAL SANTA ROSA -> SANTA ROSA - HOSPITAL BASE-SANTA ROSA
+  75: 527,   // HOSPITAL SAN JUAN BAUTISTA (Santo Tomé) -> SANTO TOME - HOSP. REG. SAN JUAN BAUTISTA
+  76: 533,   // HOSPITAL DE SAUCE -> SAUCE - HOSPITAL BASE -SANTA ROSA
+  80: 511,   // HOSPITAL DR. DANIEL W. VERGARA -> SAN MARTIN -HOSP. BASE- DANIEL WELTER VERGARA
+  81: 4335,  // CENTRO DE SALUD DR. ARTURO ILLIA -> Centro de Salud CAPS nro 15 - Pte. Arturo Illia
+  82: 4257,  // HOSPITAL PRES. RAÚL ALFONSÍN (Riachuelo) -> HOSP. PRES. RAUL ALFONSIN DE RIACHUELO
+  83: 4335,  // CAPS Nº 15 PRESIDENTE ARTURO ILLIA -> Centro de Salud CAPS nro 15 - Pte. Arturo Illia
+  84: 4321,  // CAPS Nº 16 CENTRO DE SALUD -> Caps nro XVI barrio Paloma
+  87: 4414,  // CAPS Nº 17 Bº 250 VIVIENDAS -> Centro de Salud CAPS nro. XVII Dr Piragine Niveiro
+  92: 492,   // CAPS ARISTOBULO MONGELO DE BONPLAND -> P. DE LOS LIBRES - C. DE SALUD ARISTOBULO MONGELO
+  233: 4762, // HOSPITAL PEDIATRICO ANGEL DE LA GUARDA (Goya) -> Hosp. Pediatrico -Angel de La Guarda- Goya
+};
+
+/**
+ * Obtiene el ID de Empresa correspondiente a partir del ID de Proveedor histórico.
+ */
+export function getEmpresaIdFromProveedorId(proveedorId?: number | null): number | undefined {
+  if (proveedorId === null || proveedorId === undefined) return undefined;
+  return PROVEEDOR_TO_EMPRESA_MAP[proveedorId];
+}
+
+/**
+ * Resuelve el ID de Empresa para una Compra o Detalle de Liquidación,
+ * combinando mapeo de proveedor directo y fallback inteligente.
+ */
+export function resolveEmpresaId(item: {
+  hospitalId?: number | null;
+  compraHospitalId?: number | null;
+  nombre?: string | null;
+  cuit?: string | number | null;
+}): number | undefined {
+  // 1. Verificar mapeo directo por hospitalId
+  if (item.hospitalId && PROVEEDOR_TO_EMPRESA_MAP[item.hospitalId]) {
+    return PROVEEDOR_TO_EMPRESA_MAP[item.hospitalId];
+  }
+
+  // 2. Verificar mapeo directo por compraHospitalId
+  if (item.compraHospitalId && PROVEEDOR_TO_EMPRESA_MAP[item.compraHospitalId]) {
+    return PROVEEDOR_TO_EMPRESA_MAP[item.compraHospitalId];
+  }
+
+  return undefined;
+}

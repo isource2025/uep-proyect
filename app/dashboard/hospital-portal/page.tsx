@@ -26,17 +26,24 @@ export default async function HospitalPortalPage() {
     .filter(Boolean);
   const isAdmin = userRoles.includes("1");
 
-  // Parse hospitalId safely as number
-  let rawHospitalId = user.hospitalId ? parseInt(String(user.hospitalId), 10) : undefined;
   const personalId = parseInt(String(user.id), 10);
+  let rawHospitalId: number | undefined = undefined;
 
-  // If no hospitalId directly on user, check imPersonalEmpresas
-  if ((!rawHospitalId || isNaN(rawHospitalId)) && !isNaN(personalId)) {
+  // 1. Prioritize imPersonalEmpresas intermediate table
+  if (!isNaN(personalId)) {
     const pe = await prisma.imPersonalEmpresas.findFirst({
       where: { idPersonal: personalId },
     });
     if (pe) {
       rawHospitalId = pe.idEmpresa;
+    }
+  }
+
+  // Fallback to user.hospitalId
+  if (!rawHospitalId && user.hospitalId) {
+    const parsed = parseInt(String(user.hospitalId), 10);
+    if (!isNaN(parsed)) {
+      rawHospitalId = parsed;
     }
   }
 

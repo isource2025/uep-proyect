@@ -7,6 +7,7 @@ import { put } from "@vercel/blob";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { getActivePeriodInfo } from "@/lib/periods";
+import { getEmpresaIdFromProveedorId } from "@/lib/hospital-mapping";
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -33,64 +34,30 @@ function findMatchingDetailHospital(
   details: any[]
 ): { hospitalId?: number; hospitalKey?: string } {
   if (!details || details.length === 0) return {};
-  if (details.length === 1) {
-    const d = details[0];
-    const hid = d.hospitalId || d.compra?.hospitalId;
-    return {
-      hospitalId: hid,
-      hospitalKey: hid ? `id-${hid}` : `name-${d.prestadorNombre}`,
-    };
+  if (!cuilEmpresas || cuilEmpresas.length === 0) return {};
+
+  // 1. Coincidencia directa por ID de Empresa entre imPersonalMsp y LiquidacionDetalle
+  for (const emp of cuilEmpresas) {
+    for (const d of details) {
+      const hid = d.hospitalId;
+      if (hid && hid === emp.id) {
+        return { hospitalId: hid, hospitalKey: `id-${hid}` };
+      }
+    }
   }
 
-  if (!cuilEmpresas || cuilEmpresas.length === 0) {
-    return {};
-  }
-
-  // 1. Match by CUIT
+  // 2. Coincidencia secundaria por CUIT si estuviera disponible
   for (const emp of cuilEmpresas) {
     if (emp.cuit) {
       const cleanEmpCuit = emp.cuit.replace(/[^\d]/g, "");
       if (cleanEmpCuit) {
         for (const d of details) {
           const cleanDetCuit = String(d.cuit || d.hospital?.cuit || "").replace(/[^\d]/g, "");
-          if (cleanDetCuit && (cleanDetCuit === cleanEmpCuit || cleanDetCuit.includes(cleanEmpCuit) || cleanEmpCuit.includes(cleanDetCuit))) {
-            const hid = d.hospitalId || d.compra?.hospitalId;
-            return { hospitalId: hid, hospitalKey: hid ? `id-${hid}` : `name-${d.prestadorNombre}` };
+          if (cleanDetCuit && cleanDetCuit === cleanEmpCuit) {
+            const hid = d.hospitalId;
+            return { hospitalId: hid, hospitalKey: `id-${hid}` };
           }
         }
-      }
-    }
-  }
-
-  // 2. Match by Name keywords
-  for (const emp of cuilEmpresas) {
-    const normEmp = normalizeHospitalName(emp.descripcion);
-    if (!normEmp) continue;
-    const empWords = normEmp.split(" ").filter((w) => w.length > 3 && !["hospital", "sanatorio", "centro", "salud"].includes(w));
-
-    for (const d of details) {
-      const normDet = normalizeHospitalName(d.prestadorNombre || d.hospital?.nombre || "");
-      if (!normDet) continue;
-
-      if (normDet.includes(normEmp) || normEmp.includes(normDet)) {
-        const hid = d.hospitalId || d.compra?.hospitalId;
-        return { hospitalId: hid, hospitalKey: hid ? `id-${hid}` : `name-${d.prestadorNombre}` };
-      }
-
-      const matchesWord = empWords.some((w) => normDet.includes(w));
-      if (matchesWord) {
-        const hid = d.hospitalId || d.compra?.hospitalId;
-        return { hospitalId: hid, hospitalKey: hid ? `id-${hid}` : `name-${d.prestadorNombre}` };
-      }
-    }
-  }
-
-  // 3. Match by ID direct equality
-  for (const emp of cuilEmpresas) {
-    for (const d of details) {
-      const hid = d.hospitalId || d.compra?.hospitalId;
-      if (hid && hid === emp.id) {
-        return { hospitalId: hid, hospitalKey: `id-${hid}` };
       }
     }
   }
@@ -651,11 +618,13 @@ export async function calculateLiquidation(rcId: number) {
           ? `${(comp.fecha.getMonth() + 1).toString().padStart(2, "0")}/${comp.fecha.getFullYear()}`
           : monthStr;
 
+        const mappedEmpresaId = getEmpresaIdFromProveedorId(comp.hospitalId) || comp.hospitalId;
+
         return prisma.liquidacionDetalle.create({
           data: {
             liquidationId: liquidation.id,
             compraId: comp.id,
-            hospitalId: comp.hospitalId,
+            hospitalId: mappedEmpresaId,
             clienteId: comp.clienteId || rc.clienteId,
             periodo: compPeriod,
             cuit: comp.hospital?.cuit ? toNum(comp.hospital.cuit).toString() : rc.cliente?.cuit ? toNum(rc.cliente.cuit).toString() : "",
@@ -986,7 +955,47 @@ export async function fetchLiquidationById(id: number) {
     ]);
 
     if (!liq) return null;
-    return sanitizarLiquidacionCabecera({ ...liq, personalDistributions });
+
+    const allCuils = personalDistributions.map((p) => p.cuil).filter((c): c is bigint => c !== null);
+    const mspAgents = allCuils.length > 0
+      ? await prisma.imPersonalMsp.findMany({
+          where: { cuil: { in: allCuils } },
+          include: {
+            empresa: {
+              select: { id: true, descripcion: true, cuit: true },
+            },
+          },
+        })
+      : [];
+
+    const cuilToEmpresas = new Map<string, { id: number; descripcion: string; cuit: string }[]>();
+    for (const ag of mspAgents) {
+      if (ag.cuil && ag.empresa) {
+        const cuilStr = ag.cuil.toString();
+        const list = cuilToEmpresas.get(cuilStr) || [];
+        list.push({
+          id: ag.idEmpresa,
+          descripcion: ag.empresa.descripcion || "",
+          cuit: ag.empresa.cuit ? String(ag.empresa.cuit) : "",
+        });
+        cuilToEmpresas.set(cuilStr, list);
+      }
+    }
+
+    const sanitized = sanitizarLiquidacionCabecera({ ...liq, personalDistributions });
+    if (sanitized && sanitized.personalDistributions) {
+      sanitized.personalDistributions = sanitized.personalDistributions.map((p: any) => {
+        const empList = cuilToEmpresas.get(String(p.cuil)) || [];
+        const match = findMatchingDetailHospital(String(p.cuil), empList, sanitized.details || []);
+        return {
+          ...p,
+          hospitalId: match.hospitalId,
+          hospitalKey: match.hospitalKey,
+        };
+      });
+    }
+
+    return sanitized;
   } catch (e) {
     console.error("Error fetching liquidation by id:", e);
     return null;

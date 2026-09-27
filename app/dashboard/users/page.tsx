@@ -56,12 +56,29 @@ export default async function UsersPage({
   });
   const roleMap = new Map(roles.map((r) => [String(r.id), r.nombre]));
 
-  // Fetch hospitals from EMPRESAS
-  const empresas = await prisma.empresa.findMany({
-    select: { id: true, descripcion: true },
-    orderBy: { descripcion: "asc" },
-  });
+  // Fetch intermediate relation imPersonalEmpresas
+  const [empresas, personalEmpresas] = await Promise.all([
+    prisma.empresa.findMany({
+      select: { id: true, descripcion: true },
+      orderBy: { descripcion: "asc" },
+    }),
+    prisma.imPersonalEmpresas.findMany({
+      include: {
+        empresa: {
+          select: { id: true, descripcion: true },
+        },
+      },
+    }),
+  ]);
+
   const empresaMap = new Map(empresas.map((e) => [e.id, e.descripcion?.trim()]));
+  const userEmpresaMap = new Map(
+    personalEmpresas.map((pe) => [
+      pe.idPersonal,
+      { idEmpresa: pe.idEmpresa, descripcion: pe.empresa?.descripcion?.trim() },
+    ])
+  );
+
   const hospitals = empresas.map((e) => ({
     id: e.id,
     nombre: e.descripcion?.trim() || `Hospital ${e.id}`,
@@ -224,7 +241,7 @@ export default async function UsersPage({
                           <div className="flex items-center gap-1.5">
                             <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             <span className="text-xs truncate max-w-[180px]">
-                              {(u.hospitalId ? empresaMap.get(u.hospitalId) : null) || "Unidad Ejecutora (Sede)"}
+                              {userEmpresaMap.get(u.id)?.descripcion || (u.hospitalId ? empresaMap.get(u.hospitalId) : null) || "Unidad Ejecutora (Sede)"}
                             </span>
                           </div>
                         </TableCell>
@@ -251,7 +268,7 @@ export default async function UsersPage({
                                 operador: u.operador,
                                 cuit: u.cuit,
                                 role: u.role,
-                                hospitalId: u.hospitalId,
+                                hospitalId: userEmpresaMap.get(u.id)?.idEmpresa ?? u.hospitalId ?? undefined,
                               }}
                               roles={roles}
                               hospitals={hospitals}

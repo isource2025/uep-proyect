@@ -1,4 +1,5 @@
 import { fetchPendingUnifications, fetchUnifiedInvoices } from "./actions";
+import { serializeData } from "@/lib/utils";
 import InvoicesClientPage from "./invoices-client";
 
 export const revalidate = 0;
@@ -11,8 +12,8 @@ export default async function InvoicesPage() {
 
   return (
     <InvoicesClientPage
-      initialPending={pending}
-      initialUnified={unifiedResult.invoices}
+      initialPending={serializeData(pending)}
+      initialUnified={serializeData(unifiedResult.invoices)}
       initialUnifiedCount={unifiedResult.totalCount}
     />
   );

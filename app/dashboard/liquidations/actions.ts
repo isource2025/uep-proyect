@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { getActivePeriodInfo } from "@/lib/periods";
 import { getEmpresaIdFromProveedorId } from "@/lib/hospital-mapping";
+import { serializeData } from "@/lib/utils";
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -517,12 +518,12 @@ export async function fetchLiquidationData(
     })),
   }));
 
-  return {
+  return serializeData({
     liquidations: sanitizedLiquidations,
     totalLiquidationsCount,
     pendingRcs: sanitizedPendingRcs,
     totalPendingRcsCount,
-  };
+  });
 }
 
 function calculateDefaultGA(totalFacturado: number): number {
@@ -995,7 +996,7 @@ export async function fetchLiquidationById(id: number) {
       });
     }
 
-    return sanitized;
+    return serializeData(sanitized);
   } catch (e) {
     console.error("Error fetching liquidation by id:", e);
     return null;

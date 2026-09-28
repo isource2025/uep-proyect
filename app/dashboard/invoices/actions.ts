@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { serializeData } from "@/lib/utils";
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -72,15 +73,17 @@ export async function fetchPendingUnifications() {
 
   const clienteMap = new Map(clientes.map((c) => [c.id, sanitizeCliente(c)]));
 
-  return grouped.map((g) => {
-    const cli = clienteMap.get(g.clienteId!) || { id: g.clienteId, nombre: `Cliente #${g.clienteId}`, cuit: "" };
-    return {
-      clienteId: g.clienteId!,
-      cliente: cli,
-      count: g._count.id,
-      total: toNum(g._sum.importe),
-    };
-  });
+  return serializeData(
+    grouped.map((g) => {
+      const cli = clienteMap.get(g.clienteId!) || { id: g.clienteId, nombre: `Cliente #${g.clienteId}`, cuit: "" };
+      return {
+        clienteId: g.clienteId!,
+        cliente: cli,
+        count: g._count.id,
+        total: toNum(g._sum.importe),
+      };
+    })
+  );
 }
 
 // 2. Fetch all consolidated invoices (Cbtes of type 'FC') with pagination
@@ -152,10 +155,10 @@ export async function fetchUnifiedInvoices(searchQuery?: string, page: number = 
     compCount: countMap.get(inv.id) || 0,
   }));
 
-  return {
+  return serializeData({
     invoices: mappedInvoices,
     totalCount
-  };
+  });
 }
 
 // 3. Fetch detailed individual Compras consolidated inside a unified Cbte
@@ -177,10 +180,10 @@ export async function fetchInvoiceDetails(cbteId: number) {
 
   if (!cbte) return null;
 
-  return {
+  return serializeData({
     cbte: sanitizeCbte(cbte),
     purchases: purchases.map(sanitizeCompra),
-  };
+  });
 }
 
 // 4. Fetch detailed pending Compras for a specific Obra Social before unification

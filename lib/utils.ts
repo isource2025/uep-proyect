@@ -14,12 +14,15 @@ export function serializeData<T>(obj: T): T {
     return Number(obj) as any;
   }
 
-  // Check for Decimal objects (from Prisma or Decimal.js)
+  // Check for Decimal objects (from Prisma, Decimal.js, or custom classes)
   if (
     typeof obj === "object" &&
     obj !== null &&
     (typeof (obj as any).toNumber === "function" ||
-      ("d" in obj && "s" in obj && "e" in obj))
+      ("d" in obj && "s" in obj && "e" in obj) ||
+      (obj as any).constructor?.name === "Decimal" ||
+      (obj as any).constructor?.name === "Decimal2" ||
+      (obj as any)._isDecimal === true)
   ) {
     return Number(obj) as any;
   }

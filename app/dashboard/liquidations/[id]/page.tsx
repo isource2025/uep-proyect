@@ -128,7 +128,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
           cuil: ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ""),
           legajo: ag.legajo.trim(),
           nombre: ag.apellidoyNombre?.trim() || "",
-          cargo: ag.cuil ? `CUIL ${ag.cuil.toString()}` : (ag.idAgente ? `ID ${ag.idAgente.toString()}` : "PROFESIONAL"),
+          cargo: "PROFESIONAL",
           hospitalId: ag.idEmpresa,
           hospitalNombre: ag.empresa?.descripcion?.trim() || "",
         });
@@ -147,7 +147,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
       cuil: ag.cuil || "",
       legajo: "",
       nombre: ag.nombre,
-      cargo: ag.cuil ? `CUIL ${ag.cuil}` : (ag.cargo || "PROFESIONAL"),
+      cargo: ag.cargo && !ag.cargo.includes(ag.cuil || "") ? ag.cargo : "PROFESIONAL",
       hospitalId: ag.hospitalId || undefined,
       hospitalNombre: ag.establecimiento || "",
     }));
@@ -192,7 +192,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
             cuil: ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ""),
             legajo: ag.legajo.trim(),
             nombre: ag.apellidoyNombre?.trim() || "",
-            cargo: ag.cuil ? `CUIL ${ag.cuil.toString()}` : (ag.idAgente ? `ID ${ag.idAgente.toString()}` : "PROFESIONAL"),
+            cargo: "PROFESIONAL",
             hospitalId: ag.idEmpresa,
             hospitalNombre: ag.empresa?.descripcion?.trim() || "",
           });

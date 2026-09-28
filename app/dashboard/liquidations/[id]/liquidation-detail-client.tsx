@@ -2013,9 +2013,11 @@ export default function LiquidationDetailClient({
                                               CUIL: <strong className="text-foreground">{ag.cuil}</strong>
                                             </span>
                                           )}
-                                          <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs font-semibold">
-                                            {ag.cargo}
-                                          </span>
+                                          {ag.cargo && ag.cargo !== "PROFESIONAL" && !ag.cargo.toLowerCase().includes("cuil") && (
+                                            <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs font-semibold">
+                                              {ag.cargo}
+                                            </span>
+                                          )}
                                           {ag.hospitalNombre && (
                                             <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
                                               {ag.hospitalNombre}

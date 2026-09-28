@@ -652,7 +652,11 @@ export function LiquidationsTable({
                                 );
                               })()}
 
-                              {liq.status !== "NOTIFICADO" && liq.status !== "CERRADA" && onNotifyHospital && (
+                              {liq.status !== "NOTIFICADO" &&
+                                liq.status !== "DISTRIBUIDA" &&
+                                liq.status !== "DISTRIBUIDO" &&
+                                liq.status !== "CERRADA" &&
+                                onNotifyHospital && (
                                 <Button
                                   size="sm"
                                   onClick={() => onNotifyHospital(liq.id)}

@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { serializeData } from "@/lib/utils";
 import { fetchLiquidationById } from "../actions";
+import { isUserAdmin } from "@/lib/constants";
 import LiquidationDetailClient from "./liquidation-detail-client";
 
 interface PageProps {
@@ -19,17 +20,18 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const [liquidation, session] = await Promise.all([
+  const [liquidationRaw, session] = await Promise.all([
     fetchLiquidationById(liqId),
     auth.api.getSession({ headers: await headers() }),
   ]);
 
-  if (!liquidation) {
+  if (!liquidationRaw) {
     notFound();
   }
 
   const user = session?.user as any;
-  const isHospitalUser = user?.role !== "1";
+  const isAdmin = isUserAdmin(user?.role);
+  const isHospitalUser = !isAdmin;
 
   let targetEmpresaId: number | undefined = undefined;
 
@@ -56,8 +58,8 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
   }
 
   // If still not found and liquidation has details:
-  if (!targetEmpresaId && liquidation.details && liquidation.details.length > 0) {
-    const detHospitalId = liquidation.details[0]?.hospitalId;
+  if (!targetEmpresaId && liquidationRaw.details && liquidationRaw.details.length > 0) {
+    const detHospitalId = liquidationRaw.details[0]?.hospitalId;
     if (detHospitalId) {
       targetEmpresaId = detHospitalId;
     }
@@ -71,12 +73,12 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     }
   } else {
     // Admin user: collect all hospitals from liquidation details
-    if (liquidation.details && liquidation.details.length > 0) {
-      const rawHospIds = liquidation.details
+    if (liquidationRaw.details && liquidationRaw.details.length > 0) {
+      const rawHospIds = liquidationRaw.details
         .map((d: any) => d.hospitalId || d.compra?.hospitalId)
         .filter((id: any): id is number => typeof id === "number" && !isNaN(id));
 
-      const hospNames = liquidation.details
+      const hospNames = liquidationRaw.details
         .map((d: any) => d.prestadorNombre || d.hospital?.nombre)
         .filter((n: any): n is string => typeof n === "string" && n.trim().length > 0);
 
@@ -100,8 +102,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
   let extraSavedAgents: any[] = [];
   let agentsPeriodOrigin: "current" | "previous" | "none" = "none";
 
-  // [RECORDATORIO PENDIENTE]: Activar control estricto de período (mes en curso con fallback a 1 mes previo; no permitir 2+ meses).
-  // Trae todos los agentes del sistema (permitiendo a hospitales cargar agentes que trabajen en múltiples efectores).
+  // Allow searching all registered agents across the entire nominal roll (since professionals work across multiple hospitals)
   const mspAgents = await prisma.imPersonalMsp.findMany({
     include: {
       empresa: {
@@ -153,13 +154,13 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
   }
 
   // If there are already saved distributions for this liquidation, fetch their metadata to always display names & hospitals correctly
-  const savedAgenteCuils = (liquidation.personalDistributions || [])
+  const rawSavedCuils = (liquidationRaw.personalDistributions || [])
     .map((p: any) => p.cuil || p.idAgente)
     .filter(Boolean);
 
-  if (savedAgenteCuils.length > 0) {
+  if (rawSavedCuils.length > 0) {
     const bigIntCuils: bigint[] = [];
-    for (const c of savedAgenteCuils) {
+    for (const c of rawSavedCuils) {
       try {
         const clean = String(c).replace(/[^\d]/g, "");
         if (clean) bigIntCuils.push(BigInt(clean));
@@ -198,6 +199,28 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
         }
       }
     }
+  }
+
+  // Strict hospital data isolation:
+  // A hospital user MUST NEVER see distributions, details or amounts assigned to other hospitals
+  let liquidation = { ...liquidationRaw };
+
+  if (isHospitalUser && targetEmpresaId) {
+    // 1. Details: Only include details for this hospital
+    liquidation.details = (liquidationRaw.details || []).filter(
+      (d: any) =>
+        (d.hospitalId || d.compra?.hospitalId) === targetEmpresaId
+    );
+
+    // 2. Personal distributions: Only include distributions made for this specific hospital
+    liquidation.personalDistributions = (liquidationRaw.personalDistributions || []).filter(
+      (p: any) => p.hospitalId === targetEmpresaId
+    );
+
+    // 3. Legacy distributions: Only include distributions for agents of this hospital
+    liquidation.distributions = (liquidationRaw.distributions || []).filter(
+      (d: any) => d.agent?.hospitalId === targetEmpresaId
+    );
   }
 
   return (

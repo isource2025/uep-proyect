@@ -142,8 +142,19 @@ export default function LiquidationDetailClient({
     })
   );
 
-  // Initialise agents state starting ONLY with previously saved distributions for this liquidation (or empty)
-  const initialDistRows = (liq.personalDistributions || []).map((p: any) => {
+  // Initialise agents state starting ONLY with previously saved distributions for this liquidation and hospital
+  const rawDistributions = (liq.personalDistributions || []).filter((p: any) => {
+    if (!isHospitalUser) return true;
+    if (targetHospitalId && p.hospitalId && p.hospitalId !== targetHospitalId) return false;
+    const agMeta =
+      (agents || []).find((a: any) => String(a.idAgente || a.id || a.cuil) === String(p.idAgente || p.cuil)) ||
+      (extraSavedAgents || []).find((a: any) => String(a.idAgente || a.id || a.cuil) === String(p.idAgente || p.cuil));
+    if (!agMeta) return false;
+    if (targetHospitalId && agMeta.hospitalId && agMeta.hospitalId !== targetHospitalId) return false;
+    return true;
+  });
+
+  const initialDistRows = rawDistributions.map((p: any) => {
     const agMeta =
       (agents || []).find((a: any) => String(a.idAgente || a.id || a.cuil) === String(p.idAgente || p.cuil)) ||
       (extraSavedAgents || []).find((a: any) => String(a.idAgente || a.id || a.cuil) === String(p.idAgente || p.cuil));

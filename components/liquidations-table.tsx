@@ -345,7 +345,7 @@ export function LiquidationsTable({
                                       Obs
                                     </button>
                                     {/* Hover Tooltip Popup for desktop */}
-                                    <div className="absolute left-0 top-full mt-1.5 hidden md:group-hover:flex flex-col z-50 w-72 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95">
+                                    <div className="absolute left-0 top-full mt-1.5 hidden md:group-hover:flex flex-col z-50 w-72 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95 whitespace-normal text-left">
                                       <div className="flex items-center justify-between border-b border-border/60 pb-1.5 mb-1.5">
                                         <span className="font-bold text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                                           <MessageSquare className="h-3.5 w-3.5" />
@@ -608,13 +608,13 @@ export function LiquidationsTable({
                                     </button>
 
                                     {/* Hover Tooltip Popup for desktop */}
-                                    <div className="absolute right-0 top-full mt-1.5 hidden md:group-hover:flex flex-col z-50 w-80 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95">
+                                    <div className="absolute right-0 top-full mt-1.5 hidden md:group-hover:flex flex-col z-50 w-80 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95 whitespace-normal text-left">
                                       <div className="flex items-center justify-between border-b border-border/60 pb-1.5 mb-2">
                                         <span className="font-bold text-xs flex items-center gap-1.5 text-foreground">
-                                          <Building2 className="h-3.5 w-3.5 text-purple-500" />
+                                          <Building2 className="h-3.5 w-3.5 text-purple-500 shrink-0" />
                                           Progreso ({completed}/{total})
                                         </span>
-                                        <span className={`text-3xs font-semibold px-1.5 py-0.5 rounded ${
+                                        <span className={`text-3xs font-semibold px-1.5 py-0.5 rounded shrink-0 ${
                                           completed === total ? "bg-teal-500/15 text-teal-600 dark:text-teal-400" : "bg-purple-500/15 text-purple-600 dark:text-purple-400"
                                         }`}>
                                           {completed === total ? "Completado" : `${pending.length} pendiente(s)`}
@@ -630,7 +630,7 @@ export function LiquidationsTable({
                                                 <span className="font-medium text-foreground truncate max-w-[170px]" title={h.name}>
                                                   {h.name}
                                                 </span>
-                                                <span className={`text-3xs font-mono font-semibold ${
+                                                <span className={`text-3xs font-mono font-semibold shrink-0 ${
                                                   h.hasStarted ? "text-blue-600 dark:text-blue-400" : "text-amber-600 dark:text-amber-400"
                                                 }`}>
                                                   {h.hasStarted ? "En carga" : "Sin iniciar"}
@@ -640,7 +640,7 @@ export function LiquidationsTable({
                                           </div>
                                         </div>
                                       ) : (
-                                        <p className="text-2xs text-teal-600 dark:text-teal-400 font-medium">
+                                        <p className="text-2xs text-teal-600 dark:text-teal-400 font-medium whitespace-normal break-words leading-relaxed">
                                           ✓ Todos los hospitales cargaron sus honorarios y sobreasignaciones.
                                         </p>
                                       )}

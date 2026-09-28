@@ -730,13 +730,17 @@ export default function LiquidationDetailClient({
 
   // Dynamic Live Header Metrics calculated from agent distribution with exact cent arithmetic
   const liveTotalHonorarios = round2(
-    agentDistRows.length > 0
+    isHospitalUser
+      ? agentDistRows.reduce((sum, r) => sum + (Number(r.honorarios) || 0), 0)
+      : agentDistRows.length > 0
       ? agentDistRows.reduce((sum, r) => sum + (Number(r.honorarios) || 0), 0)
       : Number(liq.totalHonorarios || 0)
   );
 
   const liveTotalSobreasignaciones = round2(
-    agentDistRows.length > 0
+    isHospitalUser
+      ? agentDistRows.reduce((sum, r) => sum + (Number(r.sobreasignaciones) || 0), 0)
+      : agentDistRows.length > 0
       ? agentDistRows.reduce((sum, r) => sum + (Number(r.sobreasignaciones) || 0), 0)
       : Number(liq.totalSobreasignaciones || 0)
   );

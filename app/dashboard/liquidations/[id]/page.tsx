@@ -264,6 +264,16 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     liquidation.totalDistribuido = totalDistribuido;
   }
 
+  const allHospitals = await prisma.empresa.findMany({
+    orderBy: { descripcion: "asc" },
+    select: {
+      id: true,
+      descripcion: true,
+      cuit: true,
+      localidad: true,
+    },
+  });
+
   return (
     <LiquidationDetailClient
       liquidation={serializeData(liquidation)}
@@ -272,6 +282,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
       extraSavedAgents={serializeData(extraSavedAgents)}
       agentsPeriodOrigin={agentsPeriodOrigin}
       hospitalId={targetEmpresaId || user?.hospitalId}
+      hospitals={serializeData(allHospitals)}
     />
   );
 }

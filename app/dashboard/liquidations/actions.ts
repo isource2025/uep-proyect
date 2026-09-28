@@ -696,35 +696,61 @@ export async function updateLiquidationDetails(
     pagosParcialesAnteriores?: number;
     ga: number;
     ajusteRecupero: number;
+    totalFacturado?: number;
+    hospitalId?: number | null;
+    clienteId?: number | null;
+    prestadorNombre?: string;
+    cuit?: string;
+    localidad?: string;
+    fcHospital?: string;
+    periodo?: string;
+    isNew?: boolean;
   }>,
   status?: string,
   mesCarga?: string,
-  observaciones?: string
+  observaciones?: string,
+  deletedDetailIds?: string[]
 ) {
   try {
     const session = await auth.api.getSession({ headers: await headers() });
     const currentUserName = session?.user?.name || session?.user?.email || (session?.user as any)?.operador;
 
     await prisma.$transaction(async (tx) => {
-      const detailIds = details.map((d) => d.id);
-      const currentRecords = await tx.liquidacionDetalle.findMany({
-        where: { id: { in: detailIds } },
+      // 1. Delete any detail rows requested for deletion
+      if (deletedDetailIds && deletedDetailIds.length > 0) {
+        const cleanDeleteIds = deletedDetailIds.filter((id) => !id.startsWith("manual-"));
+        if (cleanDeleteIds.length > 0) {
+          await tx.liquidacionDetalle.deleteMany({
+            where: {
+              id: { in: cleanDeleteIds },
+              liquidationId,
+            },
+          });
+        }
+      }
+
+      // 2. Fetch existing details for this liquidation
+      const existingDetails = await tx.liquidacionDetalle.findMany({
+        where: { liquidationId },
       });
-      const recordsMap = new Map(currentRecords.map((r) => [r.id, r]));
+      const recordsMap = new Map(existingDetails.map((r) => [r.id, r]));
 
+      // 3. Process each detail row (create new or update existing)
       for (const d of details) {
+        const isNewRow = d.isNew || d.id.startsWith("manual-") || !recordsMap.has(d.id);
         const record = recordsMap.get(d.id);
-        if (!record) continue;
 
-        const totalFacturado = toNum(record.totalFacturado);
-        // Sumas/Restas (+/-): ajustesOs puede ser positivo o negativo
+        const totalFacturado = Math.max(
+          0,
+          d.totalFacturado !== undefined ? Number(d.totalFacturado) || 0 : toNum(record?.totalFacturado)
+        );
         const creditos = Math.max(0, Number(d.creditos) || 0);
         const debitos = Math.max(0, Number(d.debitos) || 0);
         const ajustesOs = Number(d.ajustesOs) || 0;
         const pendientesCobro = Math.max(0, Number(d.pendientesCobro) || 0);
         const pagosParcialesAnteriores = d.pagosParcialesAnteriores !== undefined
           ? Math.max(0, Number(d.pagosParcialesAnteriores) || 0)
-          : Math.max(0, toNum(record.pagosParcialesAnteriores));
+          : Math.max(0, toNum(record?.pagosParcialesAnteriores));
         const ga = Math.max(0, Number(d.ga) || 0);
         const ajusteRecupero = Math.max(0, Number(d.ajusteRecupero) || 0);
 
@@ -732,20 +758,52 @@ export async function updateLiquidationDetails(
         const brutoAPagar = Math.max(0, totalFacturado + creditos - debitos + ajustesOs - pendientesCobro - pagosParcialesAnteriores);
         const netoAPagar = Math.max(0, brutoAPagar - ga + ajusteRecupero);
 
-        await tx.liquidacionDetalle.update({
-          where: { id: d.id },
-          data: {
-            creditos,
-            debitos,
-            ajustesOs,
-            pendientesCobro,
-            pagosParcialesAnteriores,
-            brutoAPagar,
-            ga,
-            ajusteRecupero,
-            netoAPagar,
-          },
-        });
+        if (isNewRow) {
+          await tx.liquidacionDetalle.create({
+            data: {
+              liquidationId,
+              hospitalId: d.hospitalId ? Number(d.hospitalId) : null,
+              clienteId: d.clienteId ? Number(d.clienteId) : null,
+              prestadorNombre: d.prestadorNombre || "Hospital Prestador",
+              cuit: d.cuit ? String(d.cuit).trim() : null,
+              localidad: d.localidad || "CAPITAL",
+              fcHospital: d.fcHospital || "FC-MANUAL",
+              periodo: d.periodo || mesCarga || "N/A",
+              totalFacturado,
+              creditos,
+              debitos,
+              ajustesOs,
+              pendientesCobro,
+              pagosParcialesAnteriores,
+              brutoAPagar,
+              ga,
+              ajusteRecupero,
+              netoAPagar,
+            },
+          });
+        } else {
+          await tx.liquidacionDetalle.update({
+            where: { id: d.id },
+            data: {
+              ...(d.prestadorNombre ? { prestadorNombre: d.prestadorNombre } : {}),
+              ...(d.cuit !== undefined ? { cuit: d.cuit } : {}),
+              ...(d.localidad ? { localidad: d.localidad } : {}),
+              ...(d.fcHospital ? { fcHospital: d.fcHospital } : {}),
+              ...(d.periodo ? { periodo: d.periodo } : {}),
+              ...(d.hospitalId !== undefined ? { hospitalId: d.hospitalId ? Number(d.hospitalId) : null } : {}),
+              totalFacturado,
+              creditos,
+              debitos,
+              ajustesOs,
+              pendientesCobro,
+              pagosParcialesAnteriores,
+              brutoAPagar,
+              ga,
+              ajusteRecupero,
+              netoAPagar,
+            },
+          });
+        }
       }
 
       await tx.liquidacion.update({

@@ -60,6 +60,7 @@ interface LiquidationDetailClientProps {
   extraSavedAgents?: any[];
   agentsPeriodOrigin?: "current" | "previous" | "none";
   hospitalId?: number | null;
+  hospitals?: any[];
 }
 
 export default function LiquidationDetailClient({
@@ -69,6 +70,7 @@ export default function LiquidationDetailClient({
   extraSavedAgents = [],
   agentsPeriodOrigin = "none",
   hospitalId: initialHospitalId,
+  hospitals = [],
 }: LiquidationDetailClientProps) {
   const router = useRouter();
   const isHospitalUser =
@@ -92,6 +94,7 @@ export default function LiquidationDetailClient({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [goingBack, setGoingBack] = useState(false);
+  const [deletedDetailIds, setDeletedDetailIds] = useState<string[]>([]);
 
   // Modal state for adding agents (Single vs Batch from Excel)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -394,6 +397,17 @@ export default function LiquidationDetailClient({
   };
 
   const handleDetailInputChange = (id: string, field: string, value: string) => {
+    if (["fcHospital", "periodo", "prestadorNombre", "cuit", "localidad"].includes(field)) {
+      setEditableDetails((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+      );
+      setLiq((prev: any) => ({
+        ...prev,
+        details: (prev.details || []).map((d: any) => (d.id === id ? { ...d, [field]: value } : d)),
+      }));
+      return;
+    }
+
     if (value === "" || (field === "ajustesOs" && value === "-")) {
       setEditableDetails((prev) =>
         prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
@@ -439,6 +453,53 @@ export default function LiquidationDetailClient({
     );
   };
 
+  const handleAddManualDetail = () => {
+    const tempId = `manual-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newDetail = {
+      id: tempId,
+      isNew: true,
+      liquidationId: liq.id,
+      hospitalId: null,
+      clienteId: liq.rc?.clienteId || null,
+      prestadorNombre: "",
+      cuit: "",
+      localidad: "CAPITAL",
+      periodo: liq.mesCarga || "",
+      fcHospital: "",
+      totalFacturado: 0,
+      creditos: 0,
+      debitos: 0,
+      ajustesOs: 0,
+      pendientesCobro: 0,
+      pagosParcialesAnteriores: 0,
+      brutoAPagar: 0,
+      ga: 0,
+      gaPercent: 10,
+      ajusteRecupero: 0,
+      netoAPagar: 0,
+    };
+
+    setLiq((prev: any) => ({
+      ...prev,
+      details: [...(prev.details || []), newDetail],
+    }));
+
+    setEditableDetails((prev) => [...prev, newDetail]);
+    setSuccessMsg("Nuevo renglón de factura añadido. Complete los datos y guarde los cambios.");
+  };
+
+  const handleRemoveDetail = (detailId: string) => {
+    if (!confirm("¿Está seguro de que desea eliminar este renglón de factura?")) return;
+    setLiq((prev: any) => ({
+      ...prev,
+      details: (prev.details || []).filter((d: any) => d.id !== detailId),
+    }));
+    setEditableDetails((prev) => prev.filter((d) => d.id !== detailId));
+    if (!detailId.startsWith("manual-")) {
+      setDeletedDetailIds((prev) => [...prev, detailId]);
+    }
+  };
+
   const handleAgentInputChange = (agentId: any, field: string, value: string) => {
     const num = Math.max(0, parseFloat(value) || 0);
     setAgentDistRows((prev) =>
@@ -478,12 +539,12 @@ export default function LiquidationDetailClient({
         ajusteRecupero: Number(item.ajusteRecupero || 0),
       }));
 
-      const res = await updateLiquidationDetails(liq.id, parsedDetails, undefined, mesCarga, observaciones);
+      const res = await updateLiquidationDetails(liq.id, parsedDetails, undefined, mesCarga, observaciones, deletedDetailIds);
       if (res.error) {
         setErrorMsg(res.error);
         return;
       }
-      setSuccessMsg("Liquidación y ajustes guardados correctamente.");
+      setSuccessMsg("Liquidación y facturas guardadas correctamente.");
       router.push("/dashboard/liquidations");
       router.refresh();
     } catch (e: any) {
@@ -1216,20 +1277,22 @@ export default function LiquidationDetailClient({
                   <TableHead className="font-semibold text-3xs uppercase text-right">GA (% / $)</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">ADELANTOS</TableHead>
                   <TableHead className="font-semibold text-3xs uppercase text-right">NETO A PAGAR</TableHead>
+                  {!isHospitalUser && <TableHead className="w-10 text-center"></TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredDetails.length === 0 ? (
                   <TableRow className="border-border">
-                    <TableCell colSpan={15} className="text-center text-muted-foreground text-xs py-8">
+                    <TableCell colSpan={isHospitalUser ? 15 : 16} className="text-center text-muted-foreground text-xs py-8">
                       {searchQuery.trim()
                         ? "No se encontraron renglones que coincidan con la búsqueda."
-                        : "No hay renglones para mostrar."}
+                        : "No hay facturas cargadas en esta liquidación. Puede agregar una factura manualmente con el botón de abajo."}
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredDetails.map((detail: any) => {
                     const editState = editableDetails.find((item) => item.id === detail.id) || {};
+                    const isManualRow = !detail.compraId || detail.isNew || String(detail.id).startsWith("manual-");
                     const totalFact = Number(editState.totalFacturado ?? detail.totalFacturado ?? 0);
                     const cred = Number(editState.creditos ?? detail.creditos ?? 0);
                     const deb = Number(editState.debitos ?? detail.debitos ?? 0);
@@ -1244,20 +1307,118 @@ export default function LiquidationDetailClient({
 
                     return (
                       <TableRow key={detail.id} className="hover:bg-muted/40 border-border text-foreground text-xs">
-                        <TableCell className="font-semibold text-3xs max-w-[180px] whitespace-normal break-words py-2.5">
-                          {detail.prestadorNombre || detail.hospital?.nombre || "Hospital"}
+                        <TableCell className="font-semibold text-3xs min-w-[170px] max-w-[220px] whitespace-normal break-words py-2">
+                          {!isHospitalUser && isManualRow ? (
+                            <select
+                              disabled={isHospitalUser || saving}
+                              value={editState.hospitalId ? String(editState.hospitalId) : (detail.hospitalId ? String(detail.hospitalId) : "")}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const selectedId = parseInt(val, 10);
+                                const selectedHosp = hospitals.find((h: any) => h.id === selectedId || h.idPrestador === selectedId);
+                                if (selectedHosp) {
+                                  const hid = selectedHosp.idPrestador || selectedHosp.id;
+                                  const hname = selectedHosp.descripcion || selectedHosp.nombre;
+                                  const hcuit = selectedHosp.cuit ? String(selectedHosp.cuit) : "";
+                                  const hloc = selectedHosp.localidad || "CAPITAL";
+
+                                  setEditableDetails((prev) =>
+                                    prev.map((item) =>
+                                      item.id === detail.id
+                                        ? {
+                                            ...item,
+                                            hospitalId: hid,
+                                            prestadorNombre: hname,
+                                            cuit: hcuit,
+                                            localidad: hloc,
+                                          }
+                                        : item
+                                    )
+                                  );
+                                  setLiq((prev: any) => ({
+                                    ...prev,
+                                    details: (prev.details || []).map((d: any) =>
+                                      d.id === detail.id
+                                        ? {
+                                            ...d,
+                                            hospitalId: hid,
+                                            prestadorNombre: hname,
+                                            cuit: hcuit,
+                                            localidad: hloc,
+                                          }
+                                        : d
+                                    ),
+                                  }));
+                                }
+                              }}
+                              className="w-full h-8 text-2xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                            >
+                              <option value="">-- Seleccionar Hospital --</option>
+                              {hospitals.map((h: any) => (
+                                <option key={h.id} value={String(h.id)}>
+                                  {h.descripcion || h.nombre}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            detail.prestadorNombre || detail.hospital?.nombre || "Hospital"
+                          )}
                         </TableCell>
                         <TableCell className="font-mono text-3xs text-muted-foreground whitespace-nowrap">
-                          {detail.hospital?.cuit || detail.cuit || "-"}
+                          {!isHospitalUser && isManualRow ? (
+                            <Input
+                              type="text"
+                              placeholder="CUIT"
+                              disabled={isHospitalUser || saving}
+                              value={editState.cuit ?? detail.cuit ?? ""}
+                              onChange={(e) => handleDetailInputChange(detail.id, "cuit", e.target.value)}
+                              className="w-24 h-8 text-3xs font-mono bg-background border-border"
+                            />
+                          ) : (
+                            detail.hospital?.cuit || detail.cuit || "-"
+                          )}
                         </TableCell>
                         <TableCell className="text-3xs text-muted-foreground whitespace-nowrap">
-                          {detail.localidad || "CAPITAL"}
+                          {!isHospitalUser && isManualRow ? (
+                            <Input
+                              type="text"
+                              placeholder="Localidad"
+                              disabled={isHospitalUser || saving}
+                              value={editState.localidad ?? detail.localidad ?? "CAPITAL"}
+                              onChange={(e) => handleDetailInputChange(detail.id, "localidad", e.target.value)}
+                              className="w-24 h-8 text-3xs bg-background border-border"
+                            />
+                          ) : (
+                            detail.localidad || "CAPITAL"
+                          )}
                         </TableCell>
                         <TableCell className="font-mono text-3xs text-muted-foreground whitespace-nowrap">
-                          {detail.periodo || liq.mesCarga || "-"}
+                          {!isHospitalUser && isManualRow ? (
+                            <Input
+                              type="text"
+                              placeholder={liq.mesCarga || "oct-25"}
+                              disabled={isHospitalUser || saving}
+                              value={editState.periodo ?? detail.periodo ?? liq.mesCarga ?? ""}
+                              onChange={(e) => handleDetailInputChange(detail.id, "periodo", e.target.value)}
+                              className="w-20 h-8 text-3xs font-mono bg-background border-border"
+                            />
+                          ) : (
+                            detail.periodo || liq.mesCarga || "-"
+                          )}
                         </TableCell>
                         <TableCell className="font-mono text-3xs font-semibold whitespace-nowrap">
-                          {detail.fcHospital || `FC-${detail.compraId || ""}`}
+                          {!isHospitalUser && isManualRow ? (
+                            <Input
+                              type="text"
+                              placeholder="FC-0001-00012345"
+                              disabled={isHospitalUser || saving}
+                              value={editState.fcHospital ?? detail.fcHospital ?? ""}
+                              onChange={(e) => handleDetailInputChange(detail.id, "fcHospital", e.target.value)}
+                              className="w-32 h-8 text-3xs font-mono font-semibold bg-background border-border"
+                            />
+                          ) : (
+                            detail.fcHospital || `FC-${detail.compraId || ""}`
+                          )}
                         </TableCell>
 
                         {/* TOTAL FACTURADO */}
@@ -1419,6 +1580,23 @@ export default function LiquidationDetailClient({
                         <TableCell className="text-right font-extrabold text-2xs px-2 py-1 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 rounded">
                           {formatCurrency(neto)}
                         </TableCell>
+
+                        {/* ACCIONES (ELIMINAR) */}
+                        {!isHospitalUser && (
+                          <TableCell className="text-center px-1 py-1">
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleRemoveDetail(detail.id)}
+                              disabled={saving}
+                              className="h-7 w-7 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 cursor-pointer"
+                              title="Eliminar factura"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })
@@ -1426,6 +1604,25 @@ export default function LiquidationDetailClient({
               </TableBody>
             </Table>
           </div>
+
+          {/* BARRA INFERIOR DE ACCIONES DE FACTURA (AGREGAR MANUAL) */}
+          {!isHospitalUser && (
+            <div className="p-3 border-t border-border/80 bg-muted/20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleAddManualDetail}
+                disabled={saving}
+                className="border-dashed border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-sm"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Agregar Factura Manualmente
+              </Button>
+              <span className="text-3xs text-muted-foreground font-mono">
+                {liq.details?.length || 0} factura(s) en esta liquidación
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 

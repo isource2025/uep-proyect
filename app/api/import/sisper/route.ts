@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
+import { isUserAdmin } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import * as XLSX from "xlsx";
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user || !isUserAdmin((session.user as any).role)) {
+      return NextResponse.json({ error: "Acceso denegado. Solo administradores pueden importar datos." }, { status: 403 });
+    }
+
     const formData = await req.formData();
     const file = formData.get("file") as File;
     if (!file) {

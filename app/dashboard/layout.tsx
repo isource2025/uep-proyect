@@ -53,7 +53,7 @@ export default async function DashboardLayout({
     ? "MEDICO"
     : isHospital
     ? "HOSPITAL"
-    : primaryRoleConfig?.shortCode || "OPERADOR";
+    : primaryRoleConfig?.shortCode || "LIQUIDADOR";
 
   return (
     <DashboardProvider>

@@ -1,3 +1,6 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -16,7 +19,7 @@ import { SearchBar } from "@/components/search-bar";
 import { cn } from "@/lib/utils";
 import { CreateUserModal, EditUserModal } from "./create-user-modal";
 import { toggleUserStatusAction } from "./actions";
-import { parseUserRoleIds, getUserRoleConfig, getUserRoleBadge } from "@/lib/constants";
+import { parseUserRoleIds, getUserRoleConfig, getUserRoleBadge, isUserAdmin } from "@/lib/constants";
 
 export const revalidate = 0;
 
@@ -25,6 +28,11 @@ export default async function UsersPage({
 }: {
   searchParams: Promise<{ query?: string }>;
 }) {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user || !isUserAdmin((session.user as any).role)) {
+    redirect("/dashboard");
+  }
+
   const resolvedSearchParams = await searchParams;
   const query = resolvedSearchParams.query || "";
 

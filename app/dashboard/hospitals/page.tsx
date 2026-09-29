@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Building2, Plus, ShieldCheck, MapPin } from "lucide-react";
 import { SearchBar } from "@/components/search-bar";
+import { isUserAdmin } from "@/lib/constants";
 
 export const revalidate = 0;
 
@@ -24,6 +27,9 @@ export default async function HospitalsPage({
 }: {
   searchParams: Promise<{ query?: string }>;
 }) {
+  const session = await auth.api.getSession({ headers: await headers() });
+  const isAdmin = isUserAdmin((session?.user as any)?.role);
+
   const resolvedSearchParams = await searchParams;
   const query = resolvedSearchParams.query || "";
 
@@ -40,9 +46,14 @@ export default async function HospitalsPage({
     orderBy: { descripcion: "asc" },
   });
 
-  // Server Action to add a hospital (Empresa)
+  // Server Action to add a hospital (Empresa) - ADMIN ONLY
   const handleCreateHospital = async (formData: FormData) => {
     "use server";
+    const currentSession = await auth.api.getSession({ headers: await headers() });
+    if (!isUserAdmin((currentSession?.user as any)?.role)) {
+      throw new Error("Acceso denegado. Solo los administradores pueden crear hospitales.");
+    }
+
     const name = formData.get("name") as string;
     const localidad = formData.get("localidad") as string;
     const cuitStr = formData.get("cuit") as string;
@@ -80,64 +91,69 @@ export default async function HospitalsPage({
           </p>
         </div>
 
-        {/* Create Hospital Modal */}
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold gap-1.5 self-start md:self-auto h-10 transition-all cursor-pointer">
-              <Plus className="h-4.5 w-4.5" />
-              Nuevo Hospital
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="border-border bg-card text-card-foreground max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-foreground font-bold">Registrar Hospital / CAPS</DialogTitle>
-              <DialogDescription className="text-muted-foreground text-xs">
-                Crea un nuevo establecimiento en EMPRESAS para asociar facturaciones y distribuir honorarios médicos.
-              </DialogDescription>
-            </DialogHeader>
-            <form action={handleCreateHospital} className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-foreground">
-                  Nombre del Establecimiento
-                </Label>
-                <Input
-                  id="name"
-                  name="name"
-                  placeholder="Hospital Escuela José R. Vidal"
-                  required
-                  className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="localidad" className="text-foreground">
-                  Localidad
-                </Label>
-                <Input
-                  id="localidad"
-                  name="localidad"
-                  placeholder="Capital / Goya / Paso de los Libres"
-                  className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cuit" className="text-foreground">
-                  Nro CUIT
-                </Label>
-                <Input
-                  id="cuit"
-                  name="cuit"
-                  placeholder="30123456789"
-                  className="bg-muted/40 border-border text-foreground placeholder-muted-foreground focus-visible:ring-emerald-500"
-                />
-              </div>
-              <DialogFooter className="pt-4">
-                <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold h-10 cursor-pointer">
-                  Guardar Establecimiento
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {/* Create Hospital Modal (Admin Only) */}
+        {isAdmin && (
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold gap-1.5 self-start md:self-auto h-10 transition-all cursor-pointer">
+                <Plus className="h-4.5 w-4.5" />
+                Nuevo Hospital
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="border-border bg-card text-card-foreground max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-foreground font-bold">Registrar Hospital / CAPS</DialogTitle>
+                <DialogDescription className="text-muted-foreground text-xs">
+                  Crea un nuevo establecimiento en EMPRESAS para asociar facturaciones y distribuir honorarios médicos.
+                </DialogDescription>
+              </DialogHeader>
+              <form action={handleCreateHospital} className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-foreground">
+                    Nombre del Hospital / CAPS *
+                  </Label>
+                  <Input
+                    id="name"
+                    name="name"
+                    placeholder="Ej. HOSPITAL CENTRAL"
+                    required
+                    className="border-border bg-background"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="localidad" className="text-foreground">
+                    Localidad
+                  </Label>
+                  <Input
+                    id="localidad"
+                    name="localidad"
+                    placeholder="Ej. POSADAS"
+                    className="border-border bg-background"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cuit" className="text-foreground">
+                    CUIT (Opcional)
+                  </Label>
+                  <Input
+                    id="cuit"
+                    name="cuit"
+                    placeholder="Ej. 30123456789"
+                    className="border-border bg-background"
+                  />
+                </div>
+                <DialogFooter className="pt-2">
+                  <Button
+                    type="submit"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-semibold cursor-pointer"
+                  >
+                    Guardar Hospital
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Search & List Card */}

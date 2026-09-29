@@ -33,9 +33,9 @@ export const USER_ROLES: Record<string, UserRoleConfig> = {
   },
   "3": {
     id: "3",
-    name: "Operador UEP / Liquidador",
-    shortCode: "OPERADOR",
-    description: "Operador de la Unidad Ejecutora Provincial. Genera liquidaciones y administra débitos.",
+    name: "Liquidador",
+    shortCode: "LIQUIDADOR",
+    description: "Operador liquidador de la Unidad Ejecutora Provincial. Genera liquidaciones y administra débitos.",
     badgeClasses: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25",
   },
   "4": {

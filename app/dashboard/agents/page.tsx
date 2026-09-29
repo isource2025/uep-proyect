@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { serializeData } from "@/lib/utils";
+import { isUserAdmin, isUserHospital } from "@/lib/constants";
 import { fetchAgentsData } from "./actions";
 import AgentsClient from "./agents-client";
 
@@ -15,7 +16,15 @@ export default async function AgentsPage() {
   }
 
   const user = session.user as any;
-  const isHospitalUser = user.role !== "1";
+  const isAdmin = isUserAdmin(user.role);
+  const isHospital = isUserHospital(user.role, user.hospitalId);
+
+  // Non-admins and non-hospitals (e.g. Liquidadores) are forbidden from the agents panel
+  if (!isAdmin && !isHospital) {
+    redirect("/dashboard");
+  }
+
+  const isHospitalUser = !isAdmin;
 
   let targetEmpresaId: number | undefined = undefined;
 

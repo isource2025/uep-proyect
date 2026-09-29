@@ -1,8 +1,10 @@
 "use server";
 
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { isUserAdmin } from "@/lib/constants";
 
 export type UserActionResult = {
   success?: boolean;
@@ -22,6 +24,10 @@ export type UserActionResult = {
 export type CreateUserResult = UserActionResult;
 
 export async function createUserAction(formData: FormData): Promise<UserActionResult> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user || !isUserAdmin((session.user as any).role)) {
+    return { error: "Acceso denegado. Solo los administradores pueden registrar usuarios." };
+  }
   const name = (formData.get("name") as string || "").trim();
   const email = (formData.get("email") as string || "").trim();
   const password = (formData.get("password") as string || "");
@@ -180,6 +186,10 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
 }
 
 export async function updateUserAction(formData: FormData): Promise<UserActionResult> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user || !isUserAdmin((session.user as any).role)) {
+    return { error: "Acceso denegado. Solo los administradores pueden modificar usuarios." };
+  }
   const userIdStr = (formData.get("userId") as string || "").trim();
   const name = (formData.get("name") as string || "").trim();
   const email = (formData.get("email") as string || "").trim();
@@ -382,6 +392,10 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
 }
 
 export async function toggleUserStatusAction(formData: FormData): Promise<void> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user || !isUserAdmin((session.user as any).role)) {
+    return;
+  }
   const userIdStr = formData.get("userId") as string;
   const currentEstadoStr = formData.get("currentEstado") as string;
   if (!userIdStr) return;

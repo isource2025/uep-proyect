@@ -39,33 +39,41 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
   const isAdmin = userRoles.includes("1");
   const isHospitalUser = !isAdmin && user?.hospitalId !== undefined && user?.hospitalId !== null;
 
-  // Submenu items under Configuración
+  // Submenu items under Configuración filtered by permissions
   const configSubItems = [
-    {
-      name: "Usuarios",
-      href: "/dashboard/users",
-      icon: UserCog,
-    },
+    ...(isAdmin
+      ? [
+          {
+            name: "Usuarios",
+            href: "/dashboard/users",
+            icon: UserCog,
+          },
+        ]
+      : []),
     {
       name: "Hospitales",
       href: "/dashboard/hospitals",
       icon: Building2,
     },
-    {
-      name: "Agentes",
-      href: "/dashboard/agents",
-      icon: Users,
-    },
-    {
-      name: "Importar Datos",
-      href: "/dashboard/import",
-      icon: UploadCloud,
-    },
-    {
-      name: "Consolidación",
-      href: "/dashboard/consolidation",
-      icon: FileDown,
-    },
+    ...(isAdmin
+      ? [
+          {
+            name: "Agentes",
+            href: "/dashboard/agents",
+            icon: Users,
+          },
+          {
+            name: "Importar Datos",
+            href: "/dashboard/import",
+            icon: UploadCloud,
+          },
+          {
+            name: "Consolidación",
+            href: "/dashboard/consolidation",
+            icon: FileDown,
+          },
+        ]
+      : []),
   ];
 
   const isConfigActive = configSubItems.some((sub) => pathname.startsWith(sub.href));

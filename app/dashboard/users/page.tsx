@@ -19,7 +19,7 @@ import { SearchBar } from "@/components/search-bar";
 import { cn } from "@/lib/utils";
 import { CreateUserModal, EditUserModal } from "./create-user-modal";
 import { toggleUserStatusAction } from "./actions";
-import { parseUserRoleIds, getUserRoleConfig, getUserRoleBadge, isUserAdmin } from "@/lib/constants";
+import { parseUserRoleIds, getUserRoleConfig, getUserRoleBadge, isUserAdmin, USER_ROLES } from "@/lib/constants";
 
 export const revalidate = 0;
 
@@ -57,13 +57,11 @@ export default async function UsersPage({
   const activeCount = users.filter((u) => u.estado !== 0).length;
   const inactiveCount = users.filter((u) => u.estado === 0).length;
 
-  // Fetch roles for display
-  const roles = await prisma.imRol.findMany({
-    where: { activo: true },
-    select: { id: true, nombre: true },
-    orderBy: { nombre: "asc" },
-  });
-  const roleMap = new Map(roles.map((r) => [String(r.id), r.nombre]));
+  // Centralized roles from lib/constants/user-roles.ts
+  const roles = Object.values(USER_ROLES).map((r) => ({
+    id: parseInt(r.id, 10),
+    nombre: r.name,
+  }));
 
   // Fetch intermediate relation imPersonalEmpresas
   const [empresas, personalEmpresas] = await Promise.all([
@@ -228,7 +226,7 @@ export default async function UsersPage({
                               }
                               return userRoles.map((roleId) => {
                                 const config = getUserRoleConfig(roleId);
-                                const roleName = roleMap.get(roleId) || config.name;
+                                const roleName = config.name;
                                 return (
                                   <span
                                     key={roleId}

@@ -26,7 +26,7 @@ import {
   Check,
 } from "lucide-react";
 import { createUserAction, updateUserAction } from "./actions";
-import { getUserRoleConfig } from "@/lib/constants";
+import { getUserRoleConfig, USER_ROLES } from "@/lib/constants";
 
 export interface RoleOption {
   id: number;
@@ -51,7 +51,7 @@ export interface UserFormData {
 interface UserModalProps {
   mode?: "create" | "edit";
   user?: UserFormData | null;
-  roles: RoleOption[];
+  roles?: RoleOption[];
   hospitals: HospitalOption[];
   trigger?: React.ReactNode;
 }
@@ -350,15 +350,14 @@ export function UserModal({
                     fieldErrors.role ? "border-red-500/70 bg-red-500/5" : "border-border"
                   }`}
                 >
-                  {roles.map((r) => {
-                    const isSelected = selectedRoles.includes(String(r.id));
-                    const roleConfig = getUserRoleConfig(r.id);
+                  {Object.values(USER_ROLES).map((roleConfig) => {
+                    const isSelected = selectedRoles.includes(String(roleConfig.id));
                     return (
                       <button
-                        key={r.id}
+                        key={roleConfig.id}
                         type="button"
                         title={roleConfig.description}
-                        onClick={() => toggleRole(String(r.id))}
+                        onClick={() => toggleRole(String(roleConfig.id))}
                         className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer select-none ${
                           isSelected
                             ? "bg-emerald-500/15 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs"
@@ -374,7 +373,7 @@ export function UserModal({
                         >
                           {isSelected && <Check className="h-3 w-3 stroke-[3]" />}
                         </div>
-                        <span className="truncate">{r.nombre}</span>
+                        <span className="truncate">{roleConfig.name}</span>
                       </button>
                     );
                   })}

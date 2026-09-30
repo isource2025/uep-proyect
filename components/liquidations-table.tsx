@@ -17,6 +17,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Receipt,
   Eye,
   CheckCircle2,
@@ -26,6 +33,7 @@ import {
   User,
   MessageSquare,
   Building2,
+  MoreVertical,
 } from "lucide-react";
 import { getLiquidationStatusConfig, getLiquidationStatusBadge } from "@/lib/constants";
 
@@ -213,28 +221,27 @@ export function LiquidationsTable({
           <Table className="w-full">
             <TableHeader className="bg-muted/50 text-muted-foreground">
               <TableRow className="hover:bg-transparent border-border">
-                <TableHead className="font-semibold text-xs py-3 w-[100px]">LIQ. N°</TableHead>
+                <TableHead className="font-semibold text-xs py-3 w-[90px]">LIQ. N°</TableHead>
                 {isHospitalUser ? (
                   <>
                     <TableHead className="font-semibold text-xs min-w-[200px]">Obra Social (Cliente)</TableHead>
-                    <TableHead className="font-semibold text-xs w-[130px]">Período</TableHead>
-                    <TableHead className="font-semibold text-xs w-[130px]">Recibo (RC)</TableHead>
-                    <TableHead className="font-semibold text-xs text-right w-[140px]">Neto Inicial</TableHead>
-                    <TableHead className="font-semibold text-xs text-right w-[140px]">Neto Final</TableHead>
-                    <TableHead className="font-semibold text-xs text-right w-[140px]">Distribuido</TableHead>
+                    <TableHead className="font-semibold text-xs w-[120px]">Período</TableHead>
+                    <TableHead className="font-semibold text-xs w-[120px]">Recibo (RC)</TableHead>
+                    <TableHead className="font-semibold text-xs text-right w-[130px]">Neto Inicial</TableHead>
+                    <TableHead className="font-semibold text-xs text-right w-[130px]">Neto Final</TableHead>
+                    <TableHead className="font-semibold text-xs text-right w-[130px]">Distribuido</TableHead>
                   </>
                 ) : (
                   <>
-                    <TableHead className="font-semibold text-xs min-w-[220px]">Obra Social (Cliente)</TableHead>
-                    <TableHead className="font-semibold text-xs min-w-[140px]">Facturas de Venta</TableHead>
-                    <TableHead className="font-semibold text-xs w-[130px]">Recibo UEP</TableHead>
-                    <TableHead className="font-semibold text-xs text-right w-[140px]">Neto Inicial</TableHead>
-                    <TableHead className="font-semibold text-xs text-right w-[140px]">Neto a Pagar</TableHead>
-                    <TableHead className="font-semibold text-xs text-center w-[120px]">Débitos PDF</TableHead>
+                    <TableHead className="font-semibold text-xs min-w-[200px]">Obra Social (Cliente)</TableHead>
+                    <TableHead className="font-semibold text-xs w-[135px]">Facturas de Venta</TableHead>
+                    <TableHead className="font-semibold text-xs w-[120px]">Recibo UEP</TableHead>
+                    <TableHead className="font-semibold text-xs text-right w-[130px]">Neto Inicial</TableHead>
+                    <TableHead className="font-semibold text-xs text-right w-[130px]">Neto a Pagar</TableHead>
                   </>
                 )}
-                <TableHead className="font-semibold text-xs text-center w-[120px]">Estado</TableHead>
-                <TableHead className="font-semibold text-xs text-right w-[140px]">Acciones</TableHead>
+                <TableHead className="font-semibold text-xs text-center w-[110px]">Estado</TableHead>
+                <TableHead className="font-semibold text-xs text-right w-[95px]">Acciones</TableHead>
               </TableRow>
             </TableHeader>
 
@@ -242,7 +249,7 @@ export function LiquidationsTable({
               {displayList.length === 0 ? (
                 <TableRow className="border-border">
                   <TableCell
-                    colSpan={isHospitalUser ? 9 : 9}
+                    colSpan={isHospitalUser ? 9 : 8}
                     className="text-center text-muted-foreground text-sm py-12"
                   >
                     <div className="flex flex-col items-center gap-2">
@@ -287,10 +294,33 @@ export function LiquidationsTable({
                     }
                   }
 
+                  const isEnteringCurrent = enteringDetailsId === liq.id;
+                  const isEnteringAny = enteringDetailsId !== null;
+
                   return (
-                    <TableRow key={liq.id} className="hover:bg-muted/40 border-border text-foreground transition-colors">
+                    <TableRow
+                      key={liq.id}
+                      onClick={() => {
+                        if (isEnteringAny) return;
+                        setEnteringDetailsId(liq.id);
+                        router.push(`/dashboard/liquidations/${liq.id}`);
+                      }}
+                      className={cn(
+                        "border-border text-foreground transition-colors",
+                        isEnteringCurrent
+                          ? "bg-emerald-500/15 border-emerald-500/30 cursor-wait"
+                          : isEnteringAny
+                          ? "opacity-50 cursor-not-allowed pointer-events-none"
+                          : "hover:bg-muted/50 cursor-pointer"
+                      )}
+                    >
                       <TableCell className="font-mono text-xs font-bold text-foreground py-3.5 whitespace-nowrap">
-                        LIQ-{String(liq.id).padStart(4, "0")}
+                        <div className="flex items-center gap-1.5">
+                          {isEnteringCurrent && (
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500 shrink-0" />
+                          )}
+                          <span>LIQ-{String(liq.id).padStart(4, "0")}</span>
+                        </div>
                       </TableCell>
 
                       {isHospitalUser ? (
@@ -330,8 +360,10 @@ export function LiquidationsTable({
                                   <div className="relative group inline-block">
                                     <button
                                       type="button"
+                                      disabled={isEnteringAny}
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        if (isEnteringAny) return;
                                         setSelectedObs({
                                           id: liq.id,
                                           title: `LIQ-${String(liq.id).padStart(4, "0")}`,
@@ -340,7 +372,10 @@ export function LiquidationsTable({
                                           text: liq.observaciones,
                                         });
                                       }}
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold cursor-pointer hover:bg-amber-500/20 active:scale-95 transition-all"
+                                      className={cn(
+                                        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold transition-all",
+                                        isEnteringAny ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer hover:bg-amber-500/20 active:scale-95"
+                                      )}
                                       title="Ver observaciones"
                                     >
                                       <MessageSquare className="h-3 w-3" />
@@ -400,21 +435,6 @@ export function LiquidationsTable({
                           <TableCell className="text-right text-xs font-mono tabular-nums font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                             {formatCurrency(netoFinal)}
                           </TableCell>
-                          <TableCell className="text-center whitespace-nowrap">
-                            {liq.debitsFileUrl ? (
-                              <a
-                                href={liq.debitsFileUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-2xs text-emerald-600 hover:underline font-semibold"
-                              >
-                                <FileText className="h-3.5 w-3.5" />
-                                Ver PDF
-                              </a>
-                            ) : (
-                              <span className="text-2xs text-muted-foreground">Sin adjunto</span>
-                            )}
-                          </TableCell>
                         </>
                       )}
 
@@ -431,7 +451,7 @@ export function LiquidationsTable({
                       </TableCell>
 
                       {/* Acciones */}
-                      <TableCell className="text-right whitespace-nowrap">
+                      <TableCell className="text-right whitespace-nowrap py-2.5" onClick={(e) => e.stopPropagation()}>
                         {(() => {
                           const isDistributedOrClosed =
                             liq.status === "DISTRIBUIDA" ||
@@ -446,63 +466,9 @@ export function LiquidationsTable({
                             : liq.status === "PENDIENTE";
 
                           return (
-                            <div className="flex items-center justify-end gap-2">
-                              {isHospitalUser ? (
-                                <>
-                                  {/* Debits PDF Download */}
-                                  {liq.debitsFileUrl && (
-                                    <a href={liq.debitsFileUrl} target="_blank" rel="noopener noreferrer" download>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 font-semibold gap-1.5 h-8 text-xs cursor-pointer"
-                                      >
-                                        <FileDown className="h-3.5 w-3.5" />
-                                        Débitos PDF
-                                      </Button>
-                                    </a>
-                                  )}
-
-                                  {/* Direct Detail link */}
-                                  <Link href={`/dashboard/liquidations/${liq.id}`}>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="text-xs gap-1.5 h-8 border border-border hover:bg-muted cursor-pointer font-bold text-foreground"
-                                    >
-                                      <Eye className="h-3.5 w-3.5 text-emerald-500" />
-                                      {canEdit ? "Ver / Editar" : "Ver"}
-                                    </Button>
-                                  </Link>
-                                </>
-                              ) : (
-                                <>
-                                  {/* Admin Actions */}
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => {
-                                      setEnteringDetailsId(liq.id);
-                                      router.push(`/dashboard/liquidations/${liq.id}`);
-                                    }}
-                                    disabled={enteringDetailsId !== null || notifyingIds.includes(liq.id)}
-                                    className="text-xs gap-1 h-8 border border-border hover:bg-muted cursor-pointer font-bold text-foreground"
-                                  >
-                                    {enteringDetailsId === liq.id ? (
-                                      <>
-                                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
-                                        Entrando...
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Eye className="h-3.5 w-3.5 text-emerald-500" />
-                                        {canEdit ? "Ver / Editar" : "Ver"}
-                                      </>
-                                    )}
-                                  </Button>
-
-                              {/* Hospital distribution progress button (e.g. 4/10) */}
-                              {(() => {
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Hospital distribution progress button (QUEDA AFUERA) */}
+                              {!isHospitalUser && (() => {
                                 const details = liq.details || [];
                                 const distributions = liq.distributions || [];
                                 const personalDistributions = liq.personalDistributions || [];
@@ -598,8 +564,10 @@ export function LiquidationsTable({
                                   <div className="relative group inline-block">
                                     <button
                                       type="button"
+                                      disabled={isEnteringAny}
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        if (isEnteringAny) return;
                                         setSelectedHospitalProgress({
                                           id: liq.id,
                                           title: `LIQ-${String(liq.id).padStart(4, "0")}`,
@@ -610,13 +578,17 @@ export function LiquidationsTable({
                                           pending,
                                         });
                                       }}
-                                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-bold cursor-pointer transition-all active:scale-95 h-8 ${
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-bold transition-all h-8",
+                                        isEnteringAny
+                                          ? "opacity-50 cursor-not-allowed pointer-events-none"
+                                          : "cursor-pointer active:scale-95",
                                         completed === total
                                           ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25 hover:bg-teal-500/20"
                                           : completed > 0
                                           ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25 hover:bg-purple-500/20"
                                           : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25 hover:bg-amber-500/20"
-                                      }`}
+                                      )}
                                       title="Ver progreso de distribución por hospital"
                                     >
                                       <Building2 className="h-3.5 w-3.5 shrink-0" />
@@ -668,56 +640,88 @@ export function LiquidationsTable({
                                 );
                               })()}
 
-                              {/* Notificación Inicial (PENDIENTE) */}
-                              {liq.status === "PENDIENTE" && onNotifyHospital && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => onNotifyHospital(liq.id)}
-                                  disabled={notifyingIds.includes(liq.id)}
-                                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1 text-xs h-8 cursor-pointer shadow-xs"
-                                >
-                                  {notifyingIds.includes(liq.id) ? (
-                                    <>
-                                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                      Notificando...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <CheckCircle2 className="h-3.5 w-3.5" />
-                                      Notificar Hospital
-                                    </>
-                                  )}
-                                </Button>
-                              )}
+                              {/* Dropdown Menu de Acciones */}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={isEnteringAny || notifyingIds.includes(liq.id)}
+                                    className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted border border-border/60 rounded-md cursor-pointer transition-colors"
+                                    title="Opciones de liquidación"
+                                  >
+                                    {enteringDetailsId === liq.id ? (
+                                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
+                                    ) : notifyingIds.includes(liq.id) ? (
+                                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-500" />
+                                    ) : (
+                                      <MoreVertical className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-52 bg-popover text-popover-foreground border-border shadow-md p-1">
+                                  {/* Opción Ver / Editar */}
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      if (isEnteringAny) return;
+                                      setEnteringDetailsId(liq.id);
+                                      router.push(`/dashboard/liquidations/${liq.id}`);
+                                    }}
+                                    disabled={isEnteringAny}
+                                    className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md hover:bg-accent hover:text-accent-foreground"
+                                  >
+                                    <Eye className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                    <span>{canEdit ? "Ver / Editar Liquidación" : "Ver Liquidación"}</span>
+                                  </DropdownMenuItem>
 
-                              {/* Notificación Rectificatoria (Solo Administradores cuando la liquidación tenga rectificación pendiente de notificar) */}
-                              {(liq.status === "RECTIFICADA_PENDIENTE" || liq.status === "MODIFICADA") && isAdmin && onNotifyHospital && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => onNotifyHospital(liq.id)}
-                                  disabled={notifyingIds.includes(liq.id)}
-                                  title="Notificar rectificación de montos a los efectores sanitarios"
-                                  className="bg-amber-600 hover:bg-amber-500 text-zinc-950 font-bold gap-1 text-xs h-8 cursor-pointer shadow-xs"
-                                >
-                                  {notifyingIds.includes(liq.id) ? (
+                                  {/* Opción Notificar Hospital (si PENDIENTE) */}
+                                  {!isHospitalUser && liq.status === "PENDIENTE" && onNotifyHospital && (
+                                    <DropdownMenuItem
+                                      onClick={() => onNotifyHospital(liq.id)}
+                                      disabled={notifyingIds.includes(liq.id)}
+                                      className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 focus:bg-blue-500/10"
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                      <span>Notificar Hospital</span>
+                                    </DropdownMenuItem>
+                                  )}
+
+                                  {/* Opción Notificar Rectificación (si RECTIFICADA_PENDIENTE) */}
+                                  {!isHospitalUser && (liq.status === "RECTIFICADA_PENDIENTE" || liq.status === "MODIFICADA") && isAdmin && onNotifyHospital && (
+                                    <DropdownMenuItem
+                                      onClick={() => onNotifyHospital(liq.id)}
+                                      disabled={notifyingIds.includes(liq.id)}
+                                      className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 focus:bg-amber-500/10"
+                                    >
+                                      <RefreshCw className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                      <span>Notificar Rectificación</span>
+                                    </DropdownMenuItem>
+                                  )}
+
+                                  {/* Opción Ver Débitos PDF */}
+                                  {liq.debitsFileUrl && (
                                     <>
-                                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                                      Rectificando...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <RefreshCw className="h-3.5 w-3.5" />
-                                      Notificar Rectificación
+                                      <DropdownMenuSeparator className="my-1 bg-border/60" />
+                                      <DropdownMenuItem asChild>
+                                        <a
+                                          href={liq.debitsFileUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          download
+                                          className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-red-600 dark:text-red-400 hover:bg-red-500/10 focus:bg-red-500/10 w-full"
+                                        >
+                                          <FileDown className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                                          <span>Ver Débitos PDF</span>
+                                        </a>
+                                      </DropdownMenuItem>
                                     </>
                                   )}
-                                </Button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </TableCell>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          );
+                        })()}
+                      </TableCell>
                     </TableRow>
                   );
                 })

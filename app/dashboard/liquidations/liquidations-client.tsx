@@ -29,9 +29,10 @@ interface LiquidationsClientPageProps {
     pendingRcs: any[];
     totalPendingRcsCount: number;
   };
+  isAdmin?: boolean;
 }
 
-export default function LiquidationsClientPage({ initialData }: LiquidationsClientPageProps) {
+export default function LiquidationsClientPage({ initialData, isAdmin = false }: LiquidationsClientPageProps) {
   const router = useRouter();
   const [data, setData] = useState(initialData);
   const [totalCount, setTotalCount] = useState(initialData.totalLiquidationsCount);
@@ -51,16 +52,24 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
     setErrorMsg("");
     setSuccessMsg("");
     try {
+      const targetLiq = data.liquidations.find((l) => l.id === id);
+      const isRect = targetLiq && targetLiq.status !== "PENDIENTE";
+      const newStatus = isRect ? "RECTIFICADA" : "NOTIFICADO";
+
       const res = await notifyHospital(id);
       if (res.error) {
         setErrorMsg(res.error);
         return;
       }
-      setSuccessMsg("Hospitales notificados y correo simulado enviado con éxito.");
+      setSuccessMsg(
+        isRect
+          ? "Liquidación rectificada y notificación enviada a los hospitales con éxito."
+          : "Hospitales notificados y correo simulado enviado con éxito."
+      );
       setData((prev) => ({
         ...prev,
         liquidations: prev.liquidations.map((l) =>
-          l.id === id ? { ...l, status: "NOTIFICADO" } : l
+          l.id === id ? { ...l, status: newStatus } : l
         ),
       }));
     } catch (e: any) {
@@ -420,6 +429,7 @@ export default function LiquidationsClientPage({ initialData }: LiquidationsClie
       <LiquidationsTable
         liquidations={paginatedLiquidations}
         isHospitalUser={false}
+        isAdmin={isAdmin}
         onNotifyHospital={handleNotifyHospital}
         notifyingIds={notifyingIds}
         isLoading={isLoading}

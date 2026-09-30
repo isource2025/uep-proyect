@@ -137,9 +137,16 @@ export function UserModal({
   const toggleRole = (roleIdStr: string) => {
     setSelectedRoles((prev) => {
       const exists = prev.includes(roleIdStr);
-      const updated = exists
-        ? prev.filter((id) => id !== roleIdStr)
-        : [...prev, roleIdStr];
+      if (exists) {
+        return prev.filter((id) => id !== roleIdStr);
+      }
+      let updated = [...prev, roleIdStr];
+      // Restricción de incompatibilidad: Admin (1) y Liquidador (3) no pueden coexistir
+      if (roleIdStr === "1") {
+        updated = updated.filter((id) => id !== "3");
+      } else if (roleIdStr === "3") {
+        updated = updated.filter((id) => id !== "1");
+      }
       return updated;
     });
     clearFieldError("role");

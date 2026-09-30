@@ -81,6 +81,8 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
   // 4. Validar Rol
   if (!role || allRoles.length === 0) {
     fieldErrors.role = "Debe seleccionar al menos un rol para el operador.";
+  } else if (allRoles.includes("1") && allRoles.includes("3")) {
+    fieldErrors.role = "Un usuario no puede ser Administrador General y Liquidador simultáneamente.";
   }
 
   // 5. Validar Código de Operador
@@ -254,6 +256,8 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
   // 4. Validar Rol
   if (!role || allRoles.length === 0) {
     fieldErrors.role = "Debe seleccionar al menos un rol para el operador.";
+  } else if (allRoles.includes("1") && allRoles.includes("3")) {
+    fieldErrors.role = "Un usuario no puede ser Administrador General y Liquidador simultáneamente.";
   }
 
   // 5. Validar Código de Operador

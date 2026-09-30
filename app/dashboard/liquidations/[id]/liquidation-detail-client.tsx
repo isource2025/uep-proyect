@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -44,9 +44,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { getLiquidationStatusConfig, getLiquidationStatusBadge } from "@/lib/constants";
+import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { updateLiquidationDetails, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions } from "../actions";
+import { updateLiquidationDetails, updateLiquidationObservaciones, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions } from "../actions";
 
 interface LiquidationDetailClientProps {
   liquidation: any;
@@ -73,8 +73,9 @@ export default function LiquidationDetailClient({
   hospitals = [],
 }: LiquidationDetailClientProps) {
   const router = useRouter();
+  const isAdmin = isUserAdmin(currentUser?.role);
   const isHospitalUser =
-    currentUser?.role !== "1" &&
+    !isAdmin &&
     currentUser?.hospitalId !== undefined &&
     currentUser?.hospitalId !== null;
 
@@ -116,8 +117,14 @@ export default function LiquidationDetailClient({
   const [liq, setLiq] = useState(liquidation);
   const [mesCarga, setMesCarga] = useState(liq.mesCarga || "");
   const [observaciones, setObservaciones] = useState(liq.observaciones || "");
+  const [savingObs, setSavingObs] = useState(false);
   const [globalGaPercent, setGlobalGaPercent] = useState("6");
   const [customGlobalGaPercent, setCustomGlobalGaPercent] = useState("");
+
+  const isDistributed = liq.status === "DISTRIBUIDA" || liq.status === "DISTRIBUIDO";
+  const wasNotifiedBefore = liq.status !== "PENDIENTE";
+  const isClosed = liq.status === "CERRADA" || liq.status === "CERRADO";
+  const isLockedForLiquidationEdits = isHospitalUser || (!isAdmin && wasNotifiedBefore) || isClosed || isDistributed;
 
   // Initialise editable detail rows ensuring no negative values (minimum is 0)
   const [editableDetails, setEditableDetails] = useState<any[]>(
@@ -144,6 +151,57 @@ export default function LiquidationDetailClient({
       };
     })
   );
+
+  // Baseline snapshots for tracking if liquidation has been modified
+  const initialDetailsRef = useRef(
+    liq.details.map((d: any) => ({
+      id: d.id,
+      totalFacturado: Math.max(0, Number(d.totalFacturado)),
+      creditos: Math.max(0, Number(d.creditos)),
+      debitos: Math.max(0, Number(d.debitos)),
+      ajustesOs: Number(d.ajustesOs) || 0,
+      pendientesCobro: Math.max(0, Number(d.pendientesCobro)),
+      pagosParcialesAnteriores: Math.max(0, Number(d.pagosParcialesAnteriores || 0)),
+      ga: Math.max(0, Number(d.ga)),
+      ajusteRecupero: Math.max(0, Number(d.ajusteRecupero)),
+    }))
+  );
+  const initialMesCargaRef = useRef(liq.mesCarga || "");
+  const initialObservacionesRef = useRef(liq.observaciones || "");
+  const [hasSavedFinancialModifications, setHasSavedFinancialModifications] = useState(false);
+
+  // Computes whether there are unsaved FINANCIAL modifications (debits, credits, GA, invoices, period)
+  const hasUnsavedFinancialChanges = useMemo(() => {
+    if (deletedDetailIds.length > 0) return true;
+    if ((mesCarga || "") !== initialMesCargaRef.current) return true;
+    if (editableDetails.length !== initialDetailsRef.current.length) return true;
+
+    for (const item of editableDetails) {
+      const orig = initialDetailsRef.current.find((o: any) => o.id === item.id);
+      if (!orig) return true;
+      if (
+        Number(item.totalFacturado || 0) !== orig.totalFacturado ||
+        Number(item.creditos || 0) !== orig.creditos ||
+        Number(item.debitos || 0) !== orig.debitos ||
+        Number(item.ajustesOs || 0) !== orig.ajustesOs ||
+        Number(item.pendientesCobro || 0) !== orig.pendientesCobro ||
+        Number(item.pagosParcialesAnteriores || 0) !== orig.pagosParcialesAnteriores ||
+        Number(item.ga || 0) !== orig.ga ||
+        Number(item.ajusteRecupero || 0) !== orig.ajusteRecupero
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }, [editableDetails, deletedDetailIds, mesCarga]);
+
+  // Overall unsaved changes (including internal observations, so the Save button can save them)
+  const hasUnsavedChanges = useMemo(() => {
+    return hasUnsavedFinancialChanges || ((observaciones || "") !== initialObservacionesRef.current);
+  }, [hasUnsavedFinancialChanges, observaciones]);
+
+  // Only financial modifications warrant a hospital rectification
+  const isFinancialModified = hasUnsavedFinancialChanges || hasSavedFinancialModifications;
 
   // Initialise agents state starting ONLY with previously saved distributions for this liquidation and hospital
   const rawDistributions = (liq.personalDistributions || []).filter((p: any) => {
@@ -544,13 +602,51 @@ export default function LiquidationDetailClient({
         setErrorMsg(res.error);
         return;
       }
+
+      initialDetailsRef.current = editableDetails.map((item) => ({
+        id: item.id,
+        totalFacturado: Number(item.totalFacturado || 0),
+        creditos: Number(item.creditos || 0),
+        debitos: Number(item.debitos || 0),
+        ajustesOs: Number(item.ajustesOs || 0),
+        pendientesCobro: Number(item.pendientesCobro || 0),
+        pagosParcialesAnteriores: Number(item.pagosParcialesAnteriores || 0),
+        ga: Number(item.ga || 0),
+        ajusteRecupero: Number(item.ajusteRecupero || 0),
+      }));
+      initialMesCargaRef.current = mesCarga || "";
+      initialObservacionesRef.current = observaciones || "";
+      if (wasNotifiedBefore && hasUnsavedFinancialChanges) {
+        setHasSavedFinancialModifications(true);
+      }
+      setDeletedDetailIds([]);
+
       setSuccessMsg("Liquidación y facturas guardadas correctamente.");
-      router.push("/dashboard/liquidations");
       router.refresh();
     } catch (e: any) {
       setErrorMsg("Error al guardar los ajustes de liquidación.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveObservacionesOnly = async () => {
+    setSavingObs(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await updateLiquidationObservaciones(liq.id, observaciones);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      initialObservacionesRef.current = observaciones || "";
+      setSuccessMsg("Observaciones internas guardadas correctamente.");
+      router.refresh();
+    } catch (e: any) {
+      setErrorMsg("Error al guardar las observaciones.");
+    } finally {
+      setSavingObs(false);
     }
   };
 
@@ -603,13 +699,60 @@ export default function LiquidationDetailClient({
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
+      const isRect = liq.status !== "PENDIENTE";
+
+      // Si hay cambios pendientes sin guardar antes de rectificar, guardarlos en el servidor
+      if (hasUnsavedChanges) {
+        const parsedDetails = editableDetails.map((item) => ({
+          ...item,
+          totalFacturado: Number(item.totalFacturado || 0),
+          creditos: Number(item.creditos || 0),
+          debitos: Number(item.debitos || 0),
+          ajustesOs: Number(item.ajustesOs || 0),
+          pendientesCobro: Number(item.pendientesCobro || 0),
+          pagosParcialesAnteriores: Number(item.pagosParcialesAnteriores || 0),
+          ga: Number(item.ga || 0),
+          ajusteRecupero: Number(item.ajusteRecupero || 0),
+        }));
+
+        const saveRes = await updateLiquidationDetails(liq.id, parsedDetails, undefined, mesCarga, observaciones, deletedDetailIds);
+        if (saveRes.error) {
+          setErrorMsg(saveRes.error);
+          setNotifying(false);
+          return;
+        }
+      }
+
       const res = await notifyHospital(liq.id);
       if (res.error) {
         setErrorMsg(res.error);
         return;
       }
-      setSuccessMsg("Hospitales notificados y correo simulado enviado con éxito.");
-      setLiq((prev: any) => ({ ...prev, status: "NOTIFICADO" }));
+      const newStatus = isRect ? "RECTIFICADA" : "NOTIFICADO";
+      setSuccessMsg(
+        isRect
+          ? "Liquidación rectificada y notificación enviada a los hospitales con éxito."
+          : "Hospitales notificados y correo simulado enviado con éxito."
+      );
+      setLiq((prev: any) => ({ ...prev, status: newStatus }));
+
+      initialDetailsRef.current = editableDetails.map((item) => ({
+        id: item.id,
+        totalFacturado: Number(item.totalFacturado || 0),
+        creditos: Number(item.creditos || 0),
+        debitos: Number(item.debitos || 0),
+        ajustesOs: Number(item.ajustesOs || 0),
+        pendientesCobro: Number(item.pendientesCobro || 0),
+        pagosParcialesAnteriores: Number(item.pagosParcialesAnteriores || 0),
+        ga: Number(item.ga || 0),
+        ajusteRecupero: Number(item.ajusteRecupero || 0),
+      }));
+      initialMesCargaRef.current = mesCarga || "";
+      initialObservacionesRef.current = observaciones || "";
+      setHasSavedFinancialModifications(false);
+      setDeletedDetailIds([]);
+
+      router.refresh();
     } catch (e: any) {
       setErrorMsg("Error al notificar a los establecimientos.");
     } finally {
@@ -856,7 +999,50 @@ export default function LiquidationDetailClient({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 self-start sm:self-center">
+        <div className="flex items-center gap-2 flex-wrap self-start sm:self-center">
+          {/* BOTÓN NOTIFICAR INICIAL (PENDIENTE) */}
+          {!isHospitalUser && liq.status === "PENDIENTE" && (
+            <Button
+              onClick={handleNotifyHospital}
+              disabled={notifying || saving}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
+            >
+              {notifying ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  Notificando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Notificar Hospital
+                </>
+              )}
+            </Button>
+          )}
+
+          {/* BOTÓN NOTIFICAR RECTIFICACIÓN (Solo Administrador en liquidación ya notificada que fue modificada financieramente y no está distribuida ni cerrada) */}
+          {!isHospitalUser && wasNotifiedBefore && !isDistributed && !isClosed && isAdmin && isFinancialModified && (
+            <Button
+              onClick={handleNotifyHospital}
+              disabled={notifying || saving}
+              title="Notificar rectificación de montos a los efectores sanitarios"
+              className="bg-amber-600 hover:bg-amber-500 text-zinc-950 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs animate-in fade-in"
+            >
+              {notifying ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  Rectificando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Notificar Rectificación
+                </>
+              )}
+            </Button>
+          )}
+
           {liq.debitsFileUrl && (
             <a
               href={liq.debitsFileUrl}
@@ -879,6 +1065,32 @@ export default function LiquidationDetailClient({
           </span>
         </div>
       </div>
+
+      {/* BANNER INFORMATIVO: LIQUIDACIÓN DISTRIBUIDA */}
+      {isDistributed && (
+        <div className="rounded-lg border border-teal-500/30 bg-teal-500/10 p-3.5 text-xs text-teal-800 dark:text-teal-200 flex items-start gap-2.5 shadow-xs animate-fade-in">
+          <CheckCircle2 className="h-4 w-4 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">Liquidación Distribuida</p>
+            <p className="text-3xs text-muted-foreground mt-0.5 leading-relaxed">
+              Esta liquidación ya ha sido distribuida por los establecimientos de salud. No admite modificaciones ni nuevas notificaciones.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* BANNER INFORMATIVO PARA LIQUIDADORES EN LIQUIDACIONES NOTIFICADAS */}
+      {!isHospitalUser && wasNotifiedBefore && !isAdmin && !isDistributed && !isClosed && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2.5 shadow-xs animate-fade-in">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">Liquidación en modo sólo lectura</p>
+            <p className="text-3xs text-muted-foreground mt-0.5 leading-relaxed">
+              Esta liquidación ya fue notificada a los establecimientos de salud (Estado: <strong className="text-foreground">{getLiquidationStatusConfig(liq.status).label}</strong>). Las modificaciones y rectificaciones posteriores están reservadas exclusivamente para los Administradores Generales.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* FEEDBACK MESSAGES */}
       {errorMsg && (
@@ -1037,20 +1249,43 @@ export default function LiquidationDetailClient({
             )}
           </div>
 
-          {/* OBSERVACIONES DEL LIQUIDADOR (Estrictamente uso interno para operadores y administradores) */}
+          {/* OBSERVACIONES DEL LIQUIDADOR (Estrictamente uso interno para operadores y administradores - editable en todos los estados) */}
           {!isHospitalUser && (
             <div className="sm:col-span-4 mt-1 pt-3 border-t border-border/60">
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
                 <Label className="text-[10px] text-muted-foreground uppercase font-bold flex items-center gap-1.5">
                   <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />
                   Observaciones de la Liquidación (Uso Interno)
                 </Label>
-                <span className="text-3xs text-muted-foreground">
-                  Visible únicamente para operadores y administradores
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-3xs text-muted-foreground">
+                    Editable en todos los estados • Exclusivo UEP
+                  </span>
+                  {(observaciones || "") !== initialObservacionesRef.current && (
+                    <Button
+                      size="sm"
+                      type="button"
+                      onClick={handleSaveObservacionesOnly}
+                      disabled={savingObs}
+                      className="h-6 px-2.5 text-3xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold gap-1 cursor-pointer shadow-xs animate-in fade-in"
+                    >
+                      {savingObs ? (
+                        <>
+                          <RefreshCw className="h-3 w-3 animate-spin" />
+                          Guardando...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-3 w-3" />
+                          Guardar Observaciones
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
               </div>
               <textarea
-                disabled={saving}
+                disabled={saving || savingObs}
                 value={observaciones}
                 onChange={(e) => setObservaciones(e.target.value)}
                 placeholder="Escriba notas u observaciones sobre esta liquidación (ej. débitos acordados, acuerdos con la O.S., etc.)..."
@@ -1310,7 +1545,7 @@ export default function LiquidationDetailClient({
                         <TableCell className="font-semibold text-3xs min-w-[170px] max-w-[220px] whitespace-normal break-words py-2">
                           {!isHospitalUser && isManualRow ? (
                             <select
-                              disabled={isHospitalUser || saving}
+                              disabled={isLockedForLiquidationEdits || saving}
                               value={editState.hospitalId ? String(editState.hospitalId) : (detail.hospitalId ? String(detail.hospitalId) : "")}
                               onChange={(e) => {
                                 const val = e.target.value;
@@ -1351,7 +1586,7 @@ export default function LiquidationDetailClient({
                                   }));
                                 }
                               }}
-                              className="w-full h-8 text-2xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                              className="w-full h-8 text-2xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer disabled:opacity-75"
                             >
                               <option value="">-- Seleccionar Hospital --</option>
                               {hospitals.map((h: any) => (
@@ -1369,10 +1604,10 @@ export default function LiquidationDetailClient({
                             <Input
                               type="text"
                               placeholder="CUIT"
-                              disabled={isHospitalUser || saving}
+                              disabled={isLockedForLiquidationEdits || saving}
                               value={editState.cuit ?? detail.cuit ?? ""}
                               onChange={(e) => handleDetailInputChange(detail.id, "cuit", e.target.value)}
-                              className="w-24 h-8 text-3xs font-mono bg-background border-border"
+                              className="w-24 h-8 text-3xs font-mono bg-background border-border disabled:opacity-75"
                             />
                           ) : (
                             detail.hospital?.cuit || detail.cuit || "-"
@@ -1383,10 +1618,10 @@ export default function LiquidationDetailClient({
                             <Input
                               type="text"
                               placeholder="Localidad"
-                              disabled={isHospitalUser || saving}
+                              disabled={isLockedForLiquidationEdits || saving}
                               value={editState.localidad ?? detail.localidad ?? "CAPITAL"}
                               onChange={(e) => handleDetailInputChange(detail.id, "localidad", e.target.value)}
-                              className="w-24 h-8 text-3xs bg-background border-border"
+                              className="w-24 h-8 text-3xs bg-background border-border disabled:opacity-75"
                             />
                           ) : (
                             detail.localidad || "CAPITAL"
@@ -1397,10 +1632,10 @@ export default function LiquidationDetailClient({
                             <Input
                               type="text"
                               placeholder={liq.mesCarga || "oct-25"}
-                              disabled={isHospitalUser || saving}
+                              disabled={isLockedForLiquidationEdits || saving}
                               value={editState.periodo ?? detail.periodo ?? liq.mesCarga ?? ""}
                               onChange={(e) => handleDetailInputChange(detail.id, "periodo", e.target.value)}
-                              className="w-20 h-8 text-3xs font-mono bg-background border-border"
+                              className="w-20 h-8 text-3xs font-mono bg-background border-border disabled:opacity-75"
                             />
                           ) : (
                             detail.periodo || liq.mesCarga || "-"
@@ -1411,10 +1646,10 @@ export default function LiquidationDetailClient({
                             <Input
                               type="text"
                               placeholder="FC-0001-00012345"
-                              disabled={isHospitalUser || saving}
+                              disabled={isLockedForLiquidationEdits || saving}
                               value={editState.fcHospital ?? detail.fcHospital ?? ""}
                               onChange={(e) => handleDetailInputChange(detail.id, "fcHospital", e.target.value)}
-                              className="w-32 h-8 text-3xs font-mono font-semibold bg-background border-border"
+                              className="w-32 h-8 text-3xs font-mono font-semibold bg-background border-border disabled:opacity-75"
                             />
                           ) : (
                             detail.fcHospital || `FC-${detail.compraId || ""}`
@@ -1427,7 +1662,7 @@ export default function LiquidationDetailClient({
                             type="number"
                             step="0.01"
                             min="0"
-                            disabled={isHospitalUser || saving}
+                            disabled={isLockedForLiquidationEdits || saving}
                             value={getInputDisplayValue(editState.totalFacturado)}
                             onChange={(e) => handleDetailInputChange(detail.id, "totalFacturado", e.target.value)}
                             className="w-full text-right h-8 text-2xs bg-background border-border font-semibold focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1440,7 +1675,7 @@ export default function LiquidationDetailClient({
                             type="number"
                             step="0.01"
                             min="0"
-                            disabled={isHospitalUser || saving}
+                            disabled={isLockedForLiquidationEdits || saving}
                             value={getInputDisplayValue(editState.creditos)}
                             onChange={(e) => handleDetailInputChange(detail.id, "creditos", e.target.value)}
                             className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-emerald-600 dark:text-emerald-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1453,7 +1688,7 @@ export default function LiquidationDetailClient({
                             type="number"
                             step="0.01"
                             min="0"
-                            disabled={isHospitalUser || saving}
+                            disabled={isLockedForLiquidationEdits || saving}
                             value={getInputDisplayValue(editState.debitos)}
                             onChange={(e) => handleDetailInputChange(detail.id, "debitos", e.target.value)}
                             className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-red-600 dark:text-red-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1465,7 +1700,7 @@ export default function LiquidationDetailClient({
                           <Input
                             type="number"
                             step="0.01"
-                            disabled={isHospitalUser || saving}
+                            disabled={isLockedForLiquidationEdits || saving}
                             value={getInputDisplayValue(editState.ajustesOs)}
                             onChange={(e) => handleDetailInputChange(detail.id, "ajustesOs", e.target.value)}
                             className={cn(
@@ -1481,7 +1716,7 @@ export default function LiquidationDetailClient({
                             type="number"
                             step="0.01"
                             min="0"
-                            disabled={isHospitalUser || saving}
+                            disabled={isLockedForLiquidationEdits || saving}
                             value={getInputDisplayValue(editState.pendientesCobro)}
                             onChange={(e) => handleDetailInputChange(detail.id, "pendientesCobro", e.target.value)}
                             className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-red-600 dark:text-red-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1494,7 +1729,7 @@ export default function LiquidationDetailClient({
                             type="number"
                             step="0.01"
                             min="0"
-                            disabled={isHospitalUser || saving}
+                            disabled={isLockedForLiquidationEdits || saving}
                             value={getInputDisplayValue(editState.pagosParcialesAnteriores)}
                             onChange={(e) => handleDetailInputChange(detail.id, "pagosParcialesAnteriores", e.target.value)}
                             className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-red-600 dark:text-red-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1525,7 +1760,7 @@ export default function LiquidationDetailClient({
                               <div className="flex flex-col gap-1 min-w-[90px]">
                                 <div className="flex items-center justify-end gap-1">
                                   <select
-                                    disabled={isHospitalUser || saving}
+                                    disabled={isLockedForLiquidationEdits || saving}
                                     value={String(rowGaPercent)}
                                     onChange={(e) => handleGaPercentChange(detail.id, e.target.value)}
                                     className="h-5 text-[10px] bg-muted/70 hover:bg-muted border border-border/80 rounded px-1 text-muted-foreground font-mono font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer disabled:opacity-60"
@@ -1553,7 +1788,7 @@ export default function LiquidationDetailClient({
                                   type="number"
                                   step="0.01"
                                   min="0"
-                                  disabled={isHospitalUser || saving}
+                                  disabled={isLockedForLiquidationEdits || saving}
                                   value={getInputDisplayValue(editState.ga)}
                                   onChange={(e) => handleDetailInputChange(detail.id, "ga", e.target.value)}
                                   className="w-full text-right h-7 text-2xs bg-background border-border font-semibold text-red-600 dark:text-red-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1569,7 +1804,7 @@ export default function LiquidationDetailClient({
                             type="number"
                             step="0.01"
                             min="0"
-                            disabled={isHospitalUser || saving}
+                            disabled={isLockedForLiquidationEdits || saving}
                             value={getInputDisplayValue(editState.ajusteRecupero)}
                             onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", e.target.value)}
                             className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-emerald-600 dark:text-emerald-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -1582,7 +1817,7 @@ export default function LiquidationDetailClient({
                         </TableCell>
 
                         {/* ACCIONES (ELIMINAR) */}
-                        {!isHospitalUser && (
+                        {!isLockedForLiquidationEdits && (
                           <TableCell className="text-center px-1 py-1">
                             <Button
                               type="button"
@@ -1606,7 +1841,7 @@ export default function LiquidationDetailClient({
           </div>
 
           {/* BARRA INFERIOR DE ACCIONES DE FACTURA (AGREGAR MANUAL) */}
-          {!isHospitalUser && (
+          {!isLockedForLiquidationEdits && (
             <div className="p-3 border-t border-border/80 bg-muted/20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
               <Button
                 type="button"
@@ -2433,7 +2668,7 @@ export default function LiquidationDetailClient({
           )}
         </Button>
 
-        {!isHospitalUser && (
+        {!isLockedForLiquidationEdits && (
           <div className="flex gap-2">
             <Button
               onClick={handleSaveDetails}

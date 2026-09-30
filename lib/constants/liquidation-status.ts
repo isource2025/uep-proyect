@@ -41,6 +41,13 @@ export const LIQUIDATION_STATUSES: Record<string, LiquidationStatusConfig> = {
     badgeClasses: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25",
     stepOrder: 4,
   },
+  RECTIFICADA: {
+    key: "RECTIFICADA",
+    label: "Rectificada",
+    description: "Liquidación modificada con posterioridad a la notificación. Notificación rectificatoria enviada a los efectores.",
+    badgeClasses: "bg-amber-600/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+    stepOrder: 4.5,
+  },
   CERRADA: {
     key: "CERRADA",
     label: "Cerrada",
@@ -55,7 +62,7 @@ export type LiquidationStatusKey = keyof typeof LIQUIDATION_STATUSES;
 
 /**
  * Obtiene la configuración visual y descriptiva de un estado de liquidación.
- * Maneja automáticamente variaciones como "EN_PROCESO" y "DISTRIBUIDO".
+ * Maneja automáticamente variaciones como "EN_PROCESO", "DISTRIBUIDO" y "RECTIFICADO".
  */
 export function getLiquidationStatusConfig(status?: string | null): LiquidationStatusConfig {
   if (!status) return LIQUIDATION_STATUSES.PENDIENTE;
@@ -63,6 +70,8 @@ export function getLiquidationStatusConfig(status?: string | null): LiquidationS
   let normalized = status.trim().toUpperCase().replace(/_/g, " ");
   if (normalized === "DISTRIBUIDO") {
     normalized = "DISTRIBUIDA";
+  } else if (normalized === "RECTIFICADO") {
+    normalized = "RECTIFICADA";
   }
 
   return (

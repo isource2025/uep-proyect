@@ -32,6 +32,7 @@ import { getLiquidationStatusConfig, getLiquidationStatusBadge } from "@/lib/con
 export interface LiquidationsTableProps {
   liquidations: any[];
   isHospitalUser?: boolean;
+  isAdmin?: boolean;
   hospitalId?: number;
   hospitalName?: string;
   agents?: any[];
@@ -57,6 +58,7 @@ export interface LiquidationsTableProps {
 export function LiquidationsTable({
   liquidations,
   isHospitalUser = false,
+  isAdmin = false,
   hospitalId,
   hospitalName,
   agents = [],
@@ -430,60 +432,74 @@ export function LiquidationsTable({
 
                       {/* Acciones */}
                       <TableCell className="text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-2">
-                          {isHospitalUser ? (
-                            <>
-                              {/* Debits PDF Download */}
-                              {liq.debitsFileUrl && (
-                                <a href={liq.debitsFileUrl} target="_blank" rel="noopener noreferrer" download>
+                        {(() => {
+                          const isDistributedOrClosed =
+                            liq.status === "DISTRIBUIDA" ||
+                            liq.status === "DISTRIBUIDO" ||
+                            liq.status === "CERRADA" ||
+                            liq.status === "CERRADO";
+
+                          const canEdit = isHospitalUser
+                            ? !isDistributedOrClosed
+                            : isAdmin
+                            ? !isDistributedOrClosed
+                            : liq.status === "PENDIENTE";
+
+                          return (
+                            <div className="flex items-center justify-end gap-2">
+                              {isHospitalUser ? (
+                                <>
+                                  {/* Debits PDF Download */}
+                                  {liq.debitsFileUrl && (
+                                    <a href={liq.debitsFileUrl} target="_blank" rel="noopener noreferrer" download>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 font-semibold gap-1.5 h-8 text-xs cursor-pointer"
+                                      >
+                                        <FileDown className="h-3.5 w-3.5" />
+                                        Débitos PDF
+                                      </Button>
+                                    </a>
+                                  )}
+
+                                  {/* Direct Detail link */}
+                                  <Link href={`/dashboard/liquidations/${liq.id}`}>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-xs gap-1.5 h-8 border border-border hover:bg-muted cursor-pointer font-bold text-foreground"
+                                    >
+                                      <Eye className="h-3.5 w-3.5 text-emerald-500" />
+                                      {canEdit ? "Ver / Editar" : "Ver"}
+                                    </Button>
+                                  </Link>
+                                </>
+                              ) : (
+                                <>
+                                  {/* Admin Actions */}
                                   <Button
                                     size="sm"
-                                    variant="outline"
-                                    className="border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 font-semibold gap-1.5 h-8 text-xs cursor-pointer"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setEnteringDetailsId(liq.id);
+                                      router.push(`/dashboard/liquidations/${liq.id}`);
+                                    }}
+                                    disabled={enteringDetailsId !== null || notifyingIds.includes(liq.id)}
+                                    className="text-xs gap-1 h-8 border border-border hover:bg-muted cursor-pointer font-bold text-foreground"
                                   >
-                                    <FileDown className="h-3.5 w-3.5" />
-                                    Débitos PDF
+                                    {enteringDetailsId === liq.id ? (
+                                      <>
+                                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
+                                        Entrando...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Eye className="h-3.5 w-3.5 text-emerald-500" />
+                                        {canEdit ? "Ver / Editar" : "Ver"}
+                                      </>
+                                    )}
                                   </Button>
-                                </a>
-                              )}
-
-                              {/* Direct Detail link */}
-                              <Link href={`/dashboard/liquidations/${liq.id}`}>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-xs gap-1.5 h-8 border border-border hover:bg-muted cursor-pointer font-bold text-foreground"
-                                >
-                                  <Eye className="h-3.5 w-3.5 text-emerald-500" />
-                                  Ver / Editar
-                                </Button>
-                              </Link>
-                            </>
-                          ) : (
-                            <>
-                              {/* Admin Actions */}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  setEnteringDetailsId(liq.id);
-                                  router.push(`/dashboard/liquidations/${liq.id}`);
-                                }}
-                                disabled={enteringDetailsId !== null || notifyingIds.includes(liq.id)}
-                                className="text-xs gap-1 h-8 border border-border hover:bg-muted cursor-pointer font-bold text-foreground"
-                              >
-                                {enteringDetailsId === liq.id ? (
-                                  <>
-                                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
-                                    Entrando...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Eye className="h-3.5 w-3.5 text-emerald-500" />
-                                    Ver / Editar
-                                  </>
-                                )}
-                              </Button>
 
                               {/* Hospital distribution progress button (e.g. 4/10) */}
                               {(() => {
@@ -652,16 +668,13 @@ export function LiquidationsTable({
                                 );
                               })()}
 
-                              {liq.status !== "NOTIFICADO" &&
-                                liq.status !== "DISTRIBUIDA" &&
-                                liq.status !== "DISTRIBUIDO" &&
-                                liq.status !== "CERRADA" &&
-                                onNotifyHospital && (
+                              {/* Notificación Inicial (PENDIENTE) */}
+                              {liq.status === "PENDIENTE" && onNotifyHospital && (
                                 <Button
                                   size="sm"
                                   onClick={() => onNotifyHospital(liq.id)}
                                   disabled={notifyingIds.includes(liq.id)}
-                                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1 text-xs h-8 cursor-pointer"
+                                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1 text-xs h-8 cursor-pointer shadow-xs"
                                 >
                                   {notifyingIds.includes(liq.id) ? (
                                     <>
@@ -676,10 +689,41 @@ export function LiquidationsTable({
                                   )}
                                 </Button>
                               )}
+
+                              {/* Notificación Rectificatoria (Solo Administradores para liquidaciones ya notificadas no distribuidas ni cerradas) */}
+                              {liq.status !== "PENDIENTE" &&
+                                liq.status !== "DISTRIBUIDA" &&
+                                liq.status !== "DISTRIBUIDO" &&
+                                liq.status !== "CERRADA" &&
+                                liq.status !== "CERRADO" &&
+                                isAdmin &&
+                                onNotifyHospital && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => onNotifyHospital(liq.id)}
+                                  disabled={notifyingIds.includes(liq.id)}
+                                  title="Notificar rectificación de montos a los efectores sanitarios"
+                                  className="bg-amber-600 hover:bg-amber-500 text-zinc-950 font-bold gap-1 text-xs h-8 cursor-pointer shadow-xs"
+                                >
+                                  {notifyingIds.includes(liq.id) ? (
+                                    <>
+                                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                      Rectificando...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <RefreshCw className="h-3.5 w-3.5" />
+                                      Notificar Rectificación
+                                    </>
+                                  )}
+                                </Button>
+                              )}
                             </>
                           )}
                         </div>
-                      </TableCell>
+                      );
+                    })()}
+                  </TableCell>
                     </TableRow>
                   );
                 })

@@ -9,6 +9,7 @@ import { headers } from "next/headers";
 import { getActivePeriodInfo } from "@/lib/periods";
 import { getEmpresaIdFromProveedorId } from "@/lib/hospital-mapping";
 import { serializeData } from "@/lib/utils";
+import { isUserAdmin } from "@/lib/constants";
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -714,6 +715,28 @@ export async function updateLiquidationDetails(
   try {
     const session = await auth.api.getSession({ headers: await headers() });
     const currentUserName = session?.user?.name || session?.user?.email || (session?.user as any)?.operador;
+    const userRole = (session?.user as any)?.role;
+    const isAdmin = isUserAdmin(userRole);
+
+    const currentLiq = await prisma.liquidacion.findUnique({
+      where: { id: liquidationId },
+      select: { status: true },
+    });
+
+    const isDistributed = currentLiq?.status === "DISTRIBUIDA" || currentLiq?.status === "DISTRIBUIDO";
+    const isClosed = currentLiq?.status === "CERRADA" || currentLiq?.status === "CERRADO";
+
+    if (isDistributed || isClosed) {
+      return {
+        error: `No se puede modificar una liquidación que ya se encuentra en estado ${currentLiq?.status}.`,
+      };
+    }
+
+    if (currentLiq && currentLiq.status !== "PENDIENTE" && !isAdmin) {
+      return {
+        error: "Acceso denegado. Esta liquidación ya fue notificada. Las modificaciones y rectificaciones posteriores están reservadas exclusivamente para los Administradores Generales.",
+      };
+    }
 
     await prisma.$transaction(async (tx) => {
       // 1. Delete any detail rows requested for deletion
@@ -825,6 +848,37 @@ export async function updateLiquidationDetails(
   }
 }
 
+export async function updateLiquidationObservaciones(
+  liquidationId: number,
+  observaciones: string
+) {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) {
+      return { error: "No autorizado. Debe iniciar sesión." };
+    }
+
+    const isHospitalUser = !!(session.user as any)?.hospitalId;
+    if (isHospitalUser) {
+      return { error: "Acceso denegado. Las observaciones internas son exclusivas del personal de UEP." };
+    }
+
+    await prisma.liquidacion.update({
+      where: { id: liquidationId },
+      data: {
+        observaciones: observaciones?.trim() || null,
+      },
+    });
+
+    revalidatePath("/dashboard/liquidations");
+    revalidatePath(`/dashboard/liquidations/${liquidationId}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error updating liquidation observaciones:", error);
+    return { error: "Error al guardar las observaciones de la liquidación." };
+  }
+}
+
 // 4. Upload scanned PDF file with debit breakdown sent by Obra Social
 export async function uploadDebitsFile(formData: FormData) {
   try {
@@ -879,9 +933,13 @@ export async function deleteDebitsFile(liquidationId: number) {
   }
 }
 
-// 5. Notify hospital by updating liquidation status to NOTIFICADO and writing mock email logs
+// 5. Notify hospital by updating liquidation status to NOTIFICADO (or RECTIFICADA) and writing mock email logs
 export async function notifyHospital(liquidationId: number) {
   try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    const userRole = (session?.user as any)?.role;
+    const isAdmin = isUserAdmin(userRole);
+
     const liq = await prisma.liquidacion.findUnique({
       where: { id: liquidationId },
       include: {
@@ -901,6 +959,26 @@ export async function notifyHospital(liquidationId: number) {
 
     if (!liq) return { error: "Liquidación no encontrada." };
 
+    const isDistributed = liq.status === "DISTRIBUIDA" || liq.status === "DISTRIBUIDO";
+    const isClosed = liq.status === "CERRADA" || liq.status === "CERRADO";
+
+    if (isDistributed || isClosed) {
+      return {
+        error: `No se puede notificar una liquidación que ya se encuentra en estado ${liq.status}.`,
+      };
+    }
+
+    const wasNotifiedBefore = liq.status !== "PENDIENTE";
+
+    // Si ya fue notificada previamente, solo los administradores pueden rectificar/re-notificar
+    if (wasNotifiedBefore && !isAdmin) {
+      return {
+        error: "Acceso denegado. Solo los Administradores Generales pueden notificar rectificaciones de liquidaciones al hospital.",
+      };
+    }
+
+    const nextStatus = wasNotifiedBefore ? "RECTIFICADA" : "NOTIFICADO";
+
     // Get the hospital names & emails involved
     const details = liq.details;
     const hospitalEmails = details
@@ -911,10 +989,12 @@ export async function notifyHospital(liquidationId: number) {
       .map((d) => d.hospital?.nombre || "Hospital Prestador")
       .filter((name, index, self) => self.indexOf(name) === index);
 
-    // Update status to NOTIFICADO
+    // Update status to NOTIFICADO or RECTIFICADA
     await prisma.liquidacion.update({
       where: { id: liquidationId },
-      data: { status: "NOTIFICADO" },
+      data: {
+        status: nextStatus,
+      },
     });
 
     // Calculate total net final to display in email
@@ -924,22 +1004,33 @@ export async function notifyHospital(liquidationId: number) {
     const formattedDate = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
 
     // Build the mock email contents
+    const emailHeaderTitle = wasNotifiedBefore
+      ? "📧 NOTIFICACIÓN DE LIQUIDACIÓN RECTIFICADA DE OBRA SOCIAL"
+      : "📧 NOTIFICACIÓN DE LIQUIDACIÓN DE OBRA SOCIAL";
+    const emailSubject = wasNotifiedBefore
+      ? `[RECTIFICACIÓN] Liquidación Rectificada Disponible - Período: ${liq.mesCarga || "N/A"} - LIQ-${String(liq.id).padStart(4, "0")}`
+      : `Nueva Liquidación Disponible - Período: ${liq.mesCarga || "N/A"} - LIQ-${String(liq.id).padStart(4, "0")}`;
+
+    const emailIntro = wasNotifiedBefore
+      ? `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha emitido una RECTIFICACIÓN sobre la liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}. Por favor, revise los montos actualizados y revalide su distribución.`
+      : `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha generado y procesado una nueva liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}.`;
+
     const emailLog = `
 =========================================
-📧 NOTIFICACIÓN DE LIQUIDACIÓN DE OBRA SOCIAL
+${emailHeaderTitle}
 =========================================
 Fecha de Envío: ${formattedDate}
 De: liquidaciones@uep.gov.ar (Mesa de Liquidaciones UEP)
 Para: ${hospitalEmails.length > 0 ? hospitalEmails.join(", ") : "sin-correo@uep.gov.ar"}
 Destinatarios: ${hospitalNames.join(", ")}
-Asunto: Nueva Liquidación Disponible - Período: ${liq.mesCarga || "N/A"} - LIQ-${String(liq.id).padStart(4, "0")}
+Asunto: ${emailSubject}
 
 Estimado Director / Administrador de Establecimiento de Salud,
 
-Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha generado y procesado una nueva liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}.
+${emailIntro}
 
 Detalles de la Liquidación:
-- Nro de Liquidación UEP: LIQ-${String(liq.id).padStart(4, "0")}
+- Nro de Liquidación UEP: LIQ-${String(liq.id).padStart(4, "0")} ${wasNotifiedBefore ? "(RECTIFICADA)" : ""}
 - Obra Social: ${liq.rc.cliente?.nombre || "N/A"} (CUIT: ${liq.rc.cliente?.cuit ? toNum(liq.rc.cliente.cuit) : "N/A"})
 - Recibo UEP de Cobro (RC): ${liq.rc.puntoVenta || "0000"}-${liq.rc.numero || 0}
 - Importe Neto Total a Distribuir: $${totalNet.toLocaleString("es-AR", { minimumFractionDigits: 2 })}

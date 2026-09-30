@@ -200,8 +200,8 @@ export default function LiquidationDetailClient({
     return hasUnsavedFinancialChanges || ((observaciones || "") !== initialObservacionesRef.current);
   }, [hasUnsavedFinancialChanges, observaciones]);
 
-  // Only financial modifications warrant a hospital rectification
-  const isFinancialModified = hasUnsavedFinancialChanges || hasSavedFinancialModifications;
+  // Only SAVED financial modifications warrant a hospital rectification notification button
+  const isFinancialModified = hasSavedFinancialModifications;
 
   // Initialise agents state starting ONLY with previously saved distributions for this liquidation and hospital
   const rawDistributions = (liq.personalDistributions || []).filter((p: any) => {

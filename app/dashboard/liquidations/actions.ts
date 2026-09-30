@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import path from "path";
+import fs from "fs";
 import { put } from "@vercel/blob";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
@@ -829,10 +830,15 @@ export async function updateLiquidationDetails(
         }
       }
 
+      // If it was already notified and modified, mark as RECTIFICADA_PENDIENTE so rectification notification is pending
+      const targetStatus =
+        status ||
+        (currentLiq && currentLiq.status !== "PENDIENTE" ? "RECTIFICADA_PENDIENTE" : undefined);
+
       await tx.liquidacion.update({
         where: { id: liquidationId },
         data: {
-          ...(status ? { status } : {}),
+          ...(targetStatus ? { status: targetStatus } : {}),
           ...(mesCarga !== undefined ? { mesCarga } : {}),
           ...(observaciones !== undefined ? { observaciones } : {}),
           ...(currentUserName ? { createdByName: currentUserName } : {}),
@@ -933,8 +939,17 @@ export async function deleteDebitsFile(liquidationId: number) {
   }
 }
 
+export interface NotifyHospitalOptions {
+  recipients?: string[];
+  subject?: string;
+  message?: string;
+}
+
 // 5. Notify hospital by updating liquidation status to NOTIFICADO (or RECTIFICADA) and writing mock email logs
-export async function notifyHospital(liquidationId: number) {
+export async function notifyHospital(
+  liquidationId: number,
+  customOptions?: NotifyHospitalOptions
+) {
   try {
     const session = await auth.api.getSession({ headers: await headers() });
     const userRole = (session?.user as any)?.role;
@@ -977,9 +992,10 @@ export async function notifyHospital(liquidationId: number) {
       };
     }
 
+    // Once notification is dispatched, status transitions to RECTIFICADA (if it was a rectification) or NOTIFICADO (initial)
     const nextStatus = wasNotifiedBefore ? "RECTIFICADA" : "NOTIFICADO";
 
-    // Get the hospital names & emails involved
+    // Get default hospital names & emails involved
     const details = liq.details;
     const hospitalEmails = details
       .map((d) => d.hospital?.nombre ? `${d.hospital.nombre.toLowerCase().replace(/\s+/g, "")}@uep.gov.ar` : null)
@@ -989,7 +1005,7 @@ export async function notifyHospital(liquidationId: number) {
       .map((d) => d.hospital?.nombre || "Hospital Prestador")
       .filter((name, index, self) => self.indexOf(name) === index);
 
-    // Update status to NOTIFICADO or RECTIFICADA
+    // Update status to NOTIFICADO
     await prisma.liquidacion.update({
       where: { id: liquidationId },
       data: {
@@ -1003,17 +1019,28 @@ export async function notifyHospital(liquidationId: number) {
     // Format local date
     const formattedDate = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
 
-    // Build the mock email contents
+    // Determine final recipients, subject, and message
+    const finalRecipients = (customOptions?.recipients && customOptions.recipients.length > 0)
+      ? customOptions.recipients
+      : hospitalEmails.length > 0
+      ? hospitalEmails
+      : ["hospital@uep.gov.ar"];
+
     const emailHeaderTitle = wasNotifiedBefore
       ? "📧 NOTIFICACIÓN DE LIQUIDACIÓN RECTIFICADA DE OBRA SOCIAL"
       : "📧 NOTIFICACIÓN DE LIQUIDACIÓN DE OBRA SOCIAL";
-    const emailSubject = wasNotifiedBefore
-      ? `[RECTIFICACIÓN] Liquidación Rectificada Disponible - Período: ${liq.mesCarga || "N/A"} - LIQ-${String(liq.id).padStart(4, "0")}`
-      : `Nueva Liquidación Disponible - Período: ${liq.mesCarga || "N/A"} - LIQ-${String(liq.id).padStart(4, "0")}`;
 
-    const emailIntro = wasNotifiedBefore
-      ? `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha emitido una RECTIFICACIÓN sobre la liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}. Por favor, revise los montos actualizados y revalide su distribución.`
-      : `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha generado y procesado una nueva liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}.`;
+    const emailSubject = customOptions?.subject?.trim() || (
+      wasNotifiedBefore
+        ? `[RECTIFICACIÓN] Liquidación Rectificada Disponible - Período: ${liq.mesCarga || "N/A"} - LIQ-${String(liq.id).padStart(4, "0")}`
+        : `Nueva Liquidación Disponible - Período: ${liq.mesCarga || "N/A"} - LIQ-${String(liq.id).padStart(4, "0")}`
+    );
+
+    const emailBody = customOptions?.message?.trim() || (
+      wasNotifiedBefore
+        ? `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha emitido una RECTIFICACIÓN sobre la liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}. Por favor, revise los montos actualizados y revalide su distribución.`
+        : `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha generado y procesado una nueva liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}.`
+    );
 
     const emailLog = `
 =========================================
@@ -1021,46 +1048,23 @@ ${emailHeaderTitle}
 =========================================
 Fecha de Envío: ${formattedDate}
 De: liquidaciones@uep.gov.ar (Mesa de Liquidaciones UEP)
-Para: ${hospitalEmails.length > 0 ? hospitalEmails.join(", ") : "sin-correo@uep.gov.ar"}
+Para: ${finalRecipients.join(", ")}
 Destinatarios: ${hospitalNames.join(", ")}
 Asunto: ${emailSubject}
 
-Estimado Director / Administrador de Establecimiento de Salud,
-
-${emailIntro}
-
-Detalles de la Liquidación:
-- Nro de Liquidación UEP: LIQ-${String(liq.id).padStart(4, "0")} ${wasNotifiedBefore ? "(RECTIFICADA)" : ""}
-- Obra Social: ${liq.rc.cliente?.nombre || "N/A"} (CUIT: ${liq.rc.cliente?.cuit ? toNum(liq.rc.cliente.cuit) : "N/A"})
-- Recibo UEP de Cobro (RC): ${liq.rc.puntoVenta || "0000"}-${liq.rc.numero || 0}
-- Importe Neto Total a Distribuir: $${totalNet.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-
-Por favor, ingrese al Portal del Hospital antes de la fecha límite establecida para realizar la distribución de fondos obligatoria correspondientes a los conceptos de:
-1. Honorarios Médicos
-2. Sobreasignaciones al Personal
-3. Gastos de Funcionamiento
-
-Para acceder, ingrese con sus credenciales autorizadas a la sección del Portal del Hospital correspondiente.
-
-Atentamente,
-Unidad Ejecutora Provincial (UEP)
-Provincia de Corrientes
+${emailBody}
 =========================================
 `;
 
-    // Ensure directory public/uploads exists
-    const fs = require("fs");
-    const notificationsDir = path.join(process.cwd(), "public", "uploads");
-    if (!fs.existsSync(notificationsDir)) {
-      fs.mkdirSync(notificationsDir, { recursive: true });
+    const uploadsDir = path.join(process.cwd(), "public", "uploads");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
     }
-
-    const logPath = path.join(notificationsDir, "notifications-log.txt");
-    // Append notification log
-    await fs.promises.appendFile(logPath, emailLog + "\n\n");
-    console.log(`[MOCK EMAIL] Saved email notification in public/uploads/notifications-log.txt for LIQ-${liq.id}`);
+    const logFilePath = path.join(uploadsDir, "notifications-log.txt");
+    fs.appendFileSync(logFilePath, emailLog, "utf-8");
 
     revalidatePath("/dashboard/liquidations");
+    revalidatePath(`/dashboard/liquidations/${liquidationId}`);
     return { success: true };
   } catch (e: any) {
     console.error("Error notifying hospital:", e);

@@ -44,9 +44,10 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin } from "@/lib/constants";
+import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isUserHospital } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { updateLiquidationDetails, updateLiquidationObservaciones, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions } from "../actions";
+import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
 
 interface LiquidationDetailClientProps {
   liquidation: any;
@@ -74,15 +75,13 @@ export default function LiquidationDetailClient({
 }: LiquidationDetailClientProps) {
   const router = useRouter();
   const isAdmin = isUserAdmin(currentUser?.role);
-  const isHospitalUser =
-    !isAdmin &&
-    currentUser?.hospitalId !== undefined &&
-    currentUser?.hospitalId !== null;
+  const isHospitalUser = isUserHospital(currentUser?.role, currentUser?.hospitalId);
 
-  const targetHospitalId =
-    currentUser?.hospitalId ||
-    initialHospitalId ||
-    (liquidation.details && liquidation.details[0]?.hospitalId);
+  const targetHospitalId = isHospitalUser
+    ? (currentUser?.hospitalId ||
+       initialHospitalId ||
+       (liquidation.details && liquidation.details[0]?.hospitalId))
+    : undefined;
 
   // Search query state for filtering details
   const [searchQuery, setSearchQuery] = useState("");
@@ -118,6 +117,7 @@ export default function LiquidationDetailClient({
   const [mesCarga, setMesCarga] = useState(liq.mesCarga || "");
   const [observaciones, setObservaciones] = useState(liq.observaciones || "");
   const [savingObs, setSavingObs] = useState(false);
+  const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
   const [globalGaPercent, setGlobalGaPercent] = useState("6");
   const [customGlobalGaPercent, setCustomGlobalGaPercent] = useState("");
 
@@ -618,6 +618,7 @@ export default function LiquidationDetailClient({
       initialObservacionesRef.current = observaciones || "";
       if (wasNotifiedBefore && hasUnsavedFinancialChanges) {
         setHasSavedFinancialModifications(true);
+        setLiq((prev: any) => ({ ...prev, status: "RECTIFICADA_PENDIENTE" }));
       }
       setDeletedDetailIds([]);
 
@@ -694,7 +695,15 @@ export default function LiquidationDetailClient({
     }
   };
 
-  const handleNotifyHospital = async () => {
+  const handleNotifyHospital = () => {
+    setIsNotifyModalOpen(true);
+  };
+
+  const handleConfirmNotification = async (payload: {
+    recipients: string[];
+    subject: string;
+    message: string;
+  }) => {
     setNotifying(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -715,7 +724,14 @@ export default function LiquidationDetailClient({
           ajusteRecupero: Number(item.ajusteRecupero || 0),
         }));
 
-        const saveRes = await updateLiquidationDetails(liq.id, parsedDetails, undefined, mesCarga, observaciones, deletedDetailIds);
+        const saveRes = await updateLiquidationDetails(
+          liq.id,
+          parsedDetails,
+          undefined,
+          mesCarga,
+          observaciones,
+          deletedDetailIds
+        );
         if (saveRes.error) {
           setErrorMsg(saveRes.error);
           setNotifying(false);
@@ -723,7 +739,7 @@ export default function LiquidationDetailClient({
         }
       }
 
-      const res = await notifyHospital(liq.id);
+      const res = await notifyHospital(liq.id, payload);
       if (res.error) {
         setErrorMsg(res.error);
         return;
@@ -1021,8 +1037,8 @@ export default function LiquidationDetailClient({
             </Button>
           )}
 
-          {/* BOTÓN NOTIFICAR RECTIFICACIÓN (Solo Administrador en liquidación ya notificada que fue modificada financieramente y no está distribuida ni cerrada) */}
-          {!isHospitalUser && wasNotifiedBefore && !isDistributed && !isClosed && isAdmin && isFinancialModified && (
+          {/* BOTÓN NOTIFICAR RECTIFICACIÓN (Solo Administrador cuando la liquidación tenga rectificación pendiente o modificaciones financieras no notificadas) */}
+          {!isHospitalUser && !isDistributed && !isClosed && isAdmin && (liq.status === "RECTIFICADA_PENDIENTE" || liq.status === "MODIFICADA" || isFinancialModified) && (
             <Button
               onClick={handleNotifyHospital}
               disabled={notifying || saving}
@@ -2690,6 +2706,21 @@ export default function LiquidationDetailClient({
           </div>
         )}
       </div>
+
+      <NotifyHospitalModal
+        isOpen={isNotifyModalOpen}
+        onClose={() => setIsNotifyModalOpen(false)}
+        onConfirm={handleConfirmNotification}
+        liquidation={{
+          id: liq.id,
+          mesCarga: mesCarga || liq.mesCarga,
+          status: liq.status,
+          clientName: liq.rc?.cliente?.nombre,
+          totalNeto: detailSums.netoAPagar,
+          details: liq.details,
+        }}
+        isRectification={wasNotifiedBefore}
+      />
     </div>
   );
 }

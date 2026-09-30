@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Calculator, Receipt, Eye, CheckCircle2, RefreshCw, AlertCircle, UploadCloud, FileText, Download, Building2, Save } from "lucide-react";
 import { LiquidationsTable } from "@/components/liquidations-table";
+import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
 
 interface LiquidationsClientPageProps {
   initialData: {
@@ -47,16 +48,45 @@ export default function LiquidationsClientPage({ initialData, isAdmin = false }:
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
+  const [selectedNotifyLiq, setSelectedNotifyLiq] = useState<any | null>(null);
+  const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
+
   const handleNotifyHospital = async (id: number) => {
+    const targetLiq = data.liquidations.find((l) => l.id === id);
+    if (!targetLiq) return;
+    const totalNet = (targetLiq.details || []).reduce(
+      (sum: number, d: any) => sum + (Number(d.netoAPagar) || 0),
+      0
+    );
+    setSelectedNotifyLiq({
+      id: targetLiq.id,
+      mesCarga: targetLiq.mesCarga,
+      status: targetLiq.status,
+      clientName: targetLiq.rc?.cliente?.nombre,
+      rcNumber: targetLiq.rc
+        ? `${targetLiq.rc.puntoVenta || "0000"}-${targetLiq.rc.numero || 0}`
+        : undefined,
+      totalNeto: totalNet,
+      details: targetLiq.details,
+    });
+    setIsNotifyModalOpen(true);
+  };
+
+  const handleConfirmNotification = async (payload: {
+    recipients: string[];
+    subject: string;
+    message: string;
+  }) => {
+    if (!selectedNotifyLiq) return;
+    const id = selectedNotifyLiq.id;
     setNotifyingIds((prev) => [...prev, id]);
     setErrorMsg("");
     setSuccessMsg("");
     try {
-      const targetLiq = data.liquidations.find((l) => l.id === id);
-      const isRect = targetLiq && targetLiq.status !== "PENDIENTE";
+      const isRect = selectedNotifyLiq.status !== "PENDIENTE";
       const newStatus = isRect ? "RECTIFICADA" : "NOTIFICADO";
 
-      const res = await notifyHospital(id);
+      const res = await notifyHospital(id, payload);
       if (res.error) {
         setErrorMsg(res.error);
         return;
@@ -76,6 +106,7 @@ export default function LiquidationsClientPage({ initialData, isAdmin = false }:
       setErrorMsg("Error al notificar a los establecimientos.");
     } finally {
       setNotifyingIds((prev) => prev.filter((x) => x !== id));
+      setSelectedNotifyLiq(null);
     }
   };
 
@@ -444,6 +475,17 @@ export default function LiquidationsClientPage({ initialData, isAdmin = false }:
           onPageChange: setCurrentPage,
           onItemsPerPageChange: handleItemsPerPageChange,
         }}
+      />
+
+      <NotifyHospitalModal
+        isOpen={isNotifyModalOpen}
+        onClose={() => {
+          setIsNotifyModalOpen(false);
+          setSelectedNotifyLiq(null);
+        }}
+        onConfirm={handleConfirmNotification}
+        liquidation={selectedNotifyLiq}
+        isRectification={selectedNotifyLiq?.status !== "PENDIENTE"}
       />
     </div>
   );

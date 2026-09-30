@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { serializeData } from "@/lib/utils";
 import { fetchLiquidationById } from "../actions";
-import { isUserAdmin } from "@/lib/constants";
+import { isUserAdmin, isUserHospital } from "@/lib/constants";
 import LiquidationDetailClient from "./liquidation-detail-client";
 
 interface PageProps {
@@ -31,37 +31,39 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
 
   const user = session?.user as any;
   const isAdmin = isUserAdmin(user?.role);
-  const isHospitalUser = !isAdmin;
+  const isHospitalUser = isUserHospital(user?.role, user?.hospitalId);
 
   let targetEmpresaId: number | undefined = undefined;
 
-  if (user?.id) {
-    const personalId = parseInt(String(user.id), 10);
-    if (!isNaN(personalId)) {
-      const personalEmpresa = await prisma.imPersonalEmpresas.findFirst({
-        where: { idPersonal: personalId },
-      });
-      if (personalEmpresa) {
-        targetEmpresaId = personalEmpresa.idEmpresa;
+  if (isHospitalUser) {
+    if (user?.id) {
+      const personalId = parseInt(String(user.id), 10);
+      if (!isNaN(personalId)) {
+        const personalEmpresa = await prisma.imPersonalEmpresas.findFirst({
+          where: { idPersonal: personalId },
+        });
+        if (personalEmpresa) {
+          targetEmpresaId = personalEmpresa.idEmpresa;
+        }
       }
     }
-  }
 
-  if (!targetEmpresaId && user?.hospitalId) {
-    const hospId = parseInt(String(user.hospitalId), 10);
-    const empresa = await prisma.empresa.findUnique({ where: { id: hospId } });
-    if (empresa) {
-      targetEmpresaId = empresa.id;
-    } else {
-      targetEmpresaId = hospId;
+    if (!targetEmpresaId && user?.hospitalId) {
+      const hospId = parseInt(String(user.hospitalId), 10);
+      const empresa = await prisma.empresa.findUnique({ where: { id: hospId } });
+      if (empresa) {
+        targetEmpresaId = empresa.id;
+      } else {
+        targetEmpresaId = hospId;
+      }
     }
-  }
 
-  // If still not found and liquidation has details:
-  if (!targetEmpresaId && liquidationRaw.details && liquidationRaw.details.length > 0) {
-    const detHospitalId = liquidationRaw.details[0]?.hospitalId;
-    if (detHospitalId) {
-      targetEmpresaId = detHospitalId;
+    // If still not found and liquidation has details:
+    if (!targetEmpresaId && liquidationRaw.details && liquidationRaw.details.length > 0) {
+      const detHospitalId = liquidationRaw.details[0]?.hospitalId;
+      if (detHospitalId) {
+        targetEmpresaId = detHospitalId;
+      }
     }
   }
 

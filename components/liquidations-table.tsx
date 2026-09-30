@@ -690,14 +690,8 @@ export function LiquidationsTable({
                                 </Button>
                               )}
 
-                              {/* Notificación Rectificatoria (Solo Administradores para liquidaciones ya notificadas no distribuidas ni cerradas) */}
-                              {liq.status !== "PENDIENTE" &&
-                                liq.status !== "DISTRIBUIDA" &&
-                                liq.status !== "DISTRIBUIDO" &&
-                                liq.status !== "CERRADA" &&
-                                liq.status !== "CERRADO" &&
-                                isAdmin &&
-                                onNotifyHospital && (
+                              {/* Notificación Rectificatoria (Solo Administradores cuando la liquidación tenga rectificación pendiente de notificar) */}
+                              {(liq.status === "RECTIFICADA_PENDIENTE" || liq.status === "MODIFICADA") && isAdmin && onNotifyHospital && (
                                 <Button
                                   size="sm"
                                   onClick={() => onNotifyHospital(liq.id)}

@@ -70,7 +70,7 @@ export function getLiquidationStatusConfig(status?: string | null): LiquidationS
   let normalized = status.trim().toUpperCase().replace(/_/g, " ");
   if (normalized === "DISTRIBUIDO") {
     normalized = "DISTRIBUIDA";
-  } else if (normalized === "RECTIFICADO") {
+  } else if (normalized === "RECTIFICADO" || normalized === "RECTIFICADA PENDIENTE" || normalized === "RECTIFICADO PENDIENTE") {
     normalized = "RECTIFICADA";
   }
 

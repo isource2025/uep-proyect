@@ -988,14 +988,17 @@ export default function LiquidationDetailClient({
               }
             }}
             disabled={goingBack || saving || savingAgents}
-            className="border-border cursor-pointer text-xs h-9 flex items-center gap-1.5"
+            className="border-border cursor-pointer text-xs h-9 flex items-center gap-1.5 shrink-0 px-2.5 lg:px-3"
+            title={isHospitalUser ? "Volver al Portal" : "Volver a Liquidaciones"}
           >
             {goingBack ? (
               <RefreshCw className="h-4 w-4 animate-spin" />
             ) : (
               <ArrowLeft className="h-4 w-4" />
             )}
-            {isHospitalUser ? "Volver al Portal" : "Volver a Liquidaciones"}
+            <span className="hidden lg:inline">
+              {isHospitalUser ? "Volver al Portal" : "Volver a Liquidaciones"}
+            </span>
           </Button>
           <div>
             <h2 className="text-xl font-extrabold text-foreground flex items-center gap-2">
@@ -1124,7 +1127,7 @@ export default function LiquidationDetailClient({
 
       {/* SECTION 1 - CABECERA DE LIQUIDACIÓN */}
       <Card className="border-border bg-card shadow-sm">
-        <CardContent className="p-5 grid grid-cols-1 sm:grid-cols-4 gap-5 text-xs">
+        <CardContent className="p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 text-xs">
           {/* COL 1: Obra Social Destacada */}
           <div className="space-y-1.5 sm:col-span-1">
             <span className="text-[10px] text-muted-foreground uppercase font-bold flex items-center gap-1.5">
@@ -1267,7 +1270,7 @@ export default function LiquidationDetailClient({
 
           {/* OBSERVACIONES DEL LIQUIDADOR (Estrictamente uso interno para operadores y administradores - editable en todos los estados) */}
           {!isHospitalUser && (
-            <div className="sm:col-span-4 mt-1 pt-3 border-t border-border/60">
+            <div className="md:col-span-2 xl:col-span-4 mt-1 pt-3 border-t border-border/60">
               <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
                 <Label className="text-[10px] text-muted-foreground uppercase font-bold flex items-center gap-1.5">
                   <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />
@@ -1314,7 +1317,7 @@ export default function LiquidationDetailClient({
       </Card>
 
       {/* SECTION 1.5 - CABECERA DE TOTALES Y DISTRIBUCIÓN (HONORARIOS, SOBREASIGNACIÓN, GASTOS, NETO) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* TOTAL HONORARIOS */}
         <Card className="border-border bg-card shadow-sm">
           <CardContent className="p-4 flex flex-col justify-between space-y-2">

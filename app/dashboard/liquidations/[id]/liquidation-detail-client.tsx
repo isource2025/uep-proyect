@@ -48,6 +48,7 @@ import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isU
 import { cn } from "@/lib/utils";
 import { updateLiquidationDetails, updateLiquidationObservaciones, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions } from "../actions";
 import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
+import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
 
 interface LiquidationDetailClientProps {
   liquidation: any;
@@ -91,10 +92,24 @@ export default function LiquidationDetailClient({
   const [savingAgents, setSavingAgents] = useState(false);
   const [notifying, setNotifying] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [goingBack, setGoingBack] = useState(false);
   const [deletedDetailIds, setDeletedDetailIds] = useState<string[]>([]);
+
+  const handleDownloadExcelReport = async () => {
+    try {
+      setDownloadingReport(true);
+      setErrorMsg(null);
+      await downloadLiquidationExcel(liq.id, liq);
+    } catch (err: any) {
+      console.error("Error al descargar reporte Excel:", err);
+      setErrorMsg(err.message || "Error al generar el reporte Excel.");
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
 
   // Modal state for adding agents (Single vs Batch from Excel)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -1061,6 +1076,22 @@ export default function LiquidationDetailClient({
               )}
             </Button>
           )}
+
+          {/* BOTÓN DESCARGAR REPORTE EXCEL */}
+          <Button
+            variant="outline"
+            onClick={handleDownloadExcelReport}
+            disabled={downloadingReport || saving || goingBack}
+            className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
+            title="Descargar reporte completo en Excel (.xlsx)"
+          >
+            {downloadingReport ? (
+              <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4 text-emerald-500" />
+            )}
+            <span className="hidden sm:inline">Reporte Excel</span>
+          </Button>
 
           {liq.debitsFileUrl && (
             <a

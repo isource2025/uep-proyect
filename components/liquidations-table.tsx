@@ -30,12 +30,14 @@ import {
   RefreshCw,
   FileText,
   FileDown,
+  FileSpreadsheet,
   User,
   MessageSquare,
   Building2,
   MoreVertical,
 } from "lucide-react";
 import { getLiquidationStatusConfig, getLiquidationStatusBadge } from "@/lib/constants";
+import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
 
 export interface LiquidationsTableProps {
   liquidations: any[];
@@ -100,6 +102,18 @@ export function LiquidationsTable({
     list: any[];
     pending: any[];
   } | null>(null);
+  const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
+
+  const handleDownloadExcelReport = async (liqId: number) => {
+    try {
+      setDownloadingReportId(liqId);
+      await downloadLiquidationExcel(liqId);
+    } catch (err) {
+      console.error("Error al descargar reporte Excel:", err);
+    } finally {
+      setDownloadingReportId(null);
+    }
+  };
 
   const activeSearchQuery = searchQuery !== undefined ? searchQuery : internalSearchQuery;
   const handleSearchChange = onSearchChange || setInternalSearchQuery;
@@ -697,6 +711,20 @@ export function LiquidationsTable({
                                       <span>Notificar Rectificación</span>
                                     </DropdownMenuItem>
                                   )}
+
+                                  {/* Opción Descargar Reporte Excel */}
+                                  <DropdownMenuItem
+                                    onClick={() => handleDownloadExcelReport(liq.id)}
+                                    disabled={downloadingReportId === liq.id || isEnteringAny}
+                                    className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 focus:bg-emerald-500/10"
+                                  >
+                                    {downloadingReportId === liq.id ? (
+                                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500 shrink-0" />
+                                    ) : (
+                                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                    )}
+                                    <span>Descargar Reporte Excel</span>
+                                  </DropdownMenuItem>
 
                                   {/* Opción Ver Débitos PDF */}
                                   {liq.debitsFileUrl && (

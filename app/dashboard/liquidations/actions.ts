@@ -1363,3 +1363,55 @@ export async function saveLiquidacionPersonalDistributions(
   }
 }
 
+export async function getLiquidationExcelReportData(id: number) {
+  try {
+    const liq = await fetchLiquidationById(id);
+    if (!liq) return { error: "Liquidación no encontrada" };
+
+    const personalDistributions = liq.personalDistributions || [];
+    const cuils = personalDistributions
+      .map((p: any) => p.cuil)
+      .filter((c: any): c is string | number => c !== null && c !== undefined && String(c).trim() !== "");
+
+    const mspAgentsMap: Record<string, { apellidoyNombre: string; idAgente: string; hospitalNombre: string }> = {};
+
+    if (cuils.length > 0) {
+      const bigintCuils = cuils
+        .map((c: any) => {
+          try {
+            return BigInt(String(c).replace(/\D/g, ""));
+          } catch {
+            return null;
+          }
+        })
+        .filter((c: any): c is bigint => c !== null);
+
+      if (bigintCuils.length > 0) {
+        const mspAgents = await prisma.imPersonalMsp.findMany({
+          where: { cuil: { in: bigintCuils } },
+          include: {
+            empresa: {
+              select: { id: true, descripcion: true },
+            },
+          },
+        });
+
+        for (const ag of mspAgents) {
+          if (ag.cuil) {
+            mspAgentsMap[ag.cuil.toString()] = {
+              apellidoyNombre: ag.apellidoyNombre || "",
+              idAgente: ag.idAgente ? ag.idAgente.toString() : ag.legajo || "",
+              hospitalNombre: ag.empresa?.descripcion || "",
+            };
+          }
+        }
+      }
+    }
+
+    return { success: true, liquidation: liq, mspAgentsMap };
+  } catch (e: any) {
+    console.error("Error fetching liquidation report data:", e);
+    return { error: e.message || "Error al obtener datos para el reporte." };
+  }
+}
+

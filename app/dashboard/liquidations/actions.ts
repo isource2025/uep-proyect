@@ -11,6 +11,7 @@ import { getActivePeriodInfo } from "@/lib/periods";
 import { getEmpresaIdFromProveedorId } from "@/lib/hospital-mapping";
 import { serializeData } from "@/lib/utils";
 import { isUserAdmin } from "@/lib/constants";
+import { generateLiquidationExcelBuffer } from "@/lib/export-liquidation-excel";
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -945,6 +946,41 @@ export interface NotifyHospitalOptions {
   message?: string;
 }
 
+// Helper to upload Excel snapshot to Vercel Blob
+async function uploadLiquidationSnapshotToCloud(
+  liquidationId: number,
+  tipo: "PENDIENTE" | "DISTRIBUIDA"
+): Promise<{ url: string; fileName: string } | null> {
+  try {
+    const reportData = await getLiquidationExcelReportData(liquidationId);
+    if (!reportData || !reportData.liquidation) return null;
+
+    const { buffer, fileName } = generateLiquidationExcelBuffer(
+      reportData.liquidation,
+      reportData.mspAgentsMap || {}
+    );
+
+    const cleanClient = (reportData.liquidation.rc?.cliente?.nombre || "ObraSocial")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "_")
+      .slice(0, 20);
+
+    const prefix = tipo === "PENDIENTE" ? "Reporte_Pendiente" : "Reporte_Distribuido";
+    const blobFileName = `reportes/${prefix}_LIQ_${String(liquidationId).padStart(4, "0")}_${cleanClient}_${Date.now()}.xlsx`;
+
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      console.warn("BLOB_READ_WRITE_TOKEN not configured, snapshot not uploaded to cloud.");
+      return null;
+    }
+
+    const blob = await put(blobFileName, buffer, { access: "public" });
+    return { url: blob.url, fileName };
+  } catch (err) {
+    console.error(`Error uploading ${tipo} liquidation snapshot:`, err);
+    return null;
+  }
+}
+
 // 5. Notify hospital by updating liquidation status to NOTIFICADO (or RECTIFICADA) and writing mock email logs
 export async function notifyHospital(
   liquidationId: number,
@@ -995,6 +1031,22 @@ export async function notifyHospital(
     // Once notification is dispatched, status transitions to RECTIFICADA (if it was a rectification) or NOTIFICADO (initial)
     const nextStatus = wasNotifiedBefore ? "RECTIFICADA" : "NOTIFICADO";
 
+    // Subir instantánea histórica a la nube (solo en la primera notificación PENDIENTE o si no existía)
+    let reportePendienteUrl: string | undefined = undefined;
+    let reportePendienteFileName: string | undefined = undefined;
+
+    if (!wasNotifiedBefore || !liq.reportePendienteUrl) {
+      try {
+        const snapshot = await uploadLiquidationSnapshotToCloud(liquidationId, "PENDIENTE");
+        if (snapshot) {
+          reportePendienteUrl = snapshot.url;
+          reportePendienteFileName = snapshot.fileName;
+        }
+      } catch (snapErr) {
+        console.error("Error creating PENDIENTE snapshot on notification:", snapErr);
+      }
+    }
+
     // Get default hospital names & emails involved
     const details = liq.details;
     const hospitalEmails = details
@@ -1005,11 +1057,12 @@ export async function notifyHospital(
       .map((d) => d.hospital?.nombre || "Hospital Prestador")
       .filter((name, index, self) => self.indexOf(name) === index);
 
-    // Update status to NOTIFICADO
+    // Update status to NOTIFICADO and save snapshot
     await prisma.liquidacion.update({
       where: { id: liquidationId },
       data: {
         status: nextStatus,
+        ...(reportePendienteUrl ? { reportePendienteUrl, reportePendienteFileName } : {}),
       },
     });
 
@@ -1350,6 +1403,29 @@ export async function saveLiquidacionPersonalDistributions(
         }
       }
     });
+
+    // Upload snapshot for DISTRIBUIDA state if fully completed
+    const updatedLiq = await prisma.liquidacion.findUnique({
+      where: { id: liquidationId },
+      select: { status: true },
+    });
+
+    if (updatedLiq && (updatedLiq.status === "DISTRIBUIDA" || updatedLiq.status === "DISTRIBUIDO")) {
+      try {
+        const snapshot = await uploadLiquidationSnapshotToCloud(liquidationId, "DISTRIBUIDA");
+        if (snapshot) {
+          await prisma.liquidacion.update({
+            where: { id: liquidationId },
+            data: {
+              reporteDistribuidoUrl: snapshot.url,
+              reporteDistribuidoFileName: snapshot.fileName,
+            },
+          });
+        }
+      } catch (distSnapErr) {
+        console.error("Error creating DISTRIBUIDA snapshot:", distSnapErr);
+      }
+    }
 
     revalidatePath(`/dashboard/liquidations/${liquidationId}`);
     revalidatePath("/dashboard/liquidations");

@@ -712,7 +712,7 @@ export function LiquidationsTable({
                                     </DropdownMenuItem>
                                   )}
 
-                                  {/* Opción Descargar Reporte Excel */}
+                                  {/* Opción Descargar Reporte Excel Actual */}
                                   <DropdownMenuItem
                                     onClick={() => handleDownloadExcelReport(liq.id)}
                                     disabled={downloadingReportId === liq.id || isEnteringAny}
@@ -723,8 +723,40 @@ export function LiquidationsTable({
                                     ) : (
                                       <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                                     )}
-                                    <span>Descargar Reporte Excel</span>
+                                    <span>Descargar Reporte Actual</span>
                                   </DropdownMenuItem>
+
+                                  {/* Opción Descargar Reporte Inicial (Pendiente) guardado en la nube */}
+                                  {liq.reportePendienteUrl && (
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={liq.reportePendienteUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        download
+                                        className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 focus:bg-blue-500/10 w-full"
+                                      >
+                                        <FileSpreadsheet className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                        <span>Reporte Inicial (Pendiente)</span>
+                                      </a>
+                                    </DropdownMenuItem>
+                                  )}
+
+                                  {/* Opción Descargar Reporte Distribuido guardado en la nube */}
+                                  {liq.reporteDistribuidoUrl && (
+                                    <DropdownMenuItem asChild>
+                                      <a
+                                        href={liq.reporteDistribuidoUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        download
+                                        className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 focus:bg-teal-500/10 w-full"
+                                      >
+                                        <FileSpreadsheet className="h-3.5 w-3.5 text-teal-500 shrink-0" />
+                                        <span>Reporte Distribuido (Oficial)</span>
+                                      </a>
+                                    </DropdownMenuItem>
+                                  )}
 
                                   {/* Opción Ver Débitos PDF */}
                                   {liq.debitsFileUrl && (

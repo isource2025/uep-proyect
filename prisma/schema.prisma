@@ -205,6 +205,11 @@ model Liquidacion {
   debitsFileUrl  String?              // Local path to scanned PDF of debits sent by Obra Social
   debitsFileName String?              // Original filename of debits PDF
   
+  reportePendienteUrl         String?
+  reportePendienteFileName    String?
+  reporteDistribuidoUrl       String?
+  reporteDistribuidoFileName  String?
+  
   createdByName  String?              // Name/email of user who generated/saved the liquidation
   observaciones  String?              // Operator notes / observations
   

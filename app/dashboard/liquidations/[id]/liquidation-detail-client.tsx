@@ -1077,21 +1077,51 @@ export default function LiquidationDetailClient({
             </Button>
           )}
 
-          {/* BOTÓN DESCARGAR REPORTE EXCEL */}
+          {/* BOTÓN DESCARGAR REPORTE EXCEL ACTUAL */}
           <Button
             variant="outline"
             onClick={handleDownloadExcelReport}
             disabled={downloadingReport || saving || goingBack}
             className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
-            title="Descargar reporte completo en Excel (.xlsx)"
+            title="Descargar reporte completo en Excel (.xlsx) con los datos actuales"
           >
             {downloadingReport ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
             ) : (
               <FileSpreadsheet className="h-4 w-4 text-emerald-500" />
             )}
-            <span className="hidden sm:inline">Reporte Excel</span>
+            <span className="hidden sm:inline">Reporte Actual</span>
           </Button>
+
+          {/* BOTÓN DESCARGAR REPORTE INICIAL PENDIENTE (CLOUD SNAPSHOT) */}
+          {liq.reportePendienteUrl && (
+            <a
+              href={liq.reportePendienteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 rounded-lg font-bold text-xs transition-colors shadow-xs"
+              title="Descargar instantánea histórica de montos iniciales (Estado Pendiente)"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-blue-500" />
+              <span className="hidden sm:inline">Reporte Inicial</span>
+            </a>
+          )}
+
+          {/* BOTÓN DESCARGAR REPORTE DISTRIBUIDO (CLOUD SNAPSHOT) */}
+          {liq.reporteDistribuidoUrl && (
+            <a
+              href={liq.reporteDistribuidoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-teal-500/30 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 rounded-lg font-bold text-xs transition-colors shadow-xs"
+              title="Descargar reporte oficial consolidado de distribución"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-teal-500" />
+              <span className="hidden sm:inline">Reporte Distribuido</span>
+            </a>
+          )}
 
           {liq.debitsFileUrl && (
             <a

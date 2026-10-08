@@ -130,8 +130,14 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
     const empresaId = hospitalIdStr ? parseInt(hospitalIdStr, 10) : null;
 
     await prisma.$transaction(async (tx) => {
+      const maxUser = await tx.user.aggregate({
+        _max: { id: true },
+      });
+      const nextId = (maxUser._max.id || 0) + 1;
+
       const newUser = await tx.user.create({
         data: {
+          id: nextId,
           name: name.toUpperCase(),
           email: normalizedEmail,
           password: hashedPassword,

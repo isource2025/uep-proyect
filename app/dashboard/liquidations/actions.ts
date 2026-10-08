@@ -10,7 +10,7 @@ import { headers } from "next/headers";
 import { getActivePeriodInfo } from "@/lib/periods";
 import { getEmpresaIdFromProveedorId } from "@/lib/hospital-mapping";
 import { serializeData } from "@/lib/utils";
-import { isUserAdmin } from "@/lib/constants";
+import { isUserAdmin } from "@/lib/constants"
 import { generateLiquidationExcelBuffer } from "@/lib/export-liquidation-excel";
 
 function toNum(val: any): number {
@@ -473,13 +473,13 @@ export async function fetchLiquidationData(
 
   const mspAgents = allCuils.length > 0
     ? await prisma.imPersonalMsp.findMany({
-        where: { cuil: { in: allCuils } },
-        include: {
-          empresa: {
-            select: { id: true, descripcion: true, cuit: true },
-          },
+      where: { cuil: { in: allCuils } },
+      include: {
+        empresa: {
+          select: { id: true, descripcion: true, cuit: true },
         },
-      })
+      },
+    })
     : [];
 
   const cuilToEmpresas = new Map<string, { id: number; descripcion: string; cuit: string }[]>();
@@ -608,16 +608,16 @@ export async function calculateLiquidation(rcId: number) {
         const ptoVta = comp.grupoCbte ? String(comp.grupoCbte).padStart(4, "0") : "0000";
         const nroCbte = comp.numero ? String(comp.numero).padStart(8, "0") : "";
         const fcNumStr = comp.numero ? `FC-${ptoVta}-${nroCbte}` : `FC-${comp.id}`;
-        
+
         const defaultGa = calculateDefaultGA(total);
-        
+
         // bruto = total + creditos - debitos + ajustesOs - pendientesCobro
         // since creditos, debitos, ajustesOs, pendientesCobro are 0 initially:
         const defaultBruto = total;
         // neto = bruto - ga + ajusteRecupero
         // since ajusteRecupero is 0 initially:
         const defaultNeto = Math.max(0, defaultBruto - defaultGa);
-        
+
         const compPeriod = comp.fecha
           ? `${(comp.fecha.getMonth() + 1).toString().padStart(2, "0")}/${comp.fecha.getFullYear()}`
           : monthStr;
@@ -1076,8 +1076,8 @@ export async function notifyHospital(
     const finalRecipients = (customOptions?.recipients && customOptions.recipients.length > 0)
       ? customOptions.recipients
       : hospitalEmails.length > 0
-      ? hospitalEmails
-      : ["hospital@uep.gov.ar"];
+        ? hospitalEmails
+        : ["hospital@uep.gov.ar"];
 
     const emailHeaderTitle = wasNotifiedBefore
       ? "📧 NOTIFICACIÓN DE LIQUIDACIÓN RECTIFICADA DE OBRA SOCIAL"
@@ -1166,13 +1166,13 @@ export async function fetchLiquidationById(id: number) {
     const allCuils = personalDistributions.map((p) => p.cuil).filter((c): c is bigint => c !== null);
     const mspAgents = allCuils.length > 0
       ? await prisma.imPersonalMsp.findMany({
-          where: { cuil: { in: allCuils } },
-          include: {
-            empresa: {
-              select: { id: true, descripcion: true, cuit: true },
-            },
+        where: { cuil: { in: allCuils } },
+        include: {
+          empresa: {
+            select: { id: true, descripcion: true, cuit: true },
           },
-        })
+        },
+      })
       : [];
 
     const cuilToEmpresas = new Map<string, { id: number; descripcion: string; cuit: string }[]>();
@@ -1321,13 +1321,13 @@ export async function saveLiquidacionPersonalDistributions(
       const allCuils = allPersonalDist.map((p) => p.cuil);
       const mspAgents = allCuils.length > 0
         ? await tx.imPersonalMsp.findMany({
-            where: { cuil: { in: allCuils } },
-            include: {
-              empresa: {
-                select: { id: true, descripcion: true, cuit: true },
-              },
+          where: { cuil: { in: allCuils } },
+          include: {
+            empresa: {
+              select: { id: true, descripcion: true, cuit: true },
             },
-          })
+          },
+        })
         : [];
 
       const cuilToEmpresas = new Map<string, { id: number; descripcion: string; cuit: string }[]>();

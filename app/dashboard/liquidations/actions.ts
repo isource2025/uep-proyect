@@ -712,7 +712,8 @@ export async function updateLiquidationDetails(
   status?: string,
   mesCarga?: string,
   observaciones?: string,
-  deletedDetailIds?: string[]
+  deletedDetailIds?: string[],
+  expediente?: string
 ) {
   try {
     const session = await auth.api.getSession({ headers: await headers() });
@@ -842,6 +843,7 @@ export async function updateLiquidationDetails(
           ...(targetStatus ? { status: targetStatus } : {}),
           ...(mesCarga !== undefined ? { mesCarga } : {}),
           ...(observaciones !== undefined ? { observaciones } : {}),
+          ...(expediente !== undefined ? { expediente: expediente?.trim() || null } : {}),
           ...(currentUserName ? { createdByName: currentUserName } : {}),
         },
       });
@@ -852,6 +854,37 @@ export async function updateLiquidationDetails(
   } catch (e: any) {
     console.error("Error updating liquidation details:", e);
     return { error: e.message || "Error al guardar ajustes de liquidación." };
+  }
+}
+
+export async function updateLiquidationExpediente(
+  liquidationId: number,
+  expediente: string
+) {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) {
+      return { error: "No autorizado. Debe iniciar sesión." };
+    }
+
+    const isHospitalUser = !!(session.user as any)?.hospitalId;
+    if (isHospitalUser) {
+      return { error: "Acceso denegado. La asignación de expediente es exclusiva del personal de UEP." };
+    }
+
+    await prisma.liquidacion.update({
+      where: { id: liquidationId },
+      data: {
+        expediente: expediente?.trim() || null,
+      },
+    });
+
+    revalidatePath("/dashboard/liquidations");
+    revalidatePath(`/dashboard/liquidations/${liquidationId}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error updating liquidation expediente:", error);
+    return { error: "Error al guardar el número de expediente." };
   }
 }
 

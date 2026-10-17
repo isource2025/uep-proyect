@@ -147,6 +147,7 @@ export function LiquidationsTable({
         const status = (liq.status || "").toLowerCase();
         const createdByName = (!isHospitalUser && liq.createdByName ? liq.createdByName : "").toLowerCase();
         const observaciones = (!isHospitalUser && liq.observaciones ? liq.observaciones : "").toLowerCase();
+        const expediente = (liq.expediente || "").toLowerCase();
 
         // Check FC-Ventas asociadas
         const fcMatches = (liq.rc?.appliedAsRc || []).some((app: any) => {
@@ -189,6 +190,7 @@ export function LiquidationsTable({
           rcNum.includes(q) ||
           clienteName.includes(q) ||
           status.includes(q) ||
+          expediente.includes(q) ||
           (!isHospitalUser && createdByName.includes(q)) ||
           (!isHospitalUser && observaciones.includes(q)) ||
           fcMatches ||
@@ -335,6 +337,13 @@ export function LiquidationsTable({
                           )}
                           <span>LIQ-{String(liq.id).padStart(4, "0")}</span>
                         </div>
+                        {liq.expediente && (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/25 text-3xs font-mono font-medium">
+                              Exp. {liq.expediente}
+                            </span>
+                          </div>
+                        )}
                       </TableCell>
 
                       {isHospitalUser ? (

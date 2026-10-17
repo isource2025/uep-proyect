@@ -50,8 +50,8 @@ export function buildLiquidationWorkbook(
     ["Liquidación N°:", liqCode, "", "Estado:", statusLabel],
     ["Obra Social:", clientName, "", "CUIT O.S.:", clientCuit],
     ["Recibo UEP N°:", rcNumber, "", "Mes de Carga / Período:", mesCarga],
-    ["Operador / Liquidador:", operador, "", "Fecha Emisión Reporte:", fechaGeneracion],
-    ...(liq.observaciones ? [["Observaciones:", liq.observaciones]] : []),
+    ["N° Expediente:", liq.expediente || "Sin asignar", "", "Fecha Emisión Reporte:", fechaGeneracion],
+    ["Operador / Liquidador:", operador, "", ...(liq.observaciones ? ["Observaciones:", liq.observaciones] : ["", ""])],
     [],
     ["RESUMEN DE TOTALES CONSOLIDADOS ($)"],
     ["Total Facturado:", formatMoney(liq.totalFacturado), "", "Bruto a Pagar:", formatMoney(liq.brutoAPagar)],
@@ -392,6 +392,44 @@ export function buildLiquidationWorkbook(
     ];
     XLSX.utils.book_append_sheet(wb, ws3, "Nómina SISPER");
   }
+
+  // =========================================================================
+  // 4. HOJA: POR EXPTE (Formato Oficial Tesorería / TGP)
+  // =========================================================================
+  const totalSueldos = formatMoney((liq.totalHonorarios || 0) + (liq.totalSobreasignaciones || 0));
+  const sheetExpteData: any[][] = [
+    ["REPORTE RESUMEN POR EXPEDIENTE ADMINISTRATIVO - UEP MSP"],
+    [],
+    ["SIGLAS OS", "LIQUIDACIÓN N°", "expte", "Hon. Médicos", "Sobreasignación", " SUELDOS"],
+    [
+      clientName,
+      `Liq. N° ${liq.id} - ${clientName} - ${mesCarga}`,
+      liq.expediente || "Pendiente de Asignación",
+      formatMoney(liq.totalHonorarios || 0),
+      formatMoney(liq.totalSobreasignaciones || 0),
+      totalSueldos,
+    ],
+    [],
+    [
+      "TOTAL GENERAL",
+      "",
+      "",
+      formatMoney(liq.totalHonorarios || 0),
+      formatMoney(liq.totalSobreasignaciones || 0),
+      totalSueldos,
+    ],
+  ];
+
+  const wsExpte = XLSX.utils.aoa_to_sheet(sheetExpteData);
+  wsExpte["!cols"] = [
+    { wch: 25 }, // SIGLAS OS
+    { wch: 45 }, // LIQUIDACIÓN N°
+    { wch: 24 }, // expte
+    { wch: 20 }, // Hon. Médicos
+    { wch: 20 }, // Sobreasignación
+    { wch: 20 }, // SUELDOS
+  ];
+  XLSX.utils.book_append_sheet(wb, wsExpte, "Por Expte.");
 
   const sanitizedClient = clientName
     .toLowerCase()

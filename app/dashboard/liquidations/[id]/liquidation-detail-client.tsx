@@ -46,7 +46,7 @@ import {
 } from "@/components/ui/dialog";
 import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isUserHospital } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { updateLiquidationDetails, updateLiquidationObservaciones, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions } from "../actions";
+import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions } from "../actions";
 import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
 import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
 
@@ -132,6 +132,8 @@ export default function LiquidationDetailClient({
   const [mesCarga, setMesCarga] = useState(liq.mesCarga || "");
   const [observaciones, setObservaciones] = useState(liq.observaciones || "");
   const [savingObs, setSavingObs] = useState(false);
+  const [expediente, setExpediente] = useState(liq.expediente || "");
+  const [savingExpte, setSavingExpte] = useState(false);
   const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
   const [globalGaPercent, setGlobalGaPercent] = useState("6");
   const [customGlobalGaPercent, setCustomGlobalGaPercent] = useState("");
@@ -183,6 +185,7 @@ export default function LiquidationDetailClient({
   );
   const initialMesCargaRef = useRef(liq.mesCarga || "");
   const initialObservacionesRef = useRef(liq.observaciones || "");
+  const initialExpedienteRef = useRef(liq.expediente || "");
   const [hasSavedFinancialModifications, setHasSavedFinancialModifications] = useState(false);
 
   // Computes whether there are unsaved FINANCIAL modifications (debits, credits, GA, invoices, period)
@@ -210,10 +213,14 @@ export default function LiquidationDetailClient({
     return false;
   }, [editableDetails, deletedDetailIds, mesCarga]);
 
-  // Overall unsaved changes (including internal observations, so the Save button can save them)
+  // Overall unsaved changes (including internal observations and expediente, so the Save button can save them)
   const hasUnsavedChanges = useMemo(() => {
-    return hasUnsavedFinancialChanges || ((observaciones || "") !== initialObservacionesRef.current);
-  }, [hasUnsavedFinancialChanges, observaciones]);
+    return (
+      hasUnsavedFinancialChanges ||
+      ((observaciones || "") !== initialObservacionesRef.current) ||
+      ((expediente || "") !== initialExpedienteRef.current)
+    );
+  }, [hasUnsavedFinancialChanges, observaciones, expediente]);
 
   // Only SAVED financial modifications warrant a hospital rectification notification button
   const isFinancialModified = hasSavedFinancialModifications;
@@ -612,7 +619,7 @@ export default function LiquidationDetailClient({
         ajusteRecupero: Number(item.ajusteRecupero || 0),
       }));
 
-      const res = await updateLiquidationDetails(liq.id, parsedDetails, undefined, mesCarga, observaciones, deletedDetailIds);
+      const res = await updateLiquidationDetails(liq.id, parsedDetails, undefined, mesCarga, observaciones, deletedDetailIds, expediente);
       if (res.error) {
         setErrorMsg(res.error);
         return;
@@ -631,6 +638,7 @@ export default function LiquidationDetailClient({
       }));
       initialMesCargaRef.current = mesCarga || "";
       initialObservacionesRef.current = observaciones || "";
+      initialExpedienteRef.current = expediente || "";
       if (wasNotifiedBefore && hasUnsavedFinancialChanges) {
         setHasSavedFinancialModifications(true);
         setLiq((prev: any) => ({ ...prev, status: "RECTIFICADA_PENDIENTE" }));
@@ -643,6 +651,27 @@ export default function LiquidationDetailClient({
       setErrorMsg("Error al guardar los ajustes de liquidación.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveExpedienteOnly = async () => {
+    setSavingExpte(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await updateLiquidationExpediente(liq.id, expediente);
+      if (res?.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      initialExpedienteRef.current = expediente || "";
+      setLiq((prev: any) => ({ ...prev, expediente: expediente?.trim() || null }));
+      setSuccessMsg("Número de expediente guardado correctamente.");
+      router.refresh();
+    } catch (e: any) {
+      setErrorMsg("Error al guardar el número de expediente.");
+    } finally {
+      setSavingExpte(false);
     }
   };
 
@@ -1230,15 +1259,46 @@ export default function LiquidationDetailClient({
               </p>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground uppercase font-bold">Mes Carga</Label>
-              <Input
-                type="text"
-                value={mesCarga}
-                onChange={(e) => setMesCarga(e.target.value)}
-                placeholder="e.g. 06/2026"
-                className="h-8 text-xs bg-background border-border font-semibold text-foreground max-w-[130px]"
-              />
+            <div className="grid grid-cols-1 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground uppercase font-bold">Mes Carga</Label>
+                <Input
+                  type="text"
+                  value={mesCarga}
+                  onChange={(e) => setMesCarga(e.target.value)}
+                  placeholder="06/2026"
+                  className="h-8 text-xs bg-background border-border font-semibold text-foreground max-w-[130px] placeholder:text-muted-foreground/75"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-muted-foreground uppercase font-bold flex items-center gap-1">
+                    <FileText className="h-3 w-3 text-emerald-500" />
+                    N° Expediente
+                  </Label>
+                  {(expediente || "") !== initialExpedienteRef.current && !isHospitalUser && (
+                    <Button
+                      size="sm"
+                      type="button"
+                      onClick={handleSaveExpedienteOnly}
+                      disabled={savingExpte}
+                      className="h-5 px-1.5 text-3xs bg-emerald-600 hover:bg-emerald-500 text-white font-bold gap-1 cursor-pointer animate-in fade-in"
+                    >
+                      {savingExpte ? <RefreshCw className="h-2.5 w-2.5 animate-spin" /> : <Save className="h-2.5 w-2.5" />}
+                      Guardar
+                    </Button>
+                  )}
+                </div>
+                <Input
+                  disabled={isHospitalUser}
+                  type="text"
+                  value={expediente}
+                  onChange={(e) => setExpediente(e.target.value)}
+                  placeholder="316-0000/2026"
+                  className="h-8 text-xs bg-background border-border font-mono font-semibold text-foreground max-w-[170px] placeholder:text-muted-foreground/75"
+                />
+              </div>
             </div>
 
             {/* FC Ventas unificadas associated with this receipt */}

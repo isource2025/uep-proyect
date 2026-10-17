@@ -24,6 +24,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import {
   Receipt,
   Eye,
   CheckCircle2,
@@ -380,32 +385,40 @@ export function LiquidationsTable({
                                   </span>
                                 )}
                                 {liq.observaciones && liq.observaciones.trim() !== "" && (
-                                  <div className="relative group inline-block">
-                                    <button
-                                      type="button"
-                                      disabled={isEnteringAny}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (isEnteringAny) return;
-                                        setSelectedObs({
-                                          id: liq.id,
-                                          title: `LIQ-${String(liq.id).padStart(4, "0")}`,
-                                          clientName: liq.rc?.cliente?.nombre || "Obra Social",
-                                          createdByName: liq.createdByName,
-                                          text: liq.observaciones,
-                                        });
-                                      }}
-                                      className={cn(
-                                        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold transition-all",
-                                        isEnteringAny ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer hover:bg-amber-500/20 active:scale-95"
-                                      )}
-                                      title="Ver observaciones"
+                                  <HoverCard openDelay={150} closeDelay={100}>
+                                    <HoverCardTrigger asChild>
+                                      <button
+                                        type="button"
+                                        disabled={isEnteringAny}
+                                        aria-label="Ver observaciones"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (isEnteringAny) return;
+                                          setSelectedObs({
+                                            id: liq.id,
+                                            title: `LIQ-${String(liq.id).padStart(4, "0")}`,
+                                            clientName: liq.rc?.cliente?.nombre || "Obra Social",
+                                            createdByName: liq.createdByName,
+                                            text: liq.observaciones,
+                                          });
+                                        }}
+                                        className={cn(
+                                          "inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 text-[10px] font-bold transition-all",
+                                          isEnteringAny ? "opacity-50 cursor-not-allowed pointer-events-none" : "cursor-pointer hover:bg-amber-500/20 active:scale-95"
+                                        )}
+                                      >
+                                        <MessageSquare className="h-3 w-3" />
+                                        Obs
+                                      </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent
+                                      side="top"
+                                      align="start"
+                                      sideOffset={6}
+                                      avoidCollisions={true}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-72 p-3 text-xs whitespace-normal text-left pointer-events-none"
                                     >
-                                      <MessageSquare className="h-3 w-3" />
-                                      Obs
-                                    </button>
-                                    {/* Hover Tooltip Popup for desktop */}
-                                    <div className="absolute left-0 top-full mt-1.5 hidden md:group-hover:flex flex-col z-50 w-72 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95 whitespace-normal text-left">
                                       <div className="flex items-center justify-between border-b border-border/60 pb-1.5 mb-1.5">
                                         <span className="font-bold text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                                           <MessageSquare className="h-3.5 w-3.5" />
@@ -420,8 +433,8 @@ export function LiquidationsTable({
                                       <p className="text-2xs text-foreground whitespace-pre-wrap leading-relaxed font-normal">
                                         {liq.observaciones}
                                       </p>
-                                    </div>
-                                  </div>
+                                    </HoverCardContent>
+                                  </HoverCard>
                                 )}
                               </div>
                             )}
@@ -584,42 +597,50 @@ export function LiquidationsTable({
                                 if (total === 0) return null;
 
                                 return (
-                                  <div className="relative group inline-block">
-                                    <button
-                                      type="button"
-                                      disabled={isEnteringAny}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (isEnteringAny) return;
-                                        setSelectedHospitalProgress({
-                                          id: liq.id,
-                                          title: `LIQ-${String(liq.id).padStart(4, "0")}`,
-                                          clientName: liq.rc?.cliente?.nombre || "Obra Social",
-                                          completed,
-                                          total,
-                                          list,
-                                          pending,
-                                        });
-                                      }}
-                                      className={cn(
-                                        "inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-bold transition-all h-8",
-                                        isEnteringAny
-                                          ? "opacity-50 cursor-not-allowed pointer-events-none"
-                                          : "cursor-pointer active:scale-95",
-                                        completed === total
-                                          ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25 hover:bg-teal-500/20"
-                                          : completed > 0
-                                          ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25 hover:bg-purple-500/20"
-                                          : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25 hover:bg-amber-500/20"
-                                      )}
-                                      title="Ver progreso de distribución por hospital"
-                                    >
-                                      <Building2 className="h-3.5 w-3.5 shrink-0" />
-                                      <span>{completed}/{total}</span>
-                                    </button>
+                                  <HoverCard openDelay={150} closeDelay={100}>
+                                    <HoverCardTrigger asChild>
+                                      <button
+                                        type="button"
+                                        disabled={isEnteringAny}
+                                        aria-label="Ver progreso de distribución por hospital"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (isEnteringAny) return;
+                                          setSelectedHospitalProgress({
+                                            id: liq.id,
+                                            title: `LIQ-${String(liq.id).padStart(4, "0")}`,
+                                            clientName: liq.rc?.cliente?.nombre || "Obra Social",
+                                            completed,
+                                            total,
+                                            list,
+                                            pending,
+                                          });
+                                        }}
+                                        className={cn(
+                                          "inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-bold transition-all h-8",
+                                          isEnteringAny
+                                            ? "opacity-50 cursor-not-allowed pointer-events-none"
+                                            : "cursor-pointer active:scale-95",
+                                          completed === total
+                                            ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25 hover:bg-teal-500/20"
+                                            : completed > 0
+                                            ? "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25 hover:bg-purple-500/20"
+                                            : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25 hover:bg-amber-500/20"
+                                        )}
+                                      >
+                                        <Building2 className="h-3.5 w-3.5 shrink-0" />
+                                        <span>{completed}/{total}</span>
+                                      </button>
+                                    </HoverCardTrigger>
 
-                                    {/* Hover Tooltip Popup for desktop */}
-                                    <div className="absolute right-0 top-full mt-1.5 hidden md:group-hover:flex flex-col z-50 w-80 p-3 bg-popover text-popover-foreground rounded-lg shadow-xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95 whitespace-normal text-left">
+                                    <HoverCardContent
+                                      side="top"
+                                      align="end"
+                                      sideOffset={6}
+                                      avoidCollisions={true}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-80 p-3 text-xs whitespace-normal text-left pointer-events-none"
+                                    >
                                       <div className="flex items-center justify-between border-b border-border/60 pb-1.5 mb-2">
                                         <span className="font-bold text-xs flex items-center gap-1.5 text-foreground">
                                           <Building2 className="h-3.5 w-3.5 text-purple-500 shrink-0" />
@@ -658,8 +679,8 @@ export function LiquidationsTable({
                                       <p className="text-3xs text-muted-foreground mt-2 border-t border-border/40 pt-1.5 text-center font-normal">
                                         Clic para ver el detalle completo
                                       </p>
-                                    </div>
-                                  </div>
+                                    </HoverCardContent>
+                                  </HoverCard>
                                 );
                               })()}
 

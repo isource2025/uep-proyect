@@ -1524,3 +1524,136 @@ export async function getLiquidationExcelReportData(id: number) {
   }
 }
 
+export async function searchAgentsForLiquidationAction(query: string, hospitalId?: number) {
+  try {
+    const clean = query.trim();
+    if (!clean || clean.length < 2) return [];
+
+    const cleanDigits = clean.replace(/[^\d]/g, "");
+    let cuilBigInt: bigint | null = null;
+    if (cleanDigits.length >= 6) {
+      try {
+        cuilBigInt = BigInt(cleanDigits);
+      } catch {}
+    }
+
+    const where: any = {
+      OR: [
+        { apellidoyNombre: { contains: clean } },
+        { legajo: { contains: clean } },
+        ...(cuilBigInt !== null ? [{ cuil: cuilBigInt }, { idAgente: cuilBigInt }] : []),
+      ],
+    };
+
+    if (hospitalId) {
+      where.idEmpresa = hospitalId;
+    }
+
+    const mspAgents = await prisma.imPersonalMsp.findMany({
+      where,
+      include: {
+        empresa: {
+          select: { id: true, descripcion: true },
+        },
+      },
+      orderBy: [{ apellidoyNombre: "asc" }],
+      take: 50,
+    });
+
+    const seen = new Set<string>();
+    const results: any[] = [];
+    for (const ag of mspAgents) {
+      const rawCuil = ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ag.legajo.trim());
+      if (!seen.has(rawCuil)) {
+        seen.add(rawCuil);
+        results.push({
+          id: rawCuil,
+          idAgente: rawCuil,
+          cuil: ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ""),
+          legajo: ag.legajo.trim(),
+          nombre: ag.apellidoyNombre?.trim() || "",
+          cargo: "PROFESIONAL",
+          hospitalId: ag.idEmpresa,
+          hospitalNombre: ag.empresa?.descripcion?.trim() || "",
+        });
+      }
+    }
+
+    return serializeData(results);
+  } catch (err) {
+    console.error("Error searching agents:", err);
+    return [];
+  }
+}
+
+export async function searchBatchAgentsForLiquidationAction(terms: string[], hospitalId?: number) {
+  try {
+    if (!terms || terms.length === 0) return [];
+
+    const cuils: bigint[] = [];
+    const textTerms: string[] = [];
+
+    for (const t of terms) {
+      const clean = t.trim();
+      const cleanDigits = clean.replace(/[^\d]/g, "");
+      if (cleanDigits.length >= 6) {
+        try {
+          cuils.push(BigInt(cleanDigits));
+        } catch {}
+      } else if (clean.length >= 3) {
+        textTerms.push(clean);
+      }
+    }
+
+    const orClauses: any[] = [];
+    if (cuils.length > 0) {
+      orClauses.push({ cuil: { in: cuils } });
+      orClauses.push({ idAgente: { in: cuils } });
+    }
+    for (const text of textTerms.slice(0, 30)) {
+      orClauses.push({ apellidoyNombre: { contains: text } });
+    }
+
+    if (orClauses.length === 0) return [];
+
+    const where: any = { OR: orClauses };
+    if (hospitalId) {
+      where.idEmpresa = hospitalId;
+    }
+
+    const mspAgents = await prisma.imPersonalMsp.findMany({
+      where,
+      include: {
+        empresa: {
+          select: { id: true, descripcion: true },
+        },
+      },
+      take: 200,
+    });
+
+    const seen = new Set<string>();
+    const results: any[] = [];
+    for (const ag of mspAgents) {
+      const rawCuil = ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ag.legajo.trim());
+      if (!seen.has(rawCuil)) {
+        seen.add(rawCuil);
+        results.push({
+          id: rawCuil,
+          idAgente: rawCuil,
+          cuil: ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ""),
+          legajo: ag.legajo.trim(),
+          nombre: ag.apellidoyNombre?.trim() || "",
+          cargo: "PROFESIONAL",
+          hospitalId: ag.idEmpresa,
+          hospitalNombre: ag.empresa?.descripcion?.trim() || "",
+        });
+      }
+    }
+
+    return serializeData(results);
+  } catch (err) {
+    console.error("Error searching batch agents:", err);
+    return [];
+  }
+}
+

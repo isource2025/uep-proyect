@@ -104,14 +104,21 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
   let extraSavedAgents: any[] = [];
   let agentsPeriodOrigin: "current" | "previous" | "none" = "none";
 
-  // Allow searching all registered agents across the entire nominal roll (since professionals work across multiple hospitals)
+  // Optimized: Load agents only for the hospital(s) in this liquidation to keep payload small and fast
+  const whereAg: any = {};
+  if (targetEmpresaIds.length > 0) {
+    whereAg.idEmpresa = { in: targetEmpresaIds };
+  }
+
   const mspAgents = await prisma.imPersonalMsp.findMany({
+    where: whereAg,
     include: {
       empresa: {
         select: { id: true, descripcion: true },
       },
     },
     orderBy: [{ apellidoyNombre: "asc" }, { idEmpresa: "asc" }],
+    take: targetEmpresaIds.length > 0 ? undefined : 300,
   });
 
   if (mspAgents.length > 0) {

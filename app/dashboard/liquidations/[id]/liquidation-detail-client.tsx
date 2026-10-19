@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -46,7 +46,7 @@ import {
 } from "@/components/ui/dialog";
 import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isUserHospital } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions } from "../actions";
+import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, searchBatchAgentsForLiquidationAction } from "../actions";
 import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
 import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
 
@@ -121,6 +121,12 @@ export default function LiquidationDetailClient({
   const [unmatchedBatchTerms, setUnmatchedBatchTerms] = useState<string[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedAgentIdsInModal, setSelectedAgentIdsInModal] = useState<any[]>([]);
+  const [modalAgents, setModalAgents] = useState<any[]>(agents);
+  const [isSearchingServer, setIsSearchingServer] = useState(false);
+
+  useEffect(() => {
+    setModalAgents(agents);
+  }, [agents]);
 
   const getInputDisplayValue = (val: any) => {
     if (val === 0 || val === "0" || val === "") return "";
@@ -294,7 +300,35 @@ export default function LiquidationDetailClient({
     });
   };
 
-  const handleExecuteBatchSearch = () => {
+  const handleSingleSearchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = modalSearchInput.trim();
+    if (!q) return;
+    setSubmittedSearchQuery(q);
+    setHasSearched(true);
+
+    setIsSearchingServer(true);
+    try {
+      const serverResults = await searchAgentsForLiquidationAction(
+        q,
+        isHospitalUser ? (targetHospitalId ? Number(targetHospitalId) : undefined) : undefined
+      );
+      if (serverResults && serverResults.length > 0) {
+        setModalAgents((prev) => {
+          const map = new Map();
+          for (const a of prev) map.set(String(a.idAgente || a.id || a.cuil), a);
+          for (const a of serverResults) map.set(String(a.idAgente || a.id || a.cuil), a);
+          return Array.from(map.values());
+        });
+      }
+    } catch (err) {
+      console.error("Error searching agents dynamically:", err);
+    } finally {
+      setIsSearchingServer(false);
+    }
+  };
+
+  const handleExecuteBatchSearch = async () => {
     const rawTerms = modalBatchInput
       .split(/[\r\n,;\t]+/)
       .map((t) => t.trim())
@@ -302,7 +336,27 @@ export default function LiquidationDetailClient({
 
     if (rawTerms.length === 0) return;
 
-    const availableInModal = agents.filter(
+    setIsSearchingServer(true);
+    let currentPool = [...modalAgents];
+    try {
+      const serverResults = await searchBatchAgentsForLiquidationAction(
+        rawTerms,
+        isHospitalUser ? (targetHospitalId ? Number(targetHospitalId) : undefined) : undefined
+      );
+      if (serverResults && serverResults.length > 0) {
+        const map = new Map();
+        for (const a of currentPool) map.set(String(a.idAgente || a.id || a.cuil), a);
+        for (const a of serverResults) map.set(String(a.idAgente || a.id || a.cuil), a);
+        currentPool = Array.from(map.values());
+        setModalAgents(currentPool);
+      }
+    } catch (err) {
+      console.error("Error searching batch agents:", err);
+    } finally {
+      setIsSearchingServer(false);
+    }
+
+    const availableInModal = currentPool.filter(
       (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
     );
 
@@ -367,7 +421,7 @@ export default function LiquidationDetailClient({
       return;
     }
 
-    const agentsToAdd = agents.filter((ag: any) =>
+    const agentsToAdd = modalAgents.filter((ag: any) =>
       selectedAgentIdsInModal.includes(ag.idAgente || ag.id) &&
       !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
     );
@@ -2053,7 +2107,7 @@ export default function LiquidationDetailClient({
             {/* SELECCIÓN Y AGREGADO DE AGENTES MEDIANTE MODAL (SOLO HOSPITAL) */}
             {isHospitalUser && (
               <>
-                {agents.length === 0 ? (
+                {modalAgents.length === 0 ? (
                   <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-amber-600 dark:text-amber-400 text-xs">
                     <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                     <div>
@@ -2067,9 +2121,9 @@ export default function LiquidationDetailClient({
                       <span>
                         Profesionales disponibles:{" "}
                         <strong className="text-foreground">
-                          {agents.filter((ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))).length}
+                          {modalAgents.filter((ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))).length}
                         </strong>{" "}
-                        (de {agents.length} en el padrón)
+                        (de {modalAgents.length} en el padrón)
                       </span>
                       {agentsPeriodOrigin === "current" && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
@@ -2094,7 +2148,7 @@ export default function LiquidationDetailClient({
                       }}
                       disabled={
                         savingAgents ||
-                        agents.filter((ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))).length === 0
+                        modalAgents.filter((ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))).length === 0
                       }
                       className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-8 text-xs shrink-0 cursor-pointer"
                     >
@@ -2163,13 +2217,7 @@ export default function LiquidationDetailClient({
 
                       {searchTab === "single" ? (
                         <form
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            if (modalSearchInput.trim()) {
-                              setSubmittedSearchQuery(modalSearchInput.trim());
-                              setHasSearched(true);
-                            }
-                          }}
+                          onSubmit={handleSingleSearchSubmit}
                           className="flex items-center gap-2.5 w-full"
                         >
                           <div className="relative flex-1">
@@ -2198,10 +2246,14 @@ export default function LiquidationDetailClient({
 
                           <Button
                             type="submit"
-                            disabled={!modalSearchInput.trim()}
+                            disabled={!modalSearchInput.trim() || isSearchingServer}
                             className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-10 px-4 text-xs shrink-0 cursor-pointer rounded-xl shadow-xs"
                           >
-                            <Search className="h-4 w-4" />
+                            {isSearchingServer ? (
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Search className="h-4 w-4" />
+                            )}
                             Buscar
                           </Button>
                         </form>
@@ -2237,10 +2289,14 @@ export default function LiquidationDetailClient({
                             <Button
                               type="button"
                               onClick={handleExecuteBatchSearch}
-                              disabled={!modalBatchInput.trim()}
+                              disabled={!modalBatchInput.trim() || isSearchingServer}
                               className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1.5 h-9 px-4 text-xs shrink-0 cursor-pointer rounded-xl shadow-xs"
                             >
-                              <FileSpreadsheet className="h-4 w-4" />
+                              {isSearchingServer ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FileSpreadsheet className="h-4 w-4" />
+                              )}
                               Buscar Coincidencias en Excel
                             </Button>
                           </div>
@@ -2248,7 +2304,7 @@ export default function LiquidationDetailClient({
                       )}
 
                       {(() => {
-                        const availableInModal = agents.filter(
+                        const availableInModal = modalAgents.filter(
                           (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
                         );
 
@@ -2371,7 +2427,7 @@ export default function LiquidationDetailClient({
                     {/* List of Agents */}
                     <div className="flex-1 overflow-y-auto max-h-[50vh] p-4 sm:p-5 space-y-2.5">
                       {(() => {
-                        const availableInModal = agents.filter(
+                        const availableInModal = modalAgents.filter(
                           (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
                         );
 

@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
+  PlusCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,8 +56,19 @@ export function SisperImportModal({
     existingCount: number;
     period: string;
   } | null>(null);
+  const [missingEmpresasPrompt, setMissingEmpresasPrompt] = useState<{
+    show: boolean;
+    list: { codigoSisper: number; descripcion: string; agentCount: number }[];
+    totalMissingAgents: number;
+    period: string;
+  } | null>(null);
+  const [confirmedCreateEmpresas, setConfirmedCreateEmpresas] = useState(false);
 
-  const handleUploadExcel = async (e?: React.FormEvent, forceReplace: boolean = false) => {
+  const handleUploadExcel = async (
+    e?: React.FormEvent,
+    forceReplace: boolean = false,
+    confirmCreateNew: boolean = false
+  ) => {
     if (e) e.preventDefault();
     if (!uploadFile) {
       setFeedbackMsg({ type: "error", text: "Por favor seleccione un archivo Excel (.xlsx)." });
@@ -68,6 +80,10 @@ export function SisperImportModal({
     if (!forceReplace) {
       setConfirmReplacePrompt(null);
     }
+    if (confirmCreateNew) {
+      setConfirmedCreateEmpresas(true);
+      setMissingEmpresasPrompt(null);
+    }
 
     const formData = new FormData();
     formData.append("file", uploadFile);
@@ -75,12 +91,26 @@ export function SisperImportModal({
     if (forceReplace) {
       formData.append("replaceExisting", "true");
     }
+    if (confirmCreateNew || confirmedCreateEmpresas) {
+      formData.append("createMissingEmpresas", "true");
+    }
 
     try {
       const res = await importAgentsFromExcel(formData);
       if (res.error) {
         setFeedbackMsg({ type: "error", text: res.error });
         setConfirmReplacePrompt(null);
+        setMissingEmpresasPrompt(null);
+        return;
+      }
+
+      if (res.missingEmpresas) {
+        setMissingEmpresasPrompt({
+          show: true,
+          list: res.missingList || [],
+          totalMissingAgents: res.totalMissingAgents || 0,
+          period: res.period || uploadPeriod,
+        });
         return;
       }
 
@@ -95,6 +125,8 @@ export function SisperImportModal({
       }
 
       setConfirmReplacePrompt(null);
+      setMissingEmpresasPrompt(null);
+      setConfirmedCreateEmpresas(false);
       const countNum = res.count || 0;
       const formattedPeriod = res.period || uploadPeriod;
       setFeedbackMsg({
@@ -112,11 +144,14 @@ export function SisperImportModal({
         setIsOpen(false);
         setUploadFile(null);
         setConfirmReplacePrompt(null);
+        setMissingEmpresasPrompt(null);
+        setConfirmedCreateEmpresas(false);
         setFeedbackMsg(null);
       }, 2000);
     } catch (err: any) {
       setFeedbackMsg({ type: "error", text: "Error inesperado al importar el archivo Excel." });
       setConfirmReplacePrompt(null);
+      setMissingEmpresasPrompt(null);
     } finally {
       setUploading(false);
     }
@@ -127,6 +162,8 @@ export function SisperImportModal({
     if (!open && !uploading) {
       setFeedbackMsg(null);
       setConfirmReplacePrompt(null);
+      setMissingEmpresasPrompt(null);
+      setConfirmedCreateEmpresas(false);
     }
   };
 
@@ -162,7 +199,81 @@ export function SisperImportModal({
           </div>
         )}
 
-        {confirmReplacePrompt ? (
+        {missingEmpresasPrompt ? (
+          <div className="space-y-4 py-2">
+            <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/20 text-foreground space-y-3">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="font-bold text-xs text-amber-600 dark:text-amber-400">
+                    Centros de Salud no registrados en el sistema
+                  </h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Se detectaron <strong className="text-foreground">{missingEmpresasPrompt.list.length}</strong> centro(s) de salud en la planilla que aún no están dados de alta en el sistema ({missingEmpresasPrompt.totalMissingAgents.toLocaleString("es-AR")} agentes asociados):
+                  </p>
+                </div>
+              </div>
+
+              <div className="max-h-48 overflow-y-auto space-y-1.5 border border-border/70 rounded-lg p-2 bg-background/80">
+                {missingEmpresasPrompt.list.map((item) => (
+                  <div
+                    key={item.codigoSisper}
+                    className="flex items-center justify-between text-xs p-2 rounded-md bg-muted/40 border border-border/50 gap-2"
+                  >
+                    <div className="flex items-center gap-2 overflow-hidden min-w-0">
+                      <span className="font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded text-3xs shrink-0">
+                        SISPER {item.codigoSisper}
+                      </span>
+                      <span className="truncate font-medium text-foreground text-3xs">
+                        {item.descripcion}
+                      </span>
+                    </div>
+                    <span className="text-3xs text-muted-foreground shrink-0 font-medium">
+                      {item.agentCount} agente{item.agentCount !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-xs text-muted-foreground font-medium pt-1">
+                ¿Desea dar de alta estos nuevos centros de salud automáticamente en el sistema y continuar con la importación?
+              </p>
+            </div>
+
+            <DialogFooter className="pt-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setMissingEmpresasPrompt(null);
+                  setConfirmedCreateEmpresas(false);
+                }}
+                disabled={uploading}
+                className="border-border text-xs h-9 cursor-pointer"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => handleUploadExcel(undefined, false, true)}
+                disabled={uploading}
+                className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold text-xs h-9 cursor-pointer gap-2 shadow-sm"
+              >
+                {uploading ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Cargando Centros e Importando...
+                  </>
+                ) : (
+                  <>
+                    <PlusCircle className="h-4 w-4" />
+                    Sí, cargar centros y continuar
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : confirmReplacePrompt ? (
           <div className="space-y-4 py-2">
             <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/20 text-foreground space-y-3">
               <div className="flex items-start gap-3">

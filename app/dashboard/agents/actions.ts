@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import * as XLSX from "xlsx";
+import { getEmpresaIdFromSisperCode } from "@/lib/hospital-mapping";
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -163,6 +164,7 @@ export async function importAgentsFromExcel(formData: FormData) {
   try {
     const file = formData.get("file") as File;
     const replaceExisting = formData.get("replaceExisting") === "true";
+    const createMissingEmpresas = formData.get("createMissingEmpresas") === "true";
     let rawPeriod = (formData.get("period") as string)?.trim() || new Date().toISOString().substring(0, 7);
     let periodDate: Date;
 
@@ -182,6 +184,111 @@ export async function importAgentsFromExcel(formData: FormData) {
       return { error: "No se seleccionó ningún archivo." };
     }
 
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const workbook = XLSX.read(buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rows: any[] = XLSX.utils.sheet_to_json(sheet);
+
+    if (!rows || rows.length === 0) {
+      return { error: "La planilla Excel está vacía o no contiene filas válidas." };
+    }
+
+    // Fetch existing empresas in DB to match IDs and CodigoSisper
+    const dbEmpresas = await prisma.empresa.findMany({
+      select: { id: true, codigoSisper: true },
+    });
+    const validEmpresaIds = new Set(dbEmpresas.map((e) => e.id));
+    const sisperCodeToEmpresaId = new Map<number, number>();
+    for (const e of dbEmpresas) {
+      if (e.codigoSisper) {
+        sisperCodeToEmpresaId.set(e.codigoSisper, e.id);
+      }
+      sisperCodeToEmpresaId.set(e.id, e.id);
+    }
+
+    // Scan for any SISPER health center codes not yet registered in the system
+    const missingEmpresasMap = new Map<number, { codigoSisper: number; descripcion: string; agentCount: number }>();
+
+    for (const row of rows) {
+      const lugarPago =
+        row["Lugar de Pago_1"] ||
+        row["Lugar de Pago"] ||
+        row["Establecimiento"] ||
+        row["LUGAR DE PAGO"] ||
+        "";
+
+      let rawCode: number | null = null;
+      const match = String(lugarPago).match(/^(\d+)/);
+      if (match) {
+        rawCode = parseInt(match[1], 10);
+      } else if (typeof row["IdEmpresa"] === "number") {
+        rawCode = row["IdEmpresa"];
+      }
+
+      if (rawCode !== null) {
+        const resolved =
+          getEmpresaIdFromSisperCode(rawCode) ??
+          sisperCodeToEmpresaId.get(rawCode) ??
+          (validEmpresaIds.has(rawCode) ? rawCode : null);
+
+        if (!resolved) {
+          const desc =
+            String(lugarPago).replace(/^\d+\s*[-–—:]\s*/, "").trim().substring(0, 80) ||
+            `ESTABLECIMIENTO ${rawCode}`;
+
+          const existing = missingEmpresasMap.get(rawCode);
+          if (!existing) {
+            missingEmpresasMap.set(rawCode, {
+              codigoSisper: rawCode,
+              descripcion: desc,
+              agentCount: 1,
+            });
+          } else {
+            existing.agentCount++;
+          }
+        }
+      }
+    }
+
+    // If there are unregistered health centers and the user has not confirmed creating them:
+    if (missingEmpresasMap.size > 0 && !createMissingEmpresas) {
+      const missingList = Array.from(missingEmpresasMap.values());
+      const totalMissingAgents = missingList.reduce((acc, curr) => acc + curr.agentCount, 0);
+      return {
+        missingEmpresas: true,
+        missingList,
+        totalMissingAgents,
+        period: periodStr,
+        message: `Se detectaron ${missingList.length} centros de salud que no están cargados en el sistema.`,
+      };
+    }
+
+    // If user confirmed creating missing empresas, register them in EMPRESAS:
+    if (missingEmpresasMap.size > 0 && createMissingEmpresas) {
+      const maxEmpresa = await prisma.empresa.findFirst({
+        orderBy: { id: "desc" },
+        select: { id: true },
+      });
+      let nextId = (maxEmpresa?.id ?? 0) + 1;
+
+      for (const missing of missingEmpresasMap.values()) {
+        try {
+          const newEmp = await prisma.empresa.create({
+            data: {
+              id: nextId++,
+              descripcion: missing.descripcion,
+              codigoSisper: missing.codigoSisper,
+            },
+          });
+          validEmpresaIds.add(newEmp.id);
+          sisperCodeToEmpresaId.set(missing.codigoSisper, newEmp.id);
+        } catch (createErr) {
+          console.error(`Error creating Empresa for SISPER code ${missing.codigoSisper}:`, createErr);
+        }
+      }
+    }
+
     // Check if there are already records in DB for this period
     const existingCount = await prisma.imPersonalMsp.count({
       where: { periodo: periodDate },
@@ -195,22 +302,6 @@ export async function importAgentsFromExcel(formData: FormData) {
         message: `Ya existen ${existingCount.toLocaleString("es-AR")} agentes registrados para el período ${periodStr}. ¿Desea reemplazar la nómina existente con los datos de esta nueva planilla?`,
       };
     }
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const workbook = XLSX.read(buffer, { type: "buffer" });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows: any[] = XLSX.utils.sheet_to_json(sheet);
-
-    if (!rows || rows.length === 0) {
-      return { error: "La planilla Excel está vacía o no contiene filas válidas." };
-    }
-
-    // Fetch existing empresas in DB to match IDs
-    const dbEmpresas = await prisma.empresa.findMany({
-      select: { id: true },
-    });
-    const validEmpresaIds = new Set(dbEmpresas.map((e) => e.id));
 
     // Prepare records for batch insertion
     const recordsToInsert: {
@@ -243,13 +334,21 @@ export async function importAgentsFromExcel(formData: FormData) {
         "";
 
       let idEmpresa: number | null = null;
+      let rawCode: number | null = null;
 
       // Extract number prefix if present, e.g. "3728 - CAPITAL - HOSP..."
       const match = String(lugarPago).match(/^(\d+)/);
       if (match) {
-        idEmpresa = parseInt(match[1], 10);
+        rawCode = parseInt(match[1], 10);
       } else if (typeof row["IdEmpresa"] === "number") {
-        idEmpresa = row["IdEmpresa"];
+        rawCode = row["IdEmpresa"];
+      }
+
+      if (rawCode !== null) {
+        idEmpresa =
+          getEmpresaIdFromSisperCode(rawCode) ??
+          sisperCodeToEmpresaId.get(rawCode) ??
+          (validEmpresaIds.has(rawCode) ? rawCode : null);
       }
 
       if (!idEmpresa || !validEmpresaIds.has(idEmpresa)) {

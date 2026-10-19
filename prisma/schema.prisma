@@ -323,6 +323,7 @@ model Empresa {
   inicioAct       DateTime? @map("InicioActividades")
   telefono        String?   @map("TEEmpresa") @db.VarChar(45)
   email           String?   @map("EMail") @db.VarChar(40)
+  codigoSisper    Int?      @map("CodigoSisper")
 
   personalMsp     ImPersonalMsp[]
   personalEmpresas ImPersonalEmpresas[]

@@ -1,11 +1,153 @@
 /**
- * Tabla intermedia y utilidades de mapeo entre los IDs de proveedores históricos (PROVEEDORES)
- * y los IDs de efectores sanitarios en la tabla EMPRESAS.
+ * Tabla intermedia y utilidades de mapeo entre:
+ * 1. Los códigos oficiales de SISPER (Lugar de Pago) y los IDs en la tabla EMPRESAS.
+ * 2. Los IDs de proveedores históricos (PROVEEDORES) del ERP y los IDs en la tabla EMPRESAS.
  * 
- * Permite mantener compatibilidad retrospectiva con comprobantes ERP de Compras
+ * Permite mantener compatibilidad retrospectiva con comprobantes ERP de Compras,
+ * resolver automáticamente las importaciones masivas de nómina SISPER,
  * y asegurar que toda nueva entidad y liquidación apunte siempre a su correspondiente ID de Empresa.
  */
 
+/**
+ * Mapeo de Códigos de Lugar de Pago SISPER -> ID Empresa en tabla EMPRESAS
+ */
+export const SISPER_TO_EMPRESA_MAP: Record<number, number> = {
+  4071: 1, // UNIDAD EJECUTORA PROVINCIAL - UGP - MSP (UEP)
+  521: 2, // HOSPITAL "JUAN ROMERO" (9 DE JULIO)
+  325: 3, // HOSPITAL "DR. MIGUEL SUSSINI" - ALVEAR
+  326: 4, // HOSPITAL CABECERA - BELLA VISTA
+  330: 5, // HOSPITAL "DR.J.R.VIDAL" - BERON DE ASTRADA
+  492: 6, // CAPS ARISTOBULO MONGELO (BONPLAND)
+  435: 7, // HOSPITAL "SAN VICENTE PAUL" (CAA CATÍ)
+  358: 8, // CAPS Nº 3 " DR. DIEGO TAGLIALEGNE" (1000 VIV.)
+  382: 9, // CAPS Nº 9 "Bº 17 DE AGOSTO"
+  365: 10, // CAPS Nº 5 "Bº DR. MONTAÑA"
+  388: 11, // CAPS Nº 11 "Bº FRAY JOSÉ DE LA QUINTANA"
+  342: 12, // CAPS Nº 6 " DR. TIBURCIO G. FONSECA" (Bº INDUSTRIAL)
+  341: 13, // CAPS N° 14 "Bº JUAN DE VERA"
+  376: 14, // CAPS Nº 13 "Bº JUAN XXIII"
+  405: 15, // CAPS N° 7 " LAGUNA BRAVA"
+  359: 16, // CAPS Nº 4 "DR. GRACINIANO LUGO" (R. VENEZUELA)
+  364: 17, // CAPS Nº 10 "DR. BALBASTRO" (MOLINA PUNTA)
+  335: 18, // CAPS Nº 2 "EMILIO R. CONI"
+  368: 19, // CAPS Nº 12 "Bº PONCE"
+  356: 20, // CAPS Nº 1 "Bº SAN JOSÉ"
+  348: 21, // CAPS Nº 8 "Bº SANTA TERESITA"
+  340: 22, // BANCO DE SANGRE CENTRAL
+  337: 23, // HOSPITAL "ANGELA I. DE LLANO"
+  339: 24, // HOSPITAL ESCUELA "JOSE FCO. DE SAN MARTIN"
+  334: 25, // HOSPITAL GERIATRICO "JUANA F. CABRAL"
+  3728: 26, // HOSPITAL PEDIATRICO "JUAN PABLO II"
+  338: 27, // HOSPITAL DE SALUD MENTAL "SAN FRANCISCO DE ASIS"
+  333: 28, // HOSPITAL "DR. J. R. VIDAL"
+  391: 29, // INSTITUTO DE CARDIOLOGIA
+  381: 30, // INSTITUTO CORRENTINO DE AYUDA AL LISIADO
+  398: 31, // LABORATORIO CENTRAL
+  3869: 32, // DIRECCION DE EMERGENCIAS SANITARIAS
+  4335: 38, // CAPS Nº 15 "PRESIDENTE ARTURO ILLIA"
+  4321: 39, // CAPS Nº 16 " CENTRO DE SALUD " (BARRIO PALOMA)
+  4369: 40, // HOSPITAL MATERNO NEONATAL ELOISA TORRENT DE VIDAL
+  384: 41, // INSTITUTO VALENTÍN HAÜY
+  4414: 42, // CAPS Nº 17 "Bº 250 VIVIENDAS"
+  4431: 43, // HOSPITAL DE CAMPAÑA ESCUELA HOGAR
+  482: 44, // HOSPITAL DE Cª CARLOS PELLEGRINI
+  519: 45, // ESTACION SANITARIA CHAVARRIA
+  488: 46, // CENTRO DE SALUD COLONIA LIBERTAD DE COLONIA LIBERTAD
+  461: 47, // HOSPITAL "COLONIA LIEBIG"
+  408: 48, // HOSPITAL "INMACULADA CONCEPCION" - CONCEPCIÓN
+  413: 49, // HOSPITAL "DR.FERNANDO IRASTORZA" (CURUZÚ CUATIÁ)
+  416: 50, // HOSPITAL "JAIME M. DAVILA" (EMPEDRADO)
+  427: 51, // HOSPITAL "SAN ROQUE" - ESQUINA
+  397: 52, // DIRECCION DE ATENCION A LA DISCAPACIDAD - CENTRO DE REHABILITACION ESQUINA
+  480: 53, // HOSPITAL "FELIPE YOFRE"
+  529: 54, // CENTRO DE SALUD GARRUCHOS
+  470: 55, // ESTACION SANITARIA ANGELICA LOPEZ (GOB. MARTINEZ)
+  530: 56, // HOSPITAL "DR. MIGUEL SUSSINI" (GDOR. VIRASORO)
+  445: 57, // HOSPITAL " DR.CAMILO MUNIAGURRIA" (GOYA)
+  512: 58, // ESTACION SANITARIA NTRA. SRA. DE FATIMA (GUAVIRAVI)
+  463: 59, // ESTACION SANITARIA "ISLA APIPE GRANDE"
+  436: 60, // HOSPITAL "INMACULADA CONCEPCION" - ITÁ IBATÉ
+  454: 61, // HOSPITAL "JUAN Y C. GARCIA" (ITATÍ)
+  458: 62, // HOSPITAL "DR. RICARDO BILLINGURST" (ITUZAINGÓ)
+  510: 63, // HOSPITAL "SAN ANTONIO DE PADUA" - LA CRUZ
+  437: 64, // CENTRO DE SALUD LOMAS DE VALLEJOS
+  517: 65, // HOSPITAL "PIÑEIRO" (LORETO / SAN MIGUEL)
+  522: 66, // HOSPITAL "PEDRO R. FERNANDEZ" (MANTILLA)
+  479: 67, // HOSPITAL "MARIANO I. LOZA"
+  475: 68, // HOSPITAL "SAN ANTONIO DE PADUA" - MBURUCUYA
+  478: 69, // HOSPITAL "LAS MERCEDES"
+  487: 70, // HOSPITAL "MOCORETA"
+  486: 71, // HOSPITAL "SAMUEL ROBINSON" (MONTE CASEROS)
+  438: 72, // CENTRO DE SALUD PALMAR GRANDE
+  500: 73, // HOSPITAL "DR.E.A.CICCONETTI" (PASO DE LA PATRIA)
+  489: 74, // HOSPITAL "SAN JOSE" (PASO DE LOS LIBRES)
+  414: 75, // HOSPITAL "SAN PEDRO" (PERUGORRIA)
+  428: 76, // HOSPITAL BASE SAGRADO CORAZON DE JESUS (PUEBLO LIBERTADOR)
+  4257: 78, // HOSPITAL "PRESIDENTE RAÚL ALFONSÍN"-RIACHUELO
+  495: 79, // HOSPITAL "MARIA AUXILIADORA" (SALADAS)
+  462: 80, // HOSPITAL "SAN CARLOS"
+  499: 81, // HOSPITAL "JULIO C. RIVERO" (SAN COSME)
+  496: 82, // ESTACION SANITARIA SAN LORENZO
+  509: 83, // HOSPITAL PSIQUIATRICO "DR. E. RAMIREZ" (SAN LUIS DEL PALMAR)
+  505: 84, // HOSPITAL DE SAN LUIS DEL PALMAR (PROVINCIAL)
+  516: 85, // HOSPITAL "J.R. VIDAL " - SAN MIGUEL
+  518: 86, // HOSPITAL " SAN ROQUE" -SAN ROQUE
+  501: 87, // ESTACIÓN SANITARIA "MARÍA AUXILIADORA" (SAN COSME)
+  469: 88, // HOSPITAL "JUAN RAMÓN GOMEZ" (SANTA LUCIA)
+  410: 89, // HOSPITAL "SANTA ROSA" - SANTA ROSA
+  527: 90, // HOSPITAL "SAN JUAN BAUTISTA" (SANTO TOME)
+  533: 91, // HOSPITAL DE SAUCE
+  409: 92, // HOSPITAL "VIRGEN DE ITATI" (TABAY)
+  494: 93, // PTO.SANIT.MUNIC. AGAPITO SOSA TAPEBICUA
+  411: 94, // PTO. SANIT."TATACUA"
+  511: 95, // HOSPITAL "DR. DANIEL W. VERGARA" (YAPEYU)
+  472: 96, // CENTRO DE SALUD DR. ARTURO ILLIA (YATAITI CALLE)
+  4761: 97, // INSTITUTO ONCOLOGICO DE CORRIENTES
+  4762: 98, // HOSPITAL PEDIATRICO ANGEL DE LA GUARDA (GOYA)
+  323: 99, // SUBSEC.EJECUTIVA
+  324: 100, // SUBSEC.NORMATIVA
+  331: 101, // PUESTO SANITARIO YAHAPE
+  332: 102, // D.COORD.OPERATIVA  .
+  371: 103, // PTO.SANITARIO B.SAN PABLO
+  383: 104, // CAPITAL - CENTRO DEL ADOLESCENTE
+  390: 105, // CAP. - DISP.  DERMAT. HERCILIA CASARES DE BLAQUIER
+  417: 106, // SALA P.A.EL SOMBRERO
+  418: 107, // SALA P.A.MANUEL DERQUI
+  420: 108, // EST.SANITARIA EL POLLO
+  421: 109, // S.P.A.DEL SOMBRERO
+  434: 110, // SALA P.A.EST.TORRENT
+  442: 111, // P.S.COL. ROMERO GRAL. PAZ
+  447: 112, // SALA P.A.COL.CAROLINA
+  455: 113, // ITATI - CENTRO DE SALUD- FRANCISCO BAHIAO
+  456: 114, // SALA P.AUX.SCORZA CUE
+  464: 115, // SALA APIPE GDE.(E.UNICA)
+  465: 116, // P. SANIT. VILLA OLIVARI
+  471: 117, // LAVALLE - HOSPITAL DR. JOSE ROSEMNBAUM
+  473: 118, // LAVALLE - C. DE SALUD CRUZ DE LOS MILAGROS
+  477: 119, // PTO.SANIT.PAGO ARIAS
+  490: 120, // Centro de Salud Juan Pujol
+  493: 121, // P. DE LOS LIBRES - C. DE SALUD PARADA PUCHETA
+  503: 122, // PTO.SANIT.ING.STA.ANA
+  506: 123, // SALA P.A.HERLITZKA
+  523: 124, // SALA P.A.COLONIA PANDO
+  531: 125, // SANTO TOME - CENTRO DE SALUD GARAVI
+  536: 126, // D.PLANIF.DE LA SALUD
+  537: 127, // DCCION. ADMINISTRACION
+  538: 128, // D.SANEAMIENTO AMBIENTAL
+  539: 129, // MINISTERIO DE S.PUBLICA
+  542: 130, // MINISTERIO
+  543: 131, // D.SECRETARIA GENERAL
+  544: 132, // D.PROMOCION Y PROTECCION
+  545: 133, // D.MATERNIDAD E INFANCIA
+  546: 134, // DCCION. DE PERSONAL
+  547: 135, // D.FISCALIZACION SANITARIA
+  3868: 136, // CU.CAI.COR.
+  4046: 137, // Coordinacion de CAPS
+};
+
+/**
+ * Mapeo de IDs de Proveedor histórico de Compras -> ID Empresa en tabla EMPRESAS
+ */
 export const PROVEEDOR_TO_EMPRESA_MAP: Record<number, number> = {
   1: 2, // HOSPITAL JUAN ROMERO -> HOSPITAL "JUAN ROMERO"
   2: 3, // HOSPITAL DR. MIGUEL SUSSINI - ALVEAR -> HOSPITAL "DR. MIGUEL SUSSINI" - ALVEAR
@@ -99,6 +241,14 @@ export const PROVEEDOR_TO_EMPRESA_MAP: Record<number, number> = {
 };
 
 /**
+ * Obtiene el ID de Empresa correspondiente a partir del código de SISPER.
+ */
+export function getEmpresaIdFromSisperCode(sisperCode?: number | null): number | undefined {
+  if (sisperCode === null || sisperCode === undefined) return undefined;
+  return SISPER_TO_EMPRESA_MAP[sisperCode];
+}
+
+/**
  * Obtiene el ID de Empresa correspondiente a partir del ID de Proveedor histórico.
  */
 export function getEmpresaIdFromProveedorId(proveedorId?: number | null): number | undefined {
@@ -108,7 +258,7 @@ export function getEmpresaIdFromProveedorId(proveedorId?: number | null): number
 
 /**
  * Resuelve el ID de Empresa para una Compra o Detalle de Liquidación,
- * combinando mapeo de proveedor directo y fallback inteligente.
+ * combinando comprobación directa de Empresa, mapeo de proveedor y fallback.
  */
 export function resolveEmpresaId(item: {
   hospitalId?: number | null;
@@ -116,19 +266,19 @@ export function resolveEmpresaId(item: {
   nombre?: string | null;
   cuit?: string | number | null;
 }): number | undefined {
-  // 1. Si el hospitalId ya es un ID de Empresa (rango 1 a 98)
-  if (item.hospitalId && item.hospitalId >= 1 && item.hospitalId <= 98) {
-    return item.hospitalId;
-  }
-
-  // 2. Verificar mapeo directo por hospitalId histórico (Proveedor -> Empresa)
+  // 1. Si coincide con un ID de proveedor histórico, retornar la empresa mapeada
   if (item.hospitalId && PROVEEDOR_TO_EMPRESA_MAP[item.hospitalId]) {
     return PROVEEDOR_TO_EMPRESA_MAP[item.hospitalId];
   }
 
-  // 3. Verificar mapeo directo por compraHospitalId
+  // 2. Si compraHospitalId coincide con proveedor histórico
   if (item.compraHospitalId && PROVEEDOR_TO_EMPRESA_MAP[item.compraHospitalId]) {
     return PROVEEDOR_TO_EMPRESA_MAP[item.compraHospitalId];
+  }
+
+  // 3. Si ya es un ID de Empresa válido (>= 1)
+  if (item.hospitalId && item.hospitalId >= 1) {
+    return item.hospitalId;
   }
 
   return undefined;

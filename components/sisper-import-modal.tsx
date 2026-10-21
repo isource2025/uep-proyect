@@ -170,13 +170,15 @@ export function SisperImportModal({
   return (
     <Dialog open={isOpen} onOpenChange={handleModalClose}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent className="border-border bg-card text-card-foreground sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-foreground font-bold flex items-center gap-2">
-            <UploadCloud className="h-5 w-5 text-emerald-500" />
+      <DialogContent className="border-border bg-card text-card-foreground sm:max-w-2xl md:max-w-3xl w-full max-h-[92vh] overflow-y-auto p-5 sm:p-6">
+        <DialogHeader className="space-y-2">
+          <DialogTitle className="text-foreground text-lg sm:text-xl font-bold flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+              <UploadCloud className="h-5 w-5 text-emerald-500" />
+            </div>
             Importar Nómina de Agentes SISPER
           </DialogTitle>
-          <DialogDescription className="text-muted-foreground text-xs">
+          <DialogDescription className="text-muted-foreground text-xs sm:text-sm leading-relaxed">
             Suba el archivo Excel oficial exportado de SISPER / Arancelamiento (ej. <em>JUNIO ARAN 2026.xlsx</em>). El sistema matchea automáticamente cada agente con su Centro de Salud según el código del Lugar de Pago y extrae sus CUILs.
           </DialogDescription>
         </DialogHeader>
@@ -184,7 +186,7 @@ export function SisperImportModal({
         {feedbackMsg && (
           <div
             className={cn(
-              "p-3 rounded-lg border text-xs flex items-center gap-2",
+              "p-3.5 rounded-xl border text-xs sm:text-sm flex items-center gap-2.5",
               feedbackMsg.type === "success"
                 ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400"
                 : "bg-red-500/10 border-red-500/25 text-red-600 dark:text-red-400"
@@ -200,47 +202,55 @@ export function SisperImportModal({
         )}
 
         {missingEmpresasPrompt ? (
-          <div className="space-y-4 py-2">
-            <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/20 text-foreground space-y-3">
+          <div className="space-y-4 py-1">
+            <div className="p-4 sm:p-5 rounded-xl border border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/20 text-foreground space-y-4">
               <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="h-8 w-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertCircle className="h-4 w-4 text-amber-500" />
+                </div>
                 <div className="space-y-1">
-                  <h4 className="font-bold text-xs text-amber-600 dark:text-amber-400">
+                  <h4 className="font-bold text-sm sm:text-base text-amber-600 dark:text-amber-400">
                     Centros de Salud no registrados en el sistema
                   </h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Se detectaron <strong className="text-foreground">{missingEmpresasPrompt.list.length}</strong> centro(s) de salud en la planilla que aún no están dados de alta en el sistema ({missingEmpresasPrompt.totalMissingAgents.toLocaleString("es-AR")} agentes asociados):
+                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                    Se detectaron <strong className="text-foreground font-semibold">{missingEmpresasPrompt.list.length}</strong> centro(s) de salud en la planilla que aún no están dados de alta en el sistema (<span className="text-foreground font-medium">{missingEmpresasPrompt.totalMissingAgents.toLocaleString("es-AR")} agentes asociados</span>):
                   </p>
                 </div>
               </div>
 
-              <div className="max-h-48 overflow-y-auto space-y-1.5 border border-border/70 rounded-lg p-2 bg-background/80">
+              {/* Contenedor responsivo con scroll para la lista de centros */}
+              <div className="max-h-64 overflow-y-auto space-y-2 border border-border/70 rounded-xl p-2.5 sm:p-3 bg-background/90 shadow-inner">
                 {missingEmpresasPrompt.list.map((item) => (
                   <div
                     key={item.codigoSisper}
-                    className="flex items-center justify-between text-xs p-2 rounded-md bg-muted/40 border border-border/50 gap-2"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between text-xs sm:text-sm p-3 rounded-lg bg-muted/40 hover:bg-muted/60 border border-border/60 gap-2 sm:gap-4 transition-colors"
                   >
-                    <div className="flex items-center gap-2 overflow-hidden min-w-0">
-                      <span className="font-mono font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded text-3xs shrink-0">
+                    <div className="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
+                      <span className="font-mono font-bold bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 px-2 py-1 rounded-md text-xs shrink-0 tracking-wide">
                         SISPER {item.codigoSisper}
                       </span>
-                      <span className="truncate font-medium text-foreground text-3xs">
+                      <span className="font-semibold text-foreground text-xs sm:text-sm leading-snug break-words">
                         {item.descripcion}
                       </span>
                     </div>
-                    <span className="text-3xs text-muted-foreground shrink-0 font-medium">
-                      {item.agentCount} agente{item.agentCount !== 1 ? "s" : ""}
-                    </span>
+                    <div className="flex items-center justify-end shrink-0 self-end sm:self-auto">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-background border border-border text-muted-foreground shadow-xs">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                        {item.agentCount} agente{item.agentCount !== 1 ? "s" : ""}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              <p className="text-xs text-muted-foreground font-medium pt-1">
-                ¿Desea dar de alta estos nuevos centros de salud automáticamente en el sistema y continuar con la importación?
-              </p>
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 sm:p-3.5">
+                <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-200 font-medium">
+                  ¿Desea dar de alta estos nuevos centros de salud automáticamente en el sistema y continuar con la importación?
+                </p>
+              </div>
             </div>
 
-            <DialogFooter className="pt-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+            <DialogFooter className="pt-2 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2.5">
               <Button
                 type="button"
                 variant="outline"
@@ -249,7 +259,7 @@ export function SisperImportModal({
                   setConfirmedCreateEmpresas(false);
                 }}
                 disabled={uploading}
-                className="border-border text-xs h-9 cursor-pointer"
+                className="border-border text-xs sm:text-sm h-10 px-5 cursor-pointer w-full sm:w-auto"
               >
                 Cancelar
               </Button>
@@ -257,7 +267,7 @@ export function SisperImportModal({
                 type="button"
                 onClick={() => handleUploadExcel(undefined, false, true)}
                 disabled={uploading}
-                className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold text-xs h-9 cursor-pointer gap-2 shadow-sm"
+                className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold text-xs sm:text-sm h-10 px-5 cursor-pointer gap-2 shadow-sm w-full sm:w-auto"
               >
                 {uploading ? (
                   <>
@@ -274,24 +284,26 @@ export function SisperImportModal({
             </DialogFooter>
           </div>
         ) : confirmReplacePrompt ? (
-          <div className="space-y-4 py-2">
-            <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/20 text-foreground space-y-3">
+          <div className="space-y-4 py-1">
+            <div className="p-4 sm:p-5 rounded-xl border border-amber-500/30 bg-amber-500/10 dark:bg-amber-950/20 text-foreground space-y-4">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="h-8 w-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                </div>
                 <div className="space-y-1">
-                  <h4 className="font-bold text-xs text-amber-600 dark:text-amber-400">
+                  <h4 className="font-bold text-sm sm:text-base text-amber-600 dark:text-amber-400">
                     Nómina existente detectada
                   </h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
+                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
                     {confirmReplacePrompt.message}
                   </p>
                 </div>
               </div>
-              <div className="bg-background/80 rounded-lg p-2.5 border border-border text-xs text-muted-foreground space-y-1">
-                <p className="font-semibold text-foreground text-3xs">
+              <div className="bg-background/90 rounded-xl p-3.5 border border-border text-xs sm:text-sm text-muted-foreground space-y-2">
+                <p className="font-semibold text-foreground">
                   ⚠️ Al reemplazar la nómina:
                 </p>
-                <ul className="list-disc list-inside text-3xs space-y-0.5">
+                <ul className="list-disc list-inside space-y-1 text-xs sm:text-sm">
                   <li>
                     Se sobrescribirán los {confirmReplacePrompt.existingCount.toLocaleString("es-AR")} agentes del período {confirmReplacePrompt.period}.
                   </li>
@@ -302,13 +314,13 @@ export function SisperImportModal({
               </div>
             </div>
 
-            <DialogFooter className="pt-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+            <DialogFooter className="pt-2 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2.5">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setConfirmReplacePrompt(null)}
                 disabled={uploading}
-                className="border-border text-xs h-9 cursor-pointer"
+                className="border-border text-xs sm:text-sm h-10 px-5 cursor-pointer w-full sm:w-auto"
               >
                 Cancelar
               </Button>
@@ -316,7 +328,7 @@ export function SisperImportModal({
                 type="button"
                 onClick={() => handleUploadExcel(undefined, true)}
                 disabled={uploading}
-                className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs h-9 cursor-pointer gap-2 shadow-sm"
+                className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs sm:text-sm h-10 px-5 cursor-pointer gap-2 shadow-sm w-full sm:w-auto"
               >
                 {uploading ? (
                   <>
@@ -334,48 +346,50 @@ export function SisperImportModal({
           </div>
         ) : (
           <form onSubmit={(e) => handleUploadExcel(e, false)} className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="sisperUploadPeriod" className="text-xs font-semibold">
-                Período (Mes / Año):
-              </Label>
-              <Input
-                id="sisperUploadPeriod"
-                type="month"
-                value={uploadPeriod}
-                onChange={(e) => setUploadPeriod(e.target.value)}
-                required
-                className="bg-muted/40 border-border text-foreground text-xs h-9 cursor-pointer"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="sisperUploadPeriod" className="text-xs sm:text-sm font-semibold">
+                  Período (Mes / Año):
+                </Label>
+                <Input
+                  id="sisperUploadPeriod"
+                  type="month"
+                  value={uploadPeriod}
+                  onChange={(e) => setUploadPeriod(e.target.value)}
+                  required
+                  className="bg-muted/40 border-border text-foreground text-xs sm:text-sm h-10 cursor-pointer"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="sisperExcelFile" className="text-xs sm:text-sm font-semibold">
+                  Archivo Excel (.xlsx, .xls, .csv):
+                </Label>
+                <Input
+                  id="sisperExcelFile"
+                  type="file"
+                  accept=".xlsx, .xls, .csv"
+                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                  required
+                  className="bg-muted/40 border-border text-foreground text-xs sm:text-sm h-10 cursor-pointer file:cursor-pointer"
+                />
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="sisperExcelFile" className="text-xs font-semibold">
-                Archivo Excel (.xlsx, .xls, .csv):
-              </Label>
-              <Input
-                id="sisperExcelFile"
-                type="file"
-                accept=".xlsx, .xls, .csv"
-                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                required
-                className="bg-muted/40 border-border text-foreground text-xs h-9 cursor-pointer file:cursor-pointer"
-              />
-            </div>
-
-            <DialogFooter className="pt-2">
+            <DialogFooter className="pt-3 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2.5">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => handleModalClose(false)}
                 disabled={uploading}
-                className="border-border text-xs h-9 cursor-pointer"
+                className="border-border text-xs sm:text-sm h-10 px-5 cursor-pointer w-full sm:w-auto"
               >
                 Cancelar
               </Button>
               <Button
                 type="submit"
                 disabled={uploading || !uploadFile}
-                className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold text-xs h-9 cursor-pointer gap-2"
+                className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold text-xs sm:text-sm h-10 px-5 cursor-pointer gap-2 shadow-sm w-full sm:w-auto"
               >
                 {uploading ? (
                   <>

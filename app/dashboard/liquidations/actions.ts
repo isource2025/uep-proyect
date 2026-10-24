@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import path from "path";
 import fs from "fs";
-import { put } from "@vercel/blob";
+import { uploadToStorage } from "@/lib/storage";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { getActivePeriodInfo } from "@/lib/periods";
@@ -553,7 +553,7 @@ export async function calculateLiquidation(rcId: number) {
     const fcIds = applications.map((a) => a.fcId);
 
     // Find hospital purchase invoices (Compras) linked to these FC sales invoices
-    let hospitalPurchases = await prisma.compra.findMany({
+    const hospitalPurchases = await prisma.compra.findMany({
       where: {
         fcVentaId: { in: fcIds },
       },
@@ -563,21 +563,15 @@ export async function calculateLiquidation(rcId: number) {
       },
     });
 
-    // Fallback: If no Compras are directly linked via fcVentaId, find Compras for this Obra Social (clienteId)
-    if (hospitalPurchases.length === 0 && rc.clienteId) {
-      hospitalPurchases = await prisma.compra.findMany({
-        where: {
-          clienteId: rc.clienteId,
-        },
-        include: {
-          hospital: true,
-          cliente: true,
-        },
-        take: 20,
-      });
-    }
-
     const monthStr = `${activePeriod.mes.toString().padStart(2, "0")}/${activePeriod.anio}`;
+
+    const appliedFcNumbers = applications
+      .map((a) => (a.fc ? `FC-${String(a.fc.puntoVenta || "0").padStart(4, "0")}-${String(a.fc.numero || a.fc.id).padStart(8, "0")}` : `FC-${a.fcId}`))
+      .join(", ");
+
+    const noComprasWarning = hospitalPurchases.length === 0
+      ? `Sin comprobantes vinculados en el ERP: Las Facturas de Venta aplicadas (${appliedFcNumbers || "N/A"}) no poseen compras de hospitales asociadas (IdTransaccionFacturaVta vacío). Renglones generados vacíos.`
+      : "";
 
     // Create Liquidation Header record (createdByName is null until the liquidador loads and saves values)
     const liquidation = await prisma.liquidacion.create({
@@ -587,12 +581,12 @@ export async function calculateLiquidation(rcId: number) {
         rcId,
         mesCarga: monthStr,
         createdByName: null,
-        observaciones: "",
+        observaciones: noComprasWarning,
         status: "PENDIENTE",
       },
     });
 
-    // Create LiquidationDetail rows for each Hospital in parallel to avoid server timeout
+    // Create LiquidationDetail rows for each Hospital if linked Compras exist
     if (hospitalPurchases.length > 0) {
       const extractLocalidad = (name: string | null | undefined): string => {
         if (!name) return "CAPITAL";
@@ -649,38 +643,16 @@ export async function calculateLiquidation(rcId: number) {
         });
       });
       await Promise.all(detailPromises);
-    } else {
-      // Create at least 1 default detail row from RC applied invoice if no Compras
-      const total = toNum(rc.importe);
-      const defaultGa = calculateDefaultGA(total);
-      const defaultBruto = total;
-      const defaultNeto = Math.max(0, defaultBruto - defaultGa);
-
-      await prisma.liquidacionDetalle.create({
-        data: {
-          liquidationId: liquidation.id,
-          clienteId: rc.clienteId,
-          periodo: monthStr,
-          cuit: rc.cliente?.cuit ? toNum(rc.cliente.cuit).toString() : "",
-          prestadorNombre: "Hospital Central",
-          localidad: "CAPITAL",
-          fcHospital: `FC-UEP-${rc.numero}`,
-          totalFacturado: total,
-          creditos: 0,
-          debitos: 0,
-          ajustesOs: 0,
-          pendientesCobro: 0,
-          pagosParcialesAnteriores: 0,
-          brutoAPagar: defaultBruto,
-          ga: defaultGa,
-          ajusteRecupero: 0,
-          netoAPagar: defaultNeto,
-        },
-      });
     }
 
     revalidatePath("/dashboard/liquidations");
-    return { success: true, liquidationId: liquidation.id };
+    return {
+      success: true,
+      liquidationId: liquidation.id,
+      warning: hospitalPurchases.length === 0
+        ? `La Factura de Venta aplicada (${appliedFcNumbers || "N/A"}) no posee compras de hospitales vinculadas en el ERP (campo IdTransaccionFacturaVta vacío). La liquidación se generó con los renglones vacíos.`
+        : undefined,
+    };
   } catch (e: any) {
     console.error("Error generating liquidation:", e);
     return { error: e.message || "Error al calcular liquidación." };
@@ -932,12 +904,12 @@ export async function uploadDebitsFile(formData: FormData) {
     const liquidationId = parseInt(liquidationIdStr, 10);
 
     const filename = `debits-liq-${liquidationId}-${Date.now()}${path.extname(file.name)}`;
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      return { error: "La variable BLOB_READ_WRITE_TOKEN no está configurada en las variables de entorno (.env)." };
-    }
-
-    const blob = await put(filename, file, { access: "public" });
-    const fileUrl = blob.url;
+    const storageRes = await uploadToStorage({
+      file,
+      fileName: file.name,
+      customFileName: filename,
+    });
+    const fileUrl = storageRes.url;
 
     await prisma.liquidacion.update({
       where: { id: liquidationId },
@@ -979,7 +951,7 @@ export interface NotifyHospitalOptions {
   message?: string;
 }
 
-// Helper to upload Excel snapshot to Vercel Blob
+// Helper to upload Excel snapshot to physical server storage via Cloudflare Tunnel
 async function uploadLiquidationSnapshotToCloud(
   liquidationId: number,
   tipo: "PENDIENTE" | "DISTRIBUIDA"
@@ -999,15 +971,14 @@ async function uploadLiquidationSnapshotToCloud(
       .slice(0, 20);
 
     const prefix = tipo === "PENDIENTE" ? "Reporte_Pendiente" : "Reporte_Distribuido";
-    const blobFileName = `reportes/${prefix}_LIQ_${String(liquidationId).padStart(4, "0")}_${cleanClient}_${Date.now()}.xlsx`;
+    const customFileName = `${prefix}_LIQ_${String(liquidationId).padStart(4, "0")}_${cleanClient}_${Date.now()}.xlsx`;
 
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      console.warn("BLOB_READ_WRITE_TOKEN not configured, snapshot not uploaded to cloud.");
-      return null;
-    }
-
-    const blob = await put(blobFileName, buffer, { access: "public" });
-    return { url: blob.url, fileName };
+    const storageRes = await uploadToStorage({
+      file: buffer,
+      fileName,
+      customFileName,
+    });
+    return { url: storageRes.url, fileName };
   } catch (err) {
     console.error(`Error uploading ${tipo} liquidation snapshot:`, err);
     return null;

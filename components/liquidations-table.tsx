@@ -60,6 +60,7 @@ export interface LiquidationsTableProps {
   onSearchSubmit?: (e: React.FormEvent) => void;
   title?: string;
   description?: string;
+  highlightedId?: number | null;
   pagination?: {
     currentPage: number;
     totalPages: number;
@@ -86,6 +87,7 @@ export function LiquidationsTable({
   onSearchSubmit,
   title,
   description,
+  highlightedId,
   pagination,
 }: LiquidationsTableProps) {
   const router = useRouter();
@@ -211,7 +213,7 @@ export function LiquidationsTable({
     : "Consulte la planilla interactiva de liquidación por cada recibo UEP y modifique débitos, créditos o adjunte los comprobantes escaneados.";
 
   return (
-    <Card className="border-border bg-card text-card-foreground">
+    <Card id="liquidations-table-card" className="border-border bg-card text-card-foreground">
       <CardHeader className="p-5 pb-3 border-b border-border/80 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3.5">
         <div>
           <CardTitle className="text-lg font-bold text-foreground">
@@ -317,26 +319,30 @@ export function LiquidationsTable({
 
                   const isEnteringCurrent = enteringDetailsId === liq.id;
                   const isEnteringAny = enteringDetailsId !== null;
+                  const isHighlighted = highlightedId === liq.id;
 
                   return (
                     <TableRow
                       key={liq.id}
+                      id={`liquidation-row-${liq.id}`}
                       onClick={() => {
                         if (isEnteringAny) return;
                         setEnteringDetailsId(liq.id);
                         router.push(`/dashboard/liquidations/${liq.id}`);
                       }}
                       className={cn(
-                        "border-border text-foreground transition-colors",
+                        "border-border text-foreground transition-all duration-300",
+                        isHighlighted &&
+                          "bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/40 ring-1 ring-emerald-500/30 shadow-[0_0_18px_rgba(16,185,129,0.22)] z-10 relative animate-highlight-row",
                         isEnteringCurrent
                           ? "bg-emerald-500/15 border-emerald-500/30 cursor-wait"
                           : isEnteringAny
                           ? "opacity-50 cursor-not-allowed pointer-events-none"
-                          : "hover:bg-muted/50 cursor-pointer"
+                          : !isHighlighted && "hover:bg-muted/50 cursor-pointer"
                       )}
                     >
                       <TableCell className="font-mono text-xs font-bold text-foreground py-3.5 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {isEnteringCurrent && (
                             <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500 shrink-0" />
                           )}

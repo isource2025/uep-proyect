@@ -1630,7 +1630,7 @@ export default function LiquidationDetailClient({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {!isHospitalUser && (
+            {!isHospitalUser && (liq.details || []).length > 0 && (
               <div className="flex items-center gap-1.5 bg-muted/50 border border-border rounded-lg p-1 px-2 text-3xs">
                 <Percent className="h-3.5 w-3.5 text-blue-500" />
                 <span className="font-semibold text-muted-foreground whitespace-nowrap">GA Global:</span>
@@ -1677,48 +1677,97 @@ export default function LiquidationDetailClient({
               </div>
             )}
 
-            <SearchBar
-              placeholder="Buscar por hospital, CUIT, período o FC..."
-              value={searchQuery}
-              onChange={setSearchQuery}
-              size="sm"
-              className="w-full sm:w-64"
-            />
+            {(liq.details || []).length > 0 && (
+              <SearchBar
+                placeholder="Buscar por hospital, CUIT, período o FC..."
+                value={searchQuery}
+                onChange={setSearchQuery}
+                size="sm"
+                className="w-full sm:w-64"
+              />
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader className="bg-muted/50 text-muted-foreground">
-                <TableRow className="hover:bg-transparent border-border">
-                  <TableHead className="font-semibold text-3xs uppercase py-2">PRESTADOR</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase">CUIT N°</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase">LOCALIDAD</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase">PERIODO</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase">FC N° HOSP.</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">TOTAL FACT.</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">CRÉDITOS</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">DÉBITOS</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">AJUSTES O.S.</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">PEND. COBRO</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">PAGOS PARC. ANT.</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">BRUTO A PAGAR</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">GA (% / $)</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">ADELANTOS</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">NETO A PAGAR</TableHead>
-                  {!isHospitalUser && <TableHead className="w-10 text-center"></TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredDetails.length === 0 ? (
-                  <TableRow className="border-border">
-                    <TableCell colSpan={isHospitalUser ? 15 : 16} className="text-center text-muted-foreground text-xs py-8">
-                      {searchQuery.trim()
-                        ? "No se encontraron renglones que coincidan con la búsqueda."
-                        : "No hay facturas cargadas en esta liquidación. Puede agregar una factura manualmente con el botón de abajo."}
-                    </TableCell>
-                  </TableRow>
-                ) : (
+          {(!liq.details || liq.details.length === 0) ? (
+            <div className="p-4 sm:p-8 md:p-10 flex flex-col items-center justify-center">
+              <div className="w-full max-w-lg rounded-xl bg-amber-500/10 border border-amber-500/30 p-5 sm:p-7 flex flex-col items-center text-center space-y-3.5 shadow-sm">
+                <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-full bg-amber-500/20 border border-amber-500/35 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0 shadow-inner">
+                  <AlertTriangle className="h-5 w-5 sm:h-6 sm:w-6" />
+                </div>
+                <div className="space-y-1.5 w-full">
+                  <h4 className="font-bold text-foreground text-sm sm:text-base tracking-tight">
+                    Sin comprobantes de compras vinculados en el ERP
+                  </h4>
+                  <p className="text-muted-foreground text-xs leading-relaxed max-w-md mx-auto">
+                    Las Facturas de Venta asociadas a este cobro no poseen compras de hospitales vinculadas en el campo{" "}
+                    <code className="text-3xs font-mono bg-muted/80 px-1.5 py-0.5 rounded border border-border/60">
+                      IdTransaccionFacturaVta
+                    </code>
+                    .
+                  </p>
+                  <p className="text-muted-foreground/80 text-3xs leading-relaxed max-w-sm mx-auto">
+                    Los renglones se encuentran vacíos para evitar asignaciones erróneas. Puede agregar hospitales y facturas manualmente a continuación.
+                  </p>
+                </div>
+
+                {!isLockedForLiquidationEdits && (
+                  <div className="pt-2 w-full sm:w-auto">
+                    <Button
+                      type="button"
+                      onClick={handleAddManualDetail}
+                      disabled={saving}
+                      className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2 text-xs sm:text-sm h-9 px-4 cursor-pointer shadow-md transition-all active:scale-95"
+                    >
+                      <Plus className="h-4 w-4 shrink-0" />
+                      Agregar Factura Manualmente
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-muted/50 text-muted-foreground">
+                    <TableRow className="hover:bg-transparent border-border">
+                      <TableHead className="font-semibold text-3xs uppercase py-2">PRESTADOR</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase">CUIT N°</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase">LOCALIDAD</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase">PERIODO</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase">FC N° HOSP.</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase text-right">TOTAL FACT.</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase text-right">CRÉDITOS</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase text-right">DÉBITOS</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase text-right">AJUSTES O.S.</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase text-right">PEND. COBRO</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase text-right">PAGOS PARC. ANT.</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase text-right">BRUTO A PAGAR</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase text-right">GA (% / $)</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase text-right">ADELANTOS</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase text-right">NETO A PAGAR</TableHead>
+                      {!isHospitalUser && <TableHead className="w-10 text-center"></TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredDetails.length === 0 ? (
+                      <TableRow className="border-border">
+                        <TableCell colSpan={isHospitalUser ? 15 : 16} className="text-center py-10">
+                          <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-center space-y-2">
+                            <div className="h-9 w-9 rounded-full bg-muted/80 flex items-center justify-center text-muted-foreground mb-1">
+                              <Search className="h-4 w-4" />
+                            </div>
+                            <p className="font-semibold text-foreground text-xs">
+                              No se encontraron renglones que coincidan con la búsqueda.
+                            </p>
+                            <p className="text-muted-foreground text-3xs">
+                              Pruebe con otro término de búsqueda o limpie el filtro.
+                            </p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
                   filteredDetails.map((detail: any) => {
                     const editState = editableDetails.find((item) => item.id === detail.id) || {};
                     const isManualRow = !detail.compraId || detail.isNew || String(detail.id).startsWith("manual-");
@@ -2042,17 +2091,19 @@ export default function LiquidationDetailClient({
                 variant="outline"
                 onClick={handleAddManualDetail}
                 disabled={saving}
-                className="border-dashed border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-sm"
+                className="border-dashed border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-sm w-full sm:w-auto"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Agregar Factura Manualmente
               </Button>
-              <span className="text-3xs text-muted-foreground font-mono">
+              <span className="text-3xs text-muted-foreground font-mono self-center">
                 {liq.details?.length || 0} factura(s) en esta liquidación
               </span>
             </div>
           )}
-        </CardContent>
+        </>
+      )}
+    </CardContent>
       </Card>
 
       {/* SECTION 3 - DISTRIBUCIÓN INDIVIDUAL DE MÉDICOS Y PERSONAL (SISPER) */}

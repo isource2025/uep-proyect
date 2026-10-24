@@ -47,6 +47,8 @@ export default function LiquidationsClientPage({ initialData, isAdmin = false }:
   const [notifyingIds, setNotifyingIds] = useState<number[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [warningMsg, setWarningMsg] = useState("");
+  const [highlightedLiquidationId, setHighlightedLiquidationId] = useState<number | null>(null);
 
   const [selectedNotifyLiq, setSelectedNotifyLiq] = useState<any | null>(null);
   const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
@@ -188,24 +190,53 @@ export default function LiquidationsClientPage({ initialData, isAdmin = false }:
     setCalculatingRcId(rcId);
     setErrorMsg("");
     setSuccessMsg("");
+    setWarningMsg("");
     try {
       const res = await calculateLiquidation(rcId);
       if (res.error) {
         setErrorMsg(res.error);
         return;
       }
+      if (res.warning) {
+        setWarningMsg(res.warning);
+      } else {
+        setSuccessMsg("Liquidación generada exitosamente.");
+      }
+
+      const newLiqId = res.liquidationId;
+      if (newLiqId) {
+        setHighlightedLiquidationId(newLiqId);
+      }
+
       await loadData();
       setCurrentPage(1);
 
+      // Scroll specifically to the newly generated liquidation row
       setTimeout(() => {
-        const mainContainer = document.querySelector("main");
-        if (mainContainer) {
-          mainContainer.scrollTo({
-            top: mainContainer.scrollHeight,
+        if (newLiqId) {
+          const rowEl = document.getElementById(`liquidation-row-${newLiqId}`);
+          if (rowEl) {
+            rowEl.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+            return;
+          }
+        }
+
+        const tableCard = document.getElementById("liquidations-table-card");
+        if (tableCard) {
+          tableCard.scrollIntoView({
             behavior: "smooth",
+            block: "start",
           });
         }
-      }, 300);
+      }, 350);
+
+      // Auto-clear highlight after 4 seconds
+      setTimeout(() => {
+        setHighlightedLiquidationId((prev) => (prev === newLiqId ? null : prev));
+      }, 4000);
     } catch (e: any) {
       setErrorMsg("Error de red al calcular la liquidación.");
     } finally {
@@ -299,6 +330,13 @@ export default function LiquidationsClientPage({ initialData, isAdmin = false }:
         <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 text-xs text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           <p>{successMsg}</p>
+        </div>
+      )}
+
+      {warningMsg && (
+        <div className="flex items-center gap-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25 p-3.5 text-xs text-amber-700 dark:text-amber-400">
+          <AlertCircle className="h-4 w-4 shrink-0 text-amber-500" />
+          <p className="font-medium leading-relaxed">{warningMsg}</p>
         </div>
       )}
 
@@ -461,6 +499,7 @@ export default function LiquidationsClientPage({ initialData, isAdmin = false }:
         liquidations={paginatedLiquidations}
         isHospitalUser={false}
         isAdmin={isAdmin}
+        highlightedId={highlightedLiquidationId}
         onNotifyHospital={handleNotifyHospital}
         notifyingIds={notifyingIds}
         isLoading={isLoading}

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeData } from "@/lib/utils";
 import { fetchLiquidationById } from "../actions";
 import { isUserAdmin, isUserHospital } from "@/lib/constants";
+import { cleanCuit } from "@/lib/hospital-mapping";
 import LiquidationDetailClient from "./liquidation-detail-client";
 
 interface PageProps {
@@ -58,11 +59,15 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
       }
     }
 
-    // If still not found and liquidation has details:
+    // Si aún no se encontró, resolver la empresa a partir del CUIT del primer renglón
     if (!targetEmpresaId && liquidationRaw.details && liquidationRaw.details.length > 0) {
-      const detHospitalId = liquidationRaw.details[0]?.hospitalId;
-      if (detHospitalId) {
-        targetEmpresaId = detHospitalId;
+      const firstDetCuit = cleanCuit(liquidationRaw.details[0]?.cuit || liquidationRaw.details[0]?.hospital?.cuit);
+      if (firstDetCuit) {
+        const allEmpresas = await prisma.empresa.findMany({ select: { id: true, cuit: true } });
+        const match = allEmpresas.find((e) => cleanCuit(e.cuit) === firstDetCuit);
+        if (match) {
+          targetEmpresaId = match.id;
+        }
       }
     }
   }
@@ -74,29 +79,37 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
       targetEmpresaIds = [targetEmpresaId];
     }
   } else {
-    // Admin user: collect all hospitals from liquidation details
+    // Admin user: recopilar efectores de los renglones y buscar sus Empresas vinculando explícitamente por CUIT
     if (liquidationRaw.details && liquidationRaw.details.length > 0) {
-      const rawHospIds = liquidationRaw.details
-        .map((d: any) => d.hospitalId || d.compra?.hospitalId)
-        .filter((id: any): id is number => typeof id === "number" && !isNaN(id));
+      const rawCuits = liquidationRaw.details
+        .map((d: any) => cleanCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit))
+        .filter((c: string) => c.length >= 10);
 
       const hospNames = liquidationRaw.details
         .map((d: any) => d.prestadorNombre || d.hospital?.nombre)
         .filter((n: any): n is string => typeof n === "string" && n.trim().length > 0);
 
-      const matched = await prisma.empresa.findMany({
-        where: {
-          OR: [
-            ...(rawHospIds.length > 0 ? [{ id: { in: rawHospIds } }] : []),
-            ...hospNames.map((name: string) => ({
-              descripcion: { contains: name.split("-")[0].trim() },
-            })),
-          ],
-        },
-        select: { id: true },
+      const allEmpresas = await prisma.empresa.findMany({
+        select: { id: true, cuit: true, descripcion: true },
       });
 
-      targetEmpresaIds = Array.from(new Set([...rawHospIds, ...matched.map((m) => m.id)]));
+      const matchedEmpresas = allEmpresas.filter((emp) => {
+        const empCuit = cleanCuit(emp.cuit);
+        if (empCuit && rawCuits.includes(empCuit)) {
+          return true;
+        }
+        // Fallback por nombre solo si no hay CUITs disponibles
+        if (rawCuits.length === 0 && emp.descripcion) {
+          const empDesc = emp.descripcion.toLowerCase();
+          return hospNames.some((hn: string) => {
+            const cleanHn = hn.toLowerCase().split("-")[0].trim();
+            return cleanHn.length > 4 && empDesc.includes(cleanHn);
+          });
+        }
+        return false;
+      });
+
+      targetEmpresaIds = Array.from(new Set(matchedEmpresas.map((m) => m.id)));
     }
   }
 
@@ -215,11 +228,24 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
   let liquidation = { ...liquidationRaw };
 
   if (isHospitalUser && targetEmpresaId) {
-    // 1. Details: Only include details for this hospital
-    liquidation.details = (liquidationRaw.details || []).filter(
-      (d: any) =>
-        (d.hospitalId || d.compra?.hospitalId) === targetEmpresaId
-    );
+    const targetEmpresa = await prisma.empresa.findUnique({
+      where: { id: targetEmpresaId },
+      select: { id: true, cuit: true, descripcion: true },
+    });
+    const targetEmpresaCuit = cleanCuit(targetEmpresa?.cuit);
+
+    // 1. Details: Only include details for this hospital matching by CUIT
+    liquidation.details = (liquidationRaw.details || []).filter((d: any) => {
+      const dCuit = cleanCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit);
+      if (targetEmpresaCuit && dCuit) {
+        return dCuit === targetEmpresaCuit;
+      }
+      if (targetEmpresa?.descripcion && d.prestadorNombre) {
+        const cleanName = targetEmpresa.descripcion.toLowerCase().split("-")[0].trim();
+        return cleanName.length > 4 && d.prestadorNombre.toLowerCase().includes(cleanName);
+      }
+      return false;
+    });
 
     // 2. Personal distributions: Only include distributions made for this specific hospital
     liquidation.personalDistributions = (liquidationRaw.personalDistributions || []).filter(
@@ -273,15 +299,34 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     liquidation.totalDistribuido = totalDistribuido;
   }
 
-  const allHospitals = await prisma.empresa.findMany({
-    orderBy: { descripcion: "asc" },
+  const healthcareProviders = await prisma.proveedor.findMany({
+    where: {
+      OR: [
+        { tipoProvId: 18 },
+        { nombre: { contains: "HOSPITAL" } },
+        { nombre: { contains: "CAPS" } },
+        { nombre: { contains: "CENTRO DE SALUD" } },
+        { nombre: { contains: "ESTACION SANITARIA" } },
+        { nombre: { contains: "INSTITUTO" } },
+        { nombre: { contains: "BANCO DE SANGRE" } },
+        { nombre: { contains: "LABORATORIO" } },
+      ],
+    },
+    orderBy: { nombre: "asc" },
     select: {
       id: true,
-      descripcion: true,
+      nombre: true,
       cuit: true,
-      localidad: true,
     },
   });
+
+  const allHospitals = healthcareProviders.map((p) => ({
+    id: p.id,
+    nombre: p.nombre || `Proveedor #${p.id}`,
+    descripcion: p.nombre || `Proveedor #${p.id}`,
+    cuit: p.cuit ? cleanCuit(p.cuit) : "",
+    localidad: "CAPITAL",
+  }));
 
   return (
     <LiquidationDetailClient

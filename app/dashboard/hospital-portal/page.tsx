@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { serializeData } from "@/lib/utils";
+import { cleanCuit } from "@/lib/hospital-mapping";
 import HospitalPortalClient from "./hospital-portal-client";
 import { Building2 } from "lucide-react";
 
@@ -81,6 +82,18 @@ export default async function HospitalPortalPage() {
 
   const hospitalId = hospital.id;
   const hospitalName = hospital.descripcion?.trim() || "";
+  const hospitalCuit = cleanCuit(hospital.cuit);
+
+  // Buscar proveedores vinculados a este CUIT para relacionar las compras y renglones de liquidación
+  const matchingProveedores = hospitalCuit
+    ? await prisma.proveedor.findMany({
+        where: {
+          cuit: Number(hospitalCuit),
+        },
+        select: { id: true },
+      })
+    : [];
+  const proveedorIds = matchingProveedores.map((p) => p.id);
 
   // 3. Find liquidations and agents that belong to this hospital in parallel
   const [hospitalLiquidations, agents] = await Promise.all([
@@ -89,9 +102,14 @@ export default async function HospitalPortalPage() {
         details: {
           some: {
             OR: [
-              { hospitalId: hospitalId },
-              { compra: { hospitalId: hospitalId } },
-              ...(hospitalName ? [{ prestadorNombre: { contains: hospitalName } }] : []),
+              ...(hospitalCuit ? [{ cuit: hospitalCuit }] : []),
+              ...(proveedorIds.length > 0
+                ? [
+                    { hospitalId: { in: proveedorIds } },
+                    { compra: { hospitalId: { in: proveedorIds } } },
+                  ]
+                : []),
+              ...(hospitalName ? [{ prestadorNombre: { contains: hospitalName.split("-")[0].trim() } }] : []),
             ],
           },
         },

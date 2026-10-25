@@ -8,7 +8,7 @@ import { uploadToStorage } from "@/lib/storage";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { getActivePeriodInfo } from "@/lib/periods";
-import { getEmpresaIdFromProveedorId } from "@/lib/hospital-mapping";
+import { cleanCuit } from "@/lib/hospital-mapping";
 import { serializeData } from "@/lib/utils";
 import { isUserAdmin } from "@/lib/constants"
 import { generateLiquidationExcelBuffer } from "@/lib/export-liquidation-excel";
@@ -40,26 +40,32 @@ function findMatchingDetailHospital(
   if (!details || details.length === 0) return {};
   if (!cuilEmpresas || cuilEmpresas.length === 0) return {};
 
-  // 1. Coincidencia directa por ID de Empresa entre imPersonalMsp y LiquidacionDetalle
+  // 1. Coincidencia estricta y primaria por CUIT entre la Empresa de SISPER y el Renglón de Liquidación
   for (const emp of cuilEmpresas) {
-    for (const d of details) {
-      const hid = d.hospitalId;
-      if (hid && hid === emp.id) {
-        return { hospitalId: hid, hospitalKey: `id-${hid}` };
+    const cleanEmpCuit = cleanCuit(emp.cuit);
+    if (cleanEmpCuit) {
+      for (const d of details) {
+        const cleanDetCuit = cleanCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit);
+        if (cleanDetCuit && cleanDetCuit === cleanEmpCuit) {
+          const hid = d.hospitalId || d.compra?.hospitalId;
+          const key = hid ? `id-${hid}` : `cuit-${cleanDetCuit}`;
+          return { hospitalId: hid, hospitalKey: key };
+        }
       }
     }
   }
 
-  // 2. Coincidencia secundaria por CUIT si estuviera disponible
+  // 2. Coincidencia secundaria por nombre si no hay CUITs disponibles
   for (const emp of cuilEmpresas) {
-    if (emp.cuit) {
-      const cleanEmpCuit = emp.cuit.replace(/[^\d]/g, "");
-      if (cleanEmpCuit) {
+    if (emp.descripcion) {
+      const cleanEmpName = emp.descripcion.toLowerCase().split("-")[0].trim();
+      if (cleanEmpName.length > 4) {
         for (const d of details) {
-          const cleanDetCuit = String(d.cuit || d.hospital?.cuit || "").replace(/[^\d]/g, "");
-          if (cleanDetCuit && cleanDetCuit === cleanEmpCuit) {
-            const hid = d.hospitalId;
-            return { hospitalId: hid, hospitalKey: `id-${hid}` };
+          const detName = (d.prestadorNombre || d.hospital?.nombre || "").toLowerCase();
+          if (detName.includes(cleanEmpName)) {
+            const hid = d.hospitalId || d.compra?.hospitalId;
+            const key = hid ? `id-${hid}` : `name-${d.prestadorNombre}`;
+            return { hospitalId: hid, hospitalKey: key };
           }
         }
       }
@@ -616,16 +622,16 @@ export async function calculateLiquidation(rcId: number) {
           ? `${(comp.fecha.getMonth() + 1).toString().padStart(2, "0")}/${comp.fecha.getFullYear()}`
           : monthStr;
 
-        const mappedEmpresaId = getEmpresaIdFromProveedorId(comp.hospitalId) || comp.hospitalId;
+        const hospitalCuit = cleanCuit(comp.hospital?.cuit);
 
         return prisma.liquidacionDetalle.create({
           data: {
             liquidationId: liquidation.id,
             compraId: comp.id,
-            hospitalId: mappedEmpresaId,
+            hospitalId: comp.hospitalId,
             clienteId: comp.clienteId || rc.clienteId,
             periodo: compPeriod,
-            cuit: comp.hospital?.cuit ? toNum(comp.hospital.cuit).toString() : rc.cliente?.cuit ? toNum(rc.cliente.cuit).toString() : "",
+            cuit: hospitalCuit || (rc.cliente?.cuit ? cleanCuit(rc.cliente.cuit) : ""),
             prestadorNombre: comp.hospital?.nombre || "Hospital Prestador",
             localidad: extractLocalidad(comp.hospital?.nombre),
             fcHospital: fcNumStr,

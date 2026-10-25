@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { getLiquidationStatusConfig, getLiquidationStatusBadge } from "@/lib/constants";
 import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
+import { cleanCuit } from "@/lib/hospital-mapping";
 
 export interface LiquidationsTableProps {
   liquidations: any[];
@@ -50,6 +51,7 @@ export interface LiquidationsTableProps {
   isAdmin?: boolean;
   hospitalId?: number;
   hospitalName?: string;
+  hospitalCuit?: string;
   agents?: any[];
   onAddAttachment?: (formData: FormData) => Promise<void>;
   onNotifyHospital?: (id: number) => Promise<void>;
@@ -77,6 +79,7 @@ export function LiquidationsTable({
   isAdmin = false,
   hospitalId,
   hospitalName,
+  hospitalCuit,
   agents = [],
   onAddAttachment,
   onNotifyHospital,
@@ -292,16 +295,24 @@ export function LiquidationsTable({
                   let netoFinal = Number(liq.netoAPagar || 0);
                   let totalDistributed = 0;
 
-                  if (isHospitalUser && hospitalId && liq.details) {
+                  if (isHospitalUser && (hospitalId || hospitalCuit) && liq.details) {
+                    const cleanHospCuit = hospitalCuit ? cleanCuit(hospitalCuit) : "";
                     const hospitalDetails = liq.details.filter(
-                      (d: any) =>
-                        d.hospitalId === hospitalId ||
-                        (d.prestadorNombre &&
-                          hospitalName &&
-                          d.prestadorNombre.toLowerCase().trim().includes(hospitalName.toLowerCase().trim())) ||
-                        (hospitalName &&
-                          d.prestadorNombre &&
-                          hospitalName.toLowerCase().trim().includes(d.prestadorNombre.toLowerCase().trim()))
+                      (d: any) => {
+                        const dCuit = cleanCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit);
+                        if (cleanHospCuit && dCuit) {
+                          return dCuit === cleanHospCuit;
+                        }
+                        return (
+                          (hospitalId && d.hospitalId === hospitalId) ||
+                          (d.prestadorNombre &&
+                            hospitalName &&
+                            d.prestadorNombre.toLowerCase().trim().includes(hospitalName.toLowerCase().trim())) ||
+                          (hospitalName &&
+                            d.prestadorNombre &&
+                            hospitalName.toLowerCase().trim().includes(d.prestadorNombre.toLowerCase().trim()))
+                        );
+                      }
                     );
                     const currentDetails = hospitalDetails.length > 0 ? hospitalDetails : liq.details;
 

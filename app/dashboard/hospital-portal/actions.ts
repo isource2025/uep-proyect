@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { cleanCuit } from "@/lib/hospital-mapping";
 
 interface BulkDistributionInput {
   agentId: number;
@@ -16,17 +17,36 @@ export async function bulkSaveDistributions(
   distributions: BulkDistributionInput[]
 ) {
   try {
+    // Resolver la Empresa y su CUIT para vincular limpiamente los renglones del efector
+    const empresa = await prisma.empresa.findUnique({
+      where: { id: hospitalId },
+      select: { cuit: true, descripcion: true },
+    });
+    const hospitalCuit = cleanCuit(empresa?.cuit);
+
+    const matchingProveedores = hospitalCuit
+      ? await prisma.proveedor.findMany({
+          where: { cuit: Number(hospitalCuit) },
+          select: { id: true },
+        })
+      : [];
+    const provIds = matchingProveedores.map((p) => p.id);
+
     // 1. Fetch liquidation and its details to calculate the limit for this hospital
     const details = await prisma.liquidacionDetalle.findMany({
       where: {
         liquidationId,
         OR: [
-          { hospitalId },
-          {
-            compra: {
-              hospitalId,
-            },
-          },
+          ...(hospitalCuit ? [{ cuit: hospitalCuit }] : []),
+          ...(provIds.length > 0
+            ? [
+                { hospitalId: { in: provIds } },
+                { compra: { hospitalId: { in: provIds } } },
+              ]
+            : []),
+          ...(empresa?.descripcion
+            ? [{ prestadorNombre: { contains: empresa.descripcion.split("-")[0].trim() } }]
+            : []),
         ],
       },
     });

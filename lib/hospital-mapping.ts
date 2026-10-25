@@ -241,6 +241,26 @@ export const PROVEEDOR_TO_EMPRESA_MAP: Record<number, number> = {
 };
 
 /**
+ * Normaliza un CUIT o CUIL removiendo guiones, espacios y puntos, retornando solo dígitos o cadena vacía.
+ * Soporta strings, numbers, bigints y objetos Decimal de Prisma.
+ */
+export function cleanCuit(cuit?: any): string {
+  if (cuit === null || cuit === undefined) return "";
+  return String(cuit).replace(/\D/g, "");
+}
+
+/**
+ * Formatea un CUIT como XX-XXXXXXXX-X si tiene 11 dígitos.
+ */
+export function formatCuit(cuit?: any): string {
+  const cleaned = cleanCuit(cuit);
+  if (cleaned.length === 11) {
+    return `${cleaned.slice(0, 2)}-${cleaned.slice(2, 10)}-${cleaned.slice(10)}`;
+  }
+  return cleaned;
+}
+
+/**
  * Obtiene el ID de Empresa correspondiente a partir del código de SISPER.
  */
 export function getEmpresaIdFromSisperCode(sisperCode?: number | null): number | undefined {
@@ -249,7 +269,8 @@ export function getEmpresaIdFromSisperCode(sisperCode?: number | null): number |
 }
 
 /**
- * Obtiene el ID de Empresa correspondiente a partir del ID de Proveedor histórico.
+ * @deprecated NUNCA asumir que un Proveedor y una Empresa comparten ID numérico.
+ * La vinculación debe realizarse siempre explícitamente mediante CUIT (PROVEEDORES.NRO_CUIT <-> EMPRESAS.Nro_CUIT).
  */
 export function getEmpresaIdFromProveedorId(proveedorId?: number | null): number | undefined {
   if (proveedorId === null || proveedorId === undefined) return undefined;

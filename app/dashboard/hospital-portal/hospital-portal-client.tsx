@@ -39,6 +39,7 @@ export default function HospitalPortalClient({
         isHospitalUser={true}
         hospitalId={hospitalId}
         hospitalName={hospitalDisplayName}
+        hospitalCuit={hospital?.cuit ? String(hospital.cuit) : undefined}
         agents={agents}
         onAddAttachment={onAddAttachment}
       />

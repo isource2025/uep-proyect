@@ -153,10 +153,16 @@ export default function LiquidationDetailClient({
   const [editableDetails, setEditableDetails] = useState<any[]>(
     liq.details.map((d: any) => {
       const totalFact = Math.max(0, Number(d.totalFacturado));
+      const cred = Math.max(0, Number(d.creditos));
+      const deb = Math.max(0, Number(d.debitos));
+      const ajOs = Number(d.ajustesOs) || 0;
+      const pend = Math.max(0, Number(d.pendientesCobro));
+      const pagParc = Math.max(0, Number(d.pagosParcialesAnteriores || 0));
+      const bruto = Math.max(0, totalFact + cred - deb + ajOs - pend - pagParc);
       const gaVal = Math.max(0, Number(d.ga));
       let initPct: number | string = 6;
-      if (totalFact > 0) {
-        initPct = Math.round(((gaVal / totalFact) * 100) * 10) / 10;
+      if (bruto > 0) {
+        initPct = Math.round(((gaVal / bruto) * 100) * 10) / 10;
       } else if (gaVal === 0) {
         initPct = 0;
       }
@@ -488,9 +494,8 @@ export default function LiquidationDetailClient({
         const ajOs = Number(item.ajustesOs || 0);
         const pend = Number(item.pendientesCobro || 0);
         const pagParc = Number(item.pagosParcialesAnteriores || 0);
-        const bruto = totalFact + cred - deb + ajOs - pend - pagParc;
-        const base = totalFact > 0 ? totalFact : Math.max(0, bruto);
-        const calculatedGa = Math.max(0, Number(((base * pctNum) / 100).toFixed(2)));
+        const bruto = Math.max(0, totalFact + cred - deb + ajOs - pend - pagParc);
+        const calculatedGa = Math.max(0, Number(((bruto * pctNum) / 100).toFixed(2)));
         return {
           ...item,
           gaPercent: pctNum,
@@ -517,9 +522,8 @@ export default function LiquidationDetailClient({
         const ajOs = Number(item.ajustesOs || 0);
         const pend = Number(item.pendientesCobro || 0);
         const pagParc = Number(item.pagosParcialesAnteriores || 0);
-        const bruto = totalFact + cred - deb + ajOs - pend - pagParc;
-        const base = totalFact > 0 ? totalFact : Math.max(0, bruto);
-        const calculatedGa = Math.max(0, Number(((base * pctNum) / 100).toFixed(2)));
+        const bruto = Math.max(0, totalFact + cred - deb + ajOs - pend - pagParc);
+        const calculatedGa = Math.max(0, Number(((bruto * pctNum) / 100).toFixed(2)));
         return {
           ...item,
           gaPercent: pctNum,
@@ -563,26 +567,43 @@ export default function LiquidationDetailClient({
       prev.map((item) => {
         if (item.id !== id) return item;
 
-        if (field === "totalFacturado") {
-          const pctNum = typeof item.gaPercent === "number" ? item.gaPercent : parseFloat(item.gaPercent);
-          if (!isNaN(pctNum) && pctNum >= 0 && item.gaPercent !== "custom") {
-            const newTotal = Number(value || 0);
-            const newGa = Math.max(0, Number(((newTotal * pctNum) / 100).toFixed(2)));
-            return { ...item, totalFacturado: value, ga: newGa };
-          }
-        }
+        const updatedItem = { ...item, [field]: value };
 
+        // Si se edita directamente el importe de GA en pesos, recalculamos el porcentaje sobre el BRUTO A PAGAR
         if (field === "ga") {
           const newGa = Number(value || 0);
-          const totalFact = Number(item.totalFacturado || 0);
+          const totalFact = Number(updatedItem.totalFacturado || 0);
+          const cred = Number(updatedItem.creditos || 0);
+          const deb = Number(updatedItem.debitos || 0);
+          const ajOs = Number(updatedItem.ajustesOs || 0);
+          const pend = Number(updatedItem.pendientesCobro || 0);
+          const pagParc = Number(updatedItem.pagosParcialesAnteriores || 0);
+          const bruto = Math.max(0, totalFact + cred - deb + ajOs - pend - pagParc);
           let newPct = 0;
-          if (totalFact > 0) {
-            newPct = Number(((newGa / totalFact) * 100).toFixed(2));
+          if (bruto > 0) {
+            newPct = Number(((newGa / bruto) * 100).toFixed(2));
           }
-          return { ...item, ga: value, gaPercent: newPct };
+          return { ...updatedItem, ga: value, gaPercent: newPct };
         }
 
-        return { ...item, [field]: value };
+        // Si se modifica cualquier campo que afecta al BRUTO A PAGAR, y la fila tiene un gaPercent asignado,
+        // recalculamos automáticamente el GA en pesos sobre el nuevo Bruto a Pagar
+        if (["totalFacturado", "creditos", "debitos", "ajustesOs", "pendientesCobro", "pagosParcialesAnteriores"].includes(field)) {
+          const pctNum = typeof item.gaPercent === "number" ? item.gaPercent : parseFloat(item.gaPercent);
+          if (!isNaN(pctNum) && pctNum >= 0 && item.gaPercent !== "custom") {
+            const totalFact = Number(field === "totalFacturado" ? value : updatedItem.totalFacturado || 0);
+            const cred = Number(field === "creditos" ? value : updatedItem.creditos || 0);
+            const deb = Number(field === "debitos" ? value : updatedItem.debitos || 0);
+            const ajOs = Number(field === "ajustesOs" ? value : updatedItem.ajustesOs || 0);
+            const pend = Number(field === "pendientesCobro" ? value : updatedItem.pendientesCobro || 0);
+            const pagParc = Number(field === "pagosParcialesAnteriores" ? value : updatedItem.pagosParcialesAnteriores || 0);
+            const bruto = Math.max(0, totalFact + cred - deb + ajOs - pend - pagParc);
+            const newGa = Math.max(0, Number(((bruto * pctNum) / 100).toFixed(2)));
+            return { ...updatedItem, ga: newGa };
+          }
+        }
+
+        return updatedItem;
       })
     );
   };
@@ -974,7 +995,8 @@ export default function LiquidationDetailClient({
       const ajRec = Number(edit.ajusteRecupero ?? detail.ajusteRecupero ?? 0);
 
       const bruto = totalFact + cred - deb + ajOs - pend - pagParc;
-      const neto = bruto - gaVal + ajRec;
+      // Adelantos restan del neto a pagar, no suman
+      const neto = bruto - gaVal - ajRec;
 
       return {
         totalFacturado: acc.totalFacturado + totalFact,
@@ -987,6 +1009,7 @@ export default function LiquidationDetailClient({
         ga: acc.ga + gaVal,
         ajusteRecupero: acc.ajusteRecupero + ajRec,
         netoAPagar: acc.netoAPagar + neto,
+        excedidosCount: acc.excedidosCount + (bruto < 0 ? 1 : 0),
       };
     },
     {
@@ -1000,6 +1023,7 @@ export default function LiquidationDetailClient({
       ga: 0,
       ajusteRecupero: 0,
       netoAPagar: 0,
+      excedidosCount: 0,
     }
   );
 
@@ -1618,10 +1642,21 @@ export default function LiquidationDetailClient({
       <Card className="border-border bg-card">
         <CardHeader className="p-4 pb-3 border-b border-border/80 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div>
-            <CardTitle className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <Building2 className="h-4 w-4 text-emerald-500" />
-              Renglones de Liquidación por Hospital / Prestador
-            </CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <Building2 className="h-4 w-4 text-emerald-500" />
+                Renglones de Liquidación por Hospital / Prestador
+              </CardTitle>
+              {detailSumsRaw.excedidosCount > 0 && (
+                <span
+                  title="Hay renglones con Bruto a Pagar negativo"
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-950/70 dark:text-red-400 border border-red-200 dark:border-red-900/50"
+                >
+                  <AlertTriangle className="h-3 w-3 text-red-600 dark:text-red-400 shrink-0" />
+                  {detailSumsRaw.excedidosCount} {detailSumsRaw.excedidosCount === 1 ? "renglón excedido" : "renglones excedidos"}
+                </span>
+              )}
+            </div>
             <CardDescription className="text-3xs text-muted-foreground mt-0.5">
               {isHospitalUser
                 ? "Valores calculados para su establecimiento de salud."
@@ -1781,66 +1816,89 @@ export default function LiquidationDetailClient({
                     const ajRec = Number(editState.ajusteRecupero ?? detail.ajusteRecupero ?? 0);
 
                     const bruto = totalFact + cred - deb + ajOs - pend - pagParc;
-                    const neto = bruto - gaVal + ajRec;
+                    // Adelantos restan del neto a pagar, no suman
+                    const neto = bruto - gaVal - ajRec;
+                    const isExcedido = bruto < 0;
 
                     return (
-                      <TableRow key={detail.id} className="hover:bg-muted/40 border-border text-foreground text-xs">
+                      <TableRow
+                        key={detail.id}
+                        className={cn(
+                          "border-border text-foreground text-xs transition-colors",
+                          isExcedido
+                            ? "bg-red-500/[0.04] hover:bg-red-500/[0.08] dark:bg-red-500/[0.07] dark:hover:bg-red-500/[0.12] border-l-2 border-l-red-500/80 animate-row-shake relative"
+                            : "hover:bg-muted/40"
+                        )}
+                      >
                         <TableCell className="font-semibold text-3xs min-w-[170px] max-w-[220px] whitespace-normal break-words py-2">
-                          {!isHospitalUser && isManualRow ? (
-                            <select
-                              disabled={isLockedForLiquidationEdits || saving}
-                              value={editState.hospitalId ? String(editState.hospitalId) : (detail.hospitalId ? String(detail.hospitalId) : "")}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                const selectedId = parseInt(val, 10);
-                                const selectedHosp = hospitals.find((h: any) => h.id === selectedId || h.idPrestador === selectedId);
-                                if (selectedHosp) {
-                                  const hid = selectedHosp.idPrestador || selectedHosp.id;
-                                  const hname = selectedHosp.descripcion || selectedHosp.nombre;
-                                  const hcuit = selectedHosp.cuit ? String(selectedHosp.cuit) : "";
-                                  const hloc = selectedHosp.localidad || "CAPITAL";
+                          <div className="flex items-start gap-1.5">
+                            {isExcedido && (
+                              <span
+                                title="Renglón excedido: El bruto a pagar es negativo"
+                                className="mt-0.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-100 text-red-700 dark:bg-red-950/70 dark:text-red-300 border border-red-200 dark:border-red-900/50 shrink-0 animate-row-shake"
+                              >
+                                <AlertTriangle className="h-2.5 w-2.5 text-red-600 dark:text-red-400 shrink-0" />
+                                Excedido
+                              </span>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              {!isHospitalUser && isManualRow ? (
+                                <select
+                                  disabled={isLockedForLiquidationEdits || saving}
+                                  value={editState.hospitalId ? String(editState.hospitalId) : (detail.hospitalId ? String(detail.hospitalId) : "")}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const selectedId = parseInt(val, 10);
+                                    const selectedHosp = hospitals.find((h: any) => h.id === selectedId || h.idPrestador === selectedId);
+                                    if (selectedHosp) {
+                                      const hid = selectedHosp.idPrestador || selectedHosp.id;
+                                      const hname = selectedHosp.descripcion || selectedHosp.nombre;
+                                      const hcuit = selectedHosp.cuit ? String(selectedHosp.cuit) : "";
+                                      const hloc = selectedHosp.localidad || "CAPITAL";
 
-                                  setEditableDetails((prev) =>
-                                    prev.map((item) =>
-                                      item.id === detail.id
-                                        ? {
-                                            ...item,
-                                            hospitalId: hid,
-                                            prestadorNombre: hname,
-                                            cuit: hcuit,
-                                            localidad: hloc,
-                                          }
-                                        : item
-                                    )
-                                  );
-                                  setLiq((prev: any) => ({
-                                    ...prev,
-                                    details: (prev.details || []).map((d: any) =>
-                                      d.id === detail.id
-                                        ? {
-                                            ...d,
-                                            hospitalId: hid,
-                                            prestadorNombre: hname,
-                                            cuit: hcuit,
-                                            localidad: hloc,
-                                          }
-                                        : d
-                                    ),
-                                  }));
-                                }
-                              }}
-                              className="w-full h-8 text-2xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer disabled:opacity-75"
-                            >
-                              <option value="">-- Seleccionar Hospital --</option>
-                              {hospitals.map((h: any) => (
-                                <option key={h.id} value={String(h.id)}>
-                                  {h.descripcion || h.nombre}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            detail.prestadorNombre || detail.hospital?.nombre || "Hospital"
-                          )}
+                                      setEditableDetails((prev) =>
+                                        prev.map((item) =>
+                                          item.id === detail.id
+                                            ? {
+                                                ...item,
+                                                hospitalId: hid,
+                                                prestadorNombre: hname,
+                                                cuit: hcuit,
+                                                localidad: hloc,
+                                              }
+                                            : item
+                                        )
+                                      );
+                                      setLiq((prev: any) => ({
+                                        ...prev,
+                                        details: (prev.details || []).map((d: any) =>
+                                          d.id === detail.id
+                                            ? {
+                                                ...d,
+                                                hospitalId: hid,
+                                                prestadorNombre: hname,
+                                                cuit: hcuit,
+                                                localidad: hloc,
+                                              }
+                                            : d
+                                        ),
+                                      }));
+                                    }
+                                  }}
+                                  className="w-full h-8 text-2xs bg-background border border-border rounded px-1.5 py-0.5 text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer disabled:opacity-75"
+                                >
+                                  <option value="">-- Seleccionar Hospital --</option>
+                                  {hospitals.map((h: any) => (
+                                    <option key={h.id} value={String(h.id)}>
+                                      {h.descripcion || h.nombre}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                detail.prestadorNombre || detail.hospital?.nombre || "Hospital"
+                              )}
+                            </div>
+                          </div>
                         </TableCell>
                         <TableCell className="font-mono text-3xs text-muted-foreground whitespace-nowrap">
                           {!isHospitalUser && isManualRow ? (
@@ -1980,8 +2038,24 @@ export default function LiquidationDetailClient({
                         </TableCell>
 
                         {/* BRUTO A PAGAR */}
-                        <TableCell className="text-right font-bold text-3xs px-2 py-1 text-foreground">
-                          {formatCurrency(bruto)}
+                        <TableCell
+                          className={cn(
+                            "text-right font-bold text-3xs px-2 py-1",
+                            isExcedido ? "text-red-600 dark:text-red-400 font-extrabold" : "text-foreground"
+                          )}
+                        >
+                          <div className="flex flex-col items-end justify-center gap-0.5">
+                            <span>{formatCurrency(bruto)}</span>
+                            {isExcedido && (
+                              <span
+                                title="Excedido: el bruto a pagar es menor a cero"
+                                className="inline-flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.2 rounded bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 border border-red-200/60 dark:border-red-900/40 animate-row-shake"
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                                Excedido
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
 
                         {/* GA (Resta -> Rojo) */}
@@ -1992,8 +2066,8 @@ export default function LiquidationDetailClient({
                               editState.gaPercent !== "" &&
                               !isNaN(Number(editState.gaPercent))
                                 ? Number(editState.gaPercent)
-                                : totalFact > 0
-                                ? Number(((gaVal / totalFact) * 100).toFixed(2))
+                                : bruto > 0
+                                ? Number(((gaVal / bruto) * 100).toFixed(2))
                                 : 0;
 
                             const standardPcts = [0, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20];
@@ -2041,7 +2115,7 @@ export default function LiquidationDetailClient({
                           })()}
                         </TableCell>
 
-                        {/* AJUSTE RECUPERO (Suma -> Verde) */}
+                        {/* ADELANTOS (Resta -> Rojo) */}
                         <TableCell className="text-right px-1 py-1">
                           <Input
                             type="number"
@@ -2050,12 +2124,19 @@ export default function LiquidationDetailClient({
                             disabled={isLockedForLiquidationEdits || saving}
                             value={getInputDisplayValue(editState.ajusteRecupero)}
                             onChange={(e) => handleDetailInputChange(detail.id, "ajusteRecupero", e.target.value)}
-                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-emerald-600 dark:text-emerald-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="w-full text-right h-8 text-2xs bg-background border-border font-semibold text-red-600 dark:text-red-400 focus-visible:ring-emerald-500 disabled:opacity-75 px-1 py-0.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           />
                         </TableCell>
 
                         {/* NETO A PAGAR */}
-                        <TableCell className="text-right font-extrabold text-2xs px-2 py-1 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 rounded">
+                        <TableCell
+                          className={cn(
+                            "text-right font-extrabold text-2xs px-2 py-1 rounded",
+                            isExcedido || neto < 0
+                              ? "text-red-600 dark:text-red-400 bg-red-500/10"
+                              : "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                          )}
+                        >
                           {formatCurrency(neto)}
                         </TableCell>
 

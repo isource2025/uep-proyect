@@ -535,8 +535,8 @@ export async function fetchLiquidationData(
   });
 }
 
-function calculateDefaultGA(totalFacturado: number): number {
-  return Number((totalFacturado * 0.06).toFixed(2));
+function calculateDefaultGA(brutoAPagar: number): number {
+  return Number((Math.max(0, brutoAPagar) * 0.06).toFixed(2));
 }
 
 // 2. Generate a new Liquidation header and hospital detail rows from an RC
@@ -609,13 +609,13 @@ export async function calculateLiquidation(rcId: number) {
         const nroCbte = comp.numero ? String(comp.numero).padStart(8, "0") : "";
         const fcNumStr = comp.numero ? `FC-${ptoVta}-${nroCbte}` : `FC-${comp.id}`;
 
-        const defaultGa = calculateDefaultGA(total);
-
-        // bruto = total + creditos - debitos + ajustesOs - pendientesCobro
-        // since creditos, debitos, ajustesOs, pendientesCobro are 0 initially:
+        // bruto = total + creditos - debitos + ajustesOs - pendientesCobro - pagosParcialesAnteriores
+        // since creditos, debitos, ajustesOs, pendientesCobro, pagosParcialesAnteriores are 0 initially:
         const defaultBruto = total;
-        // neto = bruto - ga + ajusteRecupero
-        // since ajusteRecupero is 0 initially:
+        // El porcentaje de GA se toma del bruto a pagar
+        const defaultGa = calculateDefaultGA(defaultBruto);
+        // neto = bruto - ga - adelantos (ajusteRecupero)
+        // since adelantos son 0 inicialmente:
         const defaultNeto = Math.max(0, defaultBruto - defaultGa);
 
         const compPeriod = comp.fecha
@@ -758,9 +758,11 @@ export async function updateLiquidationDetails(
         const ga = Math.max(0, Number(d.ga) || 0);
         const ajusteRecupero = Math.max(0, Number(d.ajusteRecupero) || 0);
 
-        // Control aritmético estricto en servidor
+        // Control aritmético estricto en servidor:
+        // Bruto = Total Facturado + Créditos - Débitos + Ajustes O.S. - Pendientes de Cobro - Pagos Parciales Anteriores
         const brutoAPagar = Math.max(0, totalFacturado + creditos - debitos + ajustesOs - pendientesCobro - pagosParcialesAnteriores);
-        const netoAPagar = Math.max(0, brutoAPagar - ga + ajusteRecupero);
+        // Neto = Bruto - GA - Adelantos (ajusteRecupero)
+        const netoAPagar = Math.max(0, brutoAPagar - ga - ajusteRecupero);
 
         if (isNewRow) {
           await tx.liquidacionDetalle.create({

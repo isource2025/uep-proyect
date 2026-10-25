@@ -56,7 +56,7 @@ export function buildLiquidationWorkbook(
     ["RESUMEN DE TOTALES CONSOLIDADOS ($)"],
     ["Total Facturado:", formatMoney(liq.totalFacturado), "", "Bruto a Pagar:", formatMoney(liq.brutoAPagar)],
     ["Total Créditos:", formatMoney(liq.creditos), "", "Gastos Administrativos (GA):", formatMoney(liq.ga)],
-    ["Total Débitos:", formatMoney(liq.debitos), "", "Ajuste por Recupero:", formatMoney(liq.ajusteRecupero)],
+    ["Total Débitos:", formatMoney(liq.debitos), "", "Adelantos:", formatMoney(liq.ajusteRecupero)],
     ["Ajustes O.S.:", formatMoney(liq.ajustesOs), "", "NETO FINAL A PAGAR:", formatMoney(liq.netoAPagar)],
     ["Pendientes de Cobro:", formatMoney(liq.pendientesCobro), "", "Total Honorarios:", formatMoney(liq.totalHonorarios)],
     ["Pagos Parciales Anteriores:", formatMoney(liq.pagosParcialesAnteriores), "", "Total Sobreasignación:", formatMoney(liq.totalSobreasignaciones)],
@@ -76,7 +76,7 @@ export function buildLiquidationWorkbook(
       "Pagos Parciales ($)",
       "Bruto a Pagar ($)",
       "G.A. ($)",
-      "Ajuste Recupero ($)",
+      "Adelantos ($)",
       "Neto a Pagar ($)",
     ],
   ];
@@ -134,7 +134,7 @@ export function buildLiquidationWorkbook(
     { wch: 18 }, // Pagos Parciales
     { wch: 18 }, // Bruto a Pagar
     { wch: 15 }, // GA
-    { wch: 18 }, // Ajuste Recupero
+    { wch: 18 }, // Adelantos
     { wch: 20 }, // Neto a Pagar
   ];
 

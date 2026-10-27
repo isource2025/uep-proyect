@@ -29,6 +29,7 @@ import {
   Percent,
   User,
   MessageSquare,
+  Scale,
 } from "lucide-react";
 import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,8 +47,9 @@ import {
 } from "@/components/ui/dialog";
 import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isUserHospital } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, searchBatchAgentsForLiquidationAction } from "../actions";
+import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, updateLiquidationNormaLegal, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, searchBatchAgentsForLiquidationAction } from "../actions";
 import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
+import { NormaLegalModal } from "@/components/norma-legal-modal";
 import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
 
 interface LiquidationDetailClientProps {
@@ -98,14 +100,61 @@ export default function LiquidationDetailClient({
   const [goingBack, setGoingBack] = useState(false);
   const [deletedDetailIds, setDeletedDetailIds] = useState<string[]>([]);
 
-  const handleDownloadExcelReport = async () => {
+  // Descarga de reporte en modo PENDIENTE (siempre disponible en todos los estados)
+  const handleDownloadPendingReport = async () => {
     try {
       setDownloadingReport(true);
       setErrorMsg(null);
-      await downloadLiquidationExcel(liq.id, liq);
+      await downloadLiquidationExcel(liq.id, liq, undefined, "PENDIENTE");
     } catch (err: any) {
-      console.error("Error al descargar reporte Excel:", err);
-      setErrorMsg(err.message || "Error al generar el reporte Excel.");
+      console.error("Error al descargar reporte pendiente:", err);
+      setErrorMsg(err.message || "Error al generar el reporte en estado pendiente.");
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
+  // Descarga de reporte oficial en modo DISTRIBUIDA
+  const handleDownloadDistributedReport = async (overrideNorma?: string) => {
+    try {
+      setDownloadingReport(true);
+      setErrorMsg(null);
+      await downloadLiquidationExcel(liq.id, liq, overrideNorma, "DISTRIBUIDA");
+    } catch (err: any) {
+      console.error("Error al descargar reporte distribuido:", err);
+      setErrorMsg(err.message || "Error al generar el reporte en estado distribuido.");
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
+  const handleTriggerDistributedDownload = () => {
+    if (!isHospitalUser) {
+      setIsNormaLegalModalOpen(true);
+    } else {
+      handleDownloadDistributedReport();
+    }
+  };
+
+  const handleConfirmNormaLegalModal = async (normaValue: string) => {
+    try {
+      setDownloadingReport(true);
+      const res = await updateLiquidationNormaLegal(liq.id, normaValue);
+      if (res?.success) {
+        setNormaLegal(normaValue);
+        initialNormaLegalRef.current = normaValue;
+        setLiq((prev: any) => ({
+          ...prev,
+          normaLegal: normaValue,
+          ...(res.snapshotUrl ? { reporteDistribuidoUrl: res.snapshotUrl } : {}),
+        }));
+        await handleDownloadDistributedReport(normaValue);
+      } else {
+        setErrorMsg(res?.error || "Error al actualizar N° de norma legal.");
+      }
+    } catch (e: any) {
+      console.error("Error al procesar norma legal:", e);
+      setErrorMsg(e.message || "Error al procesar N° de norma legal.");
     } finally {
       setDownloadingReport(false);
     }
@@ -140,6 +189,9 @@ export default function LiquidationDetailClient({
   const [savingObs, setSavingObs] = useState(false);
   const [expediente, setExpediente] = useState(liq.expediente || "");
   const [savingExpte, setSavingExpte] = useState(false);
+  const [normaLegal, setNormaLegal] = useState(liq.normaLegal || "");
+  const [savingNormaLegal, setSavingNormaLegal] = useState(false);
+  const [isNormaLegalModalOpen, setIsNormaLegalModalOpen] = useState(false);
   const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
   const [globalGaPercent, setGlobalGaPercent] = useState("6");
   const [customGlobalGaPercent, setCustomGlobalGaPercent] = useState("");
@@ -198,6 +250,7 @@ export default function LiquidationDetailClient({
   const initialMesCargaRef = useRef(liq.mesCarga || "");
   const initialObservacionesRef = useRef(liq.observaciones || "");
   const initialExpedienteRef = useRef(liq.expediente || "");
+  const initialNormaLegalRef = useRef(liq.normaLegal || "");
   const [hasSavedFinancialModifications, setHasSavedFinancialModifications] = useState(false);
 
   // Computes whether there are unsaved FINANCIAL modifications (debits, credits, GA, invoices, period)
@@ -225,14 +278,15 @@ export default function LiquidationDetailClient({
     return false;
   }, [editableDetails, deletedDetailIds, mesCarga]);
 
-  // Overall unsaved changes (including internal observations and expediente, so the Save button can save them)
+  // Overall unsaved changes (including internal observations, expediente and norma legal, so the Save button can save them)
   const hasUnsavedChanges = useMemo(() => {
     return (
       hasUnsavedFinancialChanges ||
       ((observaciones || "") !== initialObservacionesRef.current) ||
-      ((expediente || "") !== initialExpedienteRef.current)
+      ((expediente || "") !== initialExpedienteRef.current) ||
+      ((normaLegal || "") !== initialNormaLegalRef.current)
     );
-  }, [hasUnsavedFinancialChanges, observaciones, expediente]);
+  }, [hasUnsavedFinancialChanges, observaciones, expediente, normaLegal]);
 
   // Only SAVED financial modifications warrant a hospital rectification notification button
   const isFinancialModified = hasSavedFinancialModifications;
@@ -694,7 +748,7 @@ export default function LiquidationDetailClient({
         ajusteRecupero: Number(item.ajusteRecupero || 0),
       }));
 
-      const res = await updateLiquidationDetails(liq.id, parsedDetails, undefined, mesCarga, observaciones, deletedDetailIds, expediente);
+      const res = await updateLiquidationDetails(liq.id, parsedDetails, undefined, mesCarga, observaciones, deletedDetailIds, expediente, normaLegal);
       if (res.error) {
         setErrorMsg(res.error);
         return;
@@ -714,6 +768,7 @@ export default function LiquidationDetailClient({
       initialMesCargaRef.current = mesCarga || "";
       initialObservacionesRef.current = observaciones || "";
       initialExpedienteRef.current = expediente || "";
+      initialNormaLegalRef.current = normaLegal || "";
       if (wasNotifiedBefore && hasUnsavedFinancialChanges) {
         setHasSavedFinancialModifications(true);
         setLiq((prev: any) => ({ ...prev, status: "RECTIFICADA_PENDIENTE" }));
@@ -747,6 +802,31 @@ export default function LiquidationDetailClient({
       setErrorMsg("Error al guardar el número de expediente.");
     } finally {
       setSavingExpte(false);
+    }
+  };
+
+  const handleSaveNormaLegalOnly = async () => {
+    setSavingNormaLegal(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await updateLiquidationNormaLegal(liq.id, normaLegal);
+      if (res?.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      initialNormaLegalRef.current = normaLegal || "";
+      setLiq((prev: any) => ({
+        ...prev,
+        normaLegal: normaLegal?.trim() || null,
+        ...(res.snapshotUrl ? { reporteDistribuidoUrl: res.snapshotUrl } : {}),
+      }));
+      setSuccessMsg("N° de norma legal guardado correctamente.");
+      router.refresh();
+    } catch (e: any) {
+      setErrorMsg("Error al guardar el N° de norma legal.");
+    } finally {
+      setSavingNormaLegal(false);
     }
   };
 
@@ -1184,50 +1264,52 @@ export default function LiquidationDetailClient({
             </Button>
           )}
 
-          {/* BOTÓN DESCARGAR REPORTE EXCEL ACTUAL */}
+          {/* BOTÓN DESCARGAR REPORTE PENDIENTE (SIEMPRE DISPONIBLE EN TODOS LOS ESTADOS) */}
           <Button
             variant="outline"
-            onClick={handleDownloadExcelReport}
+            onClick={handleDownloadPendingReport}
             disabled={downloadingReport || saving || goingBack}
-            className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
-            title="Descargar reporte completo en Excel (.xlsx) con los datos actuales"
+            className="border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
+            title="Descargar reporte en estado Pendiente (sin norma legal asignada)"
           >
             {downloadingReport ? (
-              <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
+              <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-500" />
             ) : (
-              <FileSpreadsheet className="h-4 w-4 text-emerald-500" />
+              <FileSpreadsheet className="h-4 w-4 text-blue-500" />
             )}
-            <span className="hidden sm:inline">Reporte Actual</span>
+            <span className="hidden sm:inline">Reporte Pendiente</span>
           </Button>
 
-          {/* BOTÓN DESCARGAR REPORTE INICIAL PENDIENTE (CLOUD SNAPSHOT) */}
-          {liq.reportePendienteUrl && (
-            <a
-              href={liq.reportePendienteUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-blue-500/30 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 rounded-lg font-bold text-xs transition-colors shadow-xs"
-              title="Descargar instantánea histórica de montos iniciales (Estado Pendiente)"
-            >
-              <FileSpreadsheet className="h-4 w-4 text-blue-500" />
-              <span className="hidden sm:inline">Reporte Inicial</span>
-            </a>
-          )}
-
-          {/* BOTÓN DESCARGAR REPORTE DISTRIBUIDO (CLOUD SNAPSHOT) */}
-          {liq.reporteDistribuidoUrl && (
-            <a
-              href={liq.reporteDistribuidoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-teal-500/30 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 rounded-lg font-bold text-xs transition-colors shadow-xs"
-              title="Descargar reporte oficial consolidado de distribución"
-            >
-              <FileSpreadsheet className="h-4 w-4 text-teal-500" />
-              <span className="hidden sm:inline">Reporte Distribuido</span>
-            </a>
+          {/* BOTÓN DESCARGAR REPORTE DISTRIBUIDO (SOLO CUANDO ESTÁ DISTRIBUIDA) */}
+          {isDistributed && (
+            isHospitalUser && liq.reporteDistribuidoUrl ? (
+              <a
+                href={liq.reporteDistribuidoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-teal-500/30 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 rounded-lg font-bold text-xs transition-colors shadow-xs"
+                title="Descargar reporte oficial consolidado de distribución"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-teal-500" />
+                <span className="hidden sm:inline">Reporte Distribuido</span>
+              </a>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={handleTriggerDistributedDownload}
+                disabled={downloadingReport || saving || goingBack}
+                className="border-teal-500/30 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
+                title="Asignar disposición ministerial y descargar reporte oficial distribuido"
+              >
+                {downloadingReport ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-teal-500" />
+                ) : (
+                  <FileSpreadsheet className="h-4 w-4 text-teal-500" />
+                )}
+                <span className="hidden sm:inline">Reporte Distribuido</span>
+              </Button>
+            )
           )}
 
           {liq.debitsFileUrl && (
@@ -1374,6 +1456,35 @@ export default function LiquidationDetailClient({
                   value={expediente}
                   onChange={(e) => setExpediente(e.target.value)}
                   placeholder="316-0000/2026"
+                  className="h-8 text-xs bg-background border-border font-mono font-semibold text-foreground max-w-[170px] placeholder:text-muted-foreground/75"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[10px] text-muted-foreground uppercase font-bold flex items-center gap-1">
+                    <Scale className="h-3 w-3 text-cyan-500" />
+                    N° Norma Legal
+                  </Label>
+                  {(normaLegal || "") !== initialNormaLegalRef.current && !isHospitalUser && (
+                    <Button
+                      size="sm"
+                      type="button"
+                      onClick={handleSaveNormaLegalOnly}
+                      disabled={savingNormaLegal}
+                      className="h-5 px-1.5 text-3xs bg-cyan-600 hover:bg-cyan-500 text-white font-bold gap-1 cursor-pointer animate-in fade-in"
+                    >
+                      {savingNormaLegal ? <RefreshCw className="h-2.5 w-2.5 animate-spin" /> : <Save className="h-2.5 w-2.5" />}
+                      Guardar
+                    </Button>
+                  )}
+                </div>
+                <Input
+                  disabled={isHospitalUser}
+                  type="text"
+                  value={normaLegal}
+                  onChange={(e) => setNormaLegal(e.target.value)}
+                  placeholder={isDistributed ? "Disp N° XXX" : "Sin asignar"}
                   className="h-8 text-xs bg-background border-border font-mono font-semibold text-foreground max-w-[170px] placeholder:text-muted-foreground/75"
                 />
               </div>
@@ -3032,6 +3143,15 @@ export default function LiquidationDetailClient({
           details: liq.details,
         }}
         isRectification={wasNotifiedBefore}
+      />
+
+      <NormaLegalModal
+        isOpen={isNormaLegalModalOpen}
+        onClose={() => setIsNormaLegalModalOpen(false)}
+        onConfirm={handleConfirmNormaLegalModal}
+        initialNormaLegal={normaLegal || liq.normaLegal}
+        liquidationId={liq.id}
+        liquidationCode={`LIQ-${String(liq.id).padStart(4, "0")}`}
       />
     </div>
   );

@@ -213,6 +213,7 @@ model Liquidacion {
   createdByName  String?              // Name/email of user who generated/saved the liquidation
   observaciones  String?              // Operator notes / observations
   expediente     String?              // Expediente administrativo provincial e.g. "316-6781/2026"
+  normaLegal     String?              // Disposición oficial e.g. "Disp N° 123"
   
   status         String               @default("PENDIENTE") // PENDIENTE, NOTIFICADO, EN PROCESO, DISTRIBUIDA, CERRADA
   createdAt      DateTime             @default(now())

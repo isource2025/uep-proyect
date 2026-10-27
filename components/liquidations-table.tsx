@@ -44,6 +44,8 @@ import {
 import { getLiquidationStatusConfig, getLiquidationStatusBadge } from "@/lib/constants";
 import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
 import { cleanCuit } from "@/lib/hospital-mapping";
+import { NormaLegalModal } from "@/components/norma-legal-modal";
+import { updateLiquidationNormaLegal } from "@/app/dashboard/liquidations/actions";
 
 export interface LiquidationsTableProps {
   liquidations: any[];
@@ -113,15 +115,53 @@ export function LiquidationsTable({
     pending: any[];
   } | null>(null);
   const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
+  const [normaLegalTargetLiq, setNormaLegalTargetLiq] = useState<any | null>(null);
 
-  const handleDownloadExcelReport = async (liqId: number) => {
+  // Descarga reporte en modo PENDIENTE (siempre disponible para cualquier liquidación)
+  const handleDownloadPendingExcel = async (liq: any) => {
     try {
-      setDownloadingReportId(liqId);
-      await downloadLiquidationExcel(liqId);
+      setDownloadingReportId(liq.id);
+      await downloadLiquidationExcel(liq.id, liq, undefined, "PENDIENTE");
     } catch (err) {
-      console.error("Error al descargar reporte Excel:", err);
+      console.error("Error al descargar reporte pendiente:", err);
     } finally {
       setDownloadingReportId(null);
+    }
+  };
+
+  // Descarga reporte en modo DISTRIBUIDA
+  const handleDownloadDistributedExcel = async (liq: any, overrideNormaLegal?: string) => {
+    try {
+      setDownloadingReportId(liq.id);
+      await downloadLiquidationExcel(liq.id, liq, overrideNormaLegal, "DISTRIBUIDA");
+    } catch (err) {
+      console.error("Error al descargar reporte distribuido:", err);
+    } finally {
+      setDownloadingReportId(null);
+    }
+  };
+
+  const handleTriggerDistributedDownload = (liq: any) => {
+    if (!isHospitalUser) {
+      setNormaLegalTargetLiq(liq);
+    } else {
+      handleDownloadDistributedExcel(liq);
+    }
+  };
+
+  const handleConfirmNormaLegal = async (normaLegal: string) => {
+    if (!normaLegalTargetLiq) return;
+    const target = normaLegalTargetLiq;
+    try {
+      setDownloadingReportId(target.id);
+      await updateLiquidationNormaLegal(target.id, normaLegal);
+      target.normaLegal = normaLegal;
+      await handleDownloadDistributedExcel(target, normaLegal);
+    } catch (err) {
+      console.error("Error al guardar norma legal y descargar reporte:", err);
+    } finally {
+      setDownloadingReportId(null);
+      setNormaLegalTargetLiq(null);
     }
   };
 
@@ -759,49 +799,33 @@ export function LiquidationsTable({
                                     </DropdownMenuItem>
                                   )}
 
-                                  {/* Opción Descargar Reporte Excel Actual */}
+                                  {/* Opción Descargar Reporte Pendiente (Siempre Disponible en todas las liquidaciones) */}
                                   <DropdownMenuItem
-                                    onClick={() => handleDownloadExcelReport(liq.id)}
+                                    onClick={() => handleDownloadPendingExcel(liq)}
                                     disabled={downloadingReportId === liq.id || isEnteringAny}
-                                    className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 focus:bg-emerald-500/10"
+                                    className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 focus:bg-blue-500/10 w-full"
                                   >
                                     {downloadingReportId === liq.id ? (
-                                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500 shrink-0" />
+                                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-500 shrink-0" />
                                     ) : (
-                                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                      <FileSpreadsheet className="h-3.5 w-3.5 text-blue-500 shrink-0" />
                                     )}
-                                    <span>Descargar Reporte Actual</span>
+                                    <span>Descargar Reporte Pendiente</span>
                                   </DropdownMenuItem>
 
-                                  {/* Opción Descargar Reporte Inicial (Pendiente) guardado en la nube */}
-                                  {liq.reportePendienteUrl && (
-                                    <DropdownMenuItem asChild>
-                                      <a
-                                        href={liq.reportePendienteUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        download
-                                        className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 focus:bg-blue-500/10 w-full"
-                                      >
-                                        <FileSpreadsheet className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                        <span>Reporte Inicial (Pendiente)</span>
-                                      </a>
-                                    </DropdownMenuItem>
-                                  )}
-
-                                  {/* Opción Descargar Reporte Distribuido guardado en la nube */}
-                                  {liq.reporteDistribuidoUrl && (
-                                    <DropdownMenuItem asChild>
-                                      <a
-                                        href={liq.reporteDistribuidoUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        download
-                                        className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 focus:bg-teal-500/10 w-full"
-                                      >
+                                  {/* Opción Descargar Reporte Distribuido (Solo en estado Distribuido) */}
+                                  {(liq.status === "DISTRIBUIDA" || liq.status === "DISTRIBUIDO" || liq.reporteDistribuidoUrl) && (
+                                    <DropdownMenuItem
+                                      onClick={() => handleTriggerDistributedDownload(liq)}
+                                      disabled={downloadingReportId === liq.id}
+                                      className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 focus:bg-teal-500/10 w-full"
+                                    >
+                                      {downloadingReportId === liq.id ? (
+                                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-teal-500 shrink-0" />
+                                      ) : (
                                         <FileSpreadsheet className="h-3.5 w-3.5 text-teal-500 shrink-0" />
-                                        <span>Reporte Distribuido (Oficial)</span>
-                                      </a>
+                                      )}
+                                      <span>Descargar Reporte Distribuido</span>
                                     </DropdownMenuItem>
                                   )}
 
@@ -1047,6 +1071,16 @@ export function LiquidationsTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal para ingresar Norma Legal (Disposición) al descargar reporte en estado distribuido */}
+      <NormaLegalModal
+        isOpen={!!normaLegalTargetLiq}
+        onClose={() => setNormaLegalTargetLiq(null)}
+        onConfirm={handleConfirmNormaLegal}
+        initialNormaLegal={normaLegalTargetLiq?.normaLegal}
+        liquidationId={normaLegalTargetLiq?.id}
+        liquidationCode={normaLegalTargetLiq ? `LIQ-${String(normaLegalTargetLiq.id).padStart(4, "0")}` : ""}
+      />
     </Card>
   );
 }

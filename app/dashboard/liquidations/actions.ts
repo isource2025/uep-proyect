@@ -691,7 +691,8 @@ export async function updateLiquidationDetails(
   mesCarga?: string,
   observaciones?: string,
   deletedDetailIds?: string[],
-  expediente?: string
+  expediente?: string,
+  normaLegal?: string
 ) {
   try {
     const session = await auth.api.getSession({ headers: await headers() });
@@ -824,6 +825,7 @@ export async function updateLiquidationDetails(
           ...(mesCarga !== undefined ? { mesCarga } : {}),
           ...(observaciones !== undefined ? { observaciones } : {}),
           ...(expediente !== undefined ? { expediente: expediente?.trim() || null } : {}),
+          ...(normaLegal !== undefined ? { normaLegal: normaLegal?.trim() || null } : {}),
           ...(currentUserName ? { createdByName: currentUserName } : {}),
         },
       });
@@ -865,6 +867,66 @@ export async function updateLiquidationExpediente(
   } catch (error: any) {
     console.error("Error updating liquidation expediente:", error);
     return { error: "Error al guardar el número de expediente." };
+  }
+}
+
+export async function updateLiquidationNormaLegal(
+  liquidationId: number,
+  normaLegal: string
+): Promise<{ success: boolean; normaLegal?: string; snapshotUrl?: string; error?: string }> {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) {
+      return { success: false, error: "No autorizado. Debe iniciar sesión." };
+    }
+
+    const isHospitalUser = !!(session.user as any)?.hospitalId;
+    if (isHospitalUser) {
+      return { success: false, error: "Acceso denegado. La asignación de norma legal es exclusiva del personal de UEP." };
+    }
+
+    let formatted = normaLegal?.trim() || "";
+    if (formatted) {
+      if (/^disp\s*n[°º]?\s*/i.test(formatted)) {
+        formatted = formatted.replace(/^disp\s*n[°º]?\s*/i, "Disp N° ");
+      } else {
+        formatted = `Disp N° ${formatted}`;
+      }
+    }
+
+    const updated = await prisma.liquidacion.update({
+      where: { id: liquidationId },
+      data: {
+        normaLegal: formatted || null,
+      },
+    });
+
+    // Si está en estado DISTRIBUIDA, regeneramos el snapshot del reporte en el almacenamiento
+    let snapshotUrl: string | undefined = undefined;
+    if (updated.status === "DISTRIBUIDA" || updated.status === "DISTRIBUIDO") {
+      try {
+        const snapshot = await uploadLiquidationSnapshotToCloud(liquidationId, "DISTRIBUIDA");
+        if (snapshot) {
+          snapshotUrl = snapshot.url;
+          await prisma.liquidacion.update({
+            where: { id: liquidationId },
+            data: {
+              reporteDistribuidoUrl: snapshot.url,
+              reporteDistribuidoFileName: snapshot.fileName,
+            },
+          });
+        }
+      } catch (distSnapErr) {
+        console.error("Error actualizando snapshot DISTRIBUIDA con nueva norma legal:", distSnapErr);
+      }
+    }
+
+    revalidatePath("/dashboard/liquidations");
+    revalidatePath(`/dashboard/liquidations/${liquidationId}`);
+    return { success: true, normaLegal: formatted, snapshotUrl };
+  } catch (error: any) {
+    console.error("Error updating liquidation norma legal:", error);
+    return { success: false, error: error.message || "Error al guardar el número de norma legal." };
   }
 }
 
@@ -968,7 +1030,7 @@ async function uploadLiquidationSnapshotToCloud(
     const reportData = await getLiquidationExcelReportData(liquidationId);
     if (!reportData || !reportData.liquidation) return null;
 
-    const { buffer, fileName } = generateLiquidationExcelBuffer(
+    const { buffer, fileName } = await generateLiquidationExcelBuffer(
       reportData.liquidation,
       reportData.mspAgentsMap || {}
     );

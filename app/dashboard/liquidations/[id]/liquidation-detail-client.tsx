@@ -1397,11 +1397,19 @@ export default function LiquidationDetailClient({
           </div>
 
           {/* COL 2: Liquidación N° & Liquidador */}
-          <div className="space-y-1">
-            <span className="text-[10px] text-muted-foreground uppercase font-bold">Liquidación N°</span>
-            <p className="font-mono font-bold text-foreground text-sm">
-              LIQ-{String(liq.id).padStart(4, "0")}
-            </p>
+          <div className="space-y-2">
+            <div>
+              <span className="text-[10px] text-muted-foreground uppercase font-bold">Liquidación N°</span>
+              <p className="font-mono font-bold text-foreground text-sm">
+                LIQ-{String(liq.id).padStart(4, "0")}
+              </p>
+            </div>
+            <div>
+              <span className="text-[10px] text-muted-foreground uppercase font-bold">ID Transacción</span>
+              <p className="font-mono font-bold text-foreground text-sm">
+                {liq.rc?.id || liq.rcId || "N/A"}
+              </p>
+            </div>
             {!isHospitalUser && liq.createdByName && liq.createdByName.trim() !== "" && (
               <div className="flex items-center gap-1.5 text-3xs text-muted-foreground pt-1">
                 <User className="h-3.5 w-3.5 text-emerald-500 shrink-0" />

@@ -288,6 +288,16 @@ export default function LiquidationDetailClient({
     );
   }, [hasUnsavedFinancialChanges, observaciones, expediente, normaLegal]);
 
+  // Check if liquidation has actual invoices / hospitals
+  const hasInvoices = useMemo(() => {
+    return (
+      (liq.details || []).length > 0 &&
+      (liq.details || []).some(
+        (d: any) => Boolean(d.hospitalId || d.prestadorNombre?.trim() || d.fcHospital?.trim() || d.compraId)
+      )
+    );
+  }, [liq.details]);
+
   // Only SAVED financial modifications warrant a hospital rectification notification button
   const isFinancialModified = hasSavedFinancialModifications;
 
@@ -895,6 +905,7 @@ export default function LiquidationDetailClient({
   };
 
   const handleNotifyHospital = () => {
+    if (goingBack || !hasInvoices) return;
     setIsNotifyModalOpen(true);
   };
 
@@ -903,6 +914,7 @@ export default function LiquidationDetailClient({
     subject: string;
     message: string;
   }) => {
+    if (goingBack || !hasInvoices) return;
     setNotifying(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -1225,8 +1237,13 @@ export default function LiquidationDetailClient({
           {!isHospitalUser && liq.status === "PENDIENTE" && (
             <Button
               onClick={handleNotifyHospital}
-              disabled={notifying || saving}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
+              disabled={notifying || saving || goingBack || !hasInvoices}
+              title={
+                !hasInvoices
+                  ? "No se puede notificar: la liquidación no posee facturas ni hospitales vinculados"
+                  : "Notificar liquidación a los hospitales"
+              }
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-auto"
             >
               {notifying ? (
                 <>
@@ -1246,9 +1263,13 @@ export default function LiquidationDetailClient({
           {!isHospitalUser && !isDistributed && !isClosed && isAdmin && (liq.status === "RECTIFICADA_PENDIENTE" || liq.status === "MODIFICADA" || isFinancialModified) && (
             <Button
               onClick={handleNotifyHospital}
-              disabled={notifying || saving}
-              title="Notificar rectificación de montos a los efectores sanitarios"
-              className="bg-amber-600 hover:bg-amber-500 text-zinc-950 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs animate-in fade-in"
+              disabled={notifying || saving || goingBack || !hasInvoices}
+              title={
+                !hasInvoices
+                  ? "No se puede notificar: la liquidación no posee facturas ni hospitales vinculados"
+                  : "Notificar rectificación de montos a los efectores sanitarios"
+              }
+              className="bg-amber-600 hover:bg-amber-500 text-zinc-950 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs animate-in fade-in disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-auto"
             >
               {notifying ? (
                 <>
@@ -3119,7 +3140,7 @@ export default function LiquidationDetailClient({
           <div className="flex gap-2">
             <Button
               onClick={handleSaveDetails}
-              disabled={saving}
+              disabled={saving || goingBack}
               className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1.5 px-6 h-9 cursor-pointer text-xs"
             >
               {saving ? (

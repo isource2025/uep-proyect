@@ -46,3 +46,5 @@ next-env.d.ts
 # agent rules & sensitive docs
 AGENTS.md
 CLAUDE.md
+
+.vscode/

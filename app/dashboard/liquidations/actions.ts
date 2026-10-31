@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import path from "path";
 import fs from "fs";
-import { uploadToStorage } from "@/lib/storage";
+import { uploadToStorage, deleteFromStorage } from "@/lib/storage";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { getActivePeriodInfo } from "@/lib/periods";
@@ -999,6 +999,17 @@ export async function uploadDebitsFile(formData: FormData) {
 
 export async function deleteDebitsFile(liquidationId: number) {
   try {
+    const existing = await prisma.liquidacion.findUnique({
+      where: { id: liquidationId },
+      select: { debitsFileUrl: true },
+    });
+
+    if (existing?.debitsFileUrl) {
+      await deleteFromStorage(existing.debitsFileUrl).catch((err) =>
+        console.warn("Failed to delete file from storage:", err)
+      );
+    }
+
     await prisma.liquidacion.update({
       where: { id: liquidationId },
       data: {

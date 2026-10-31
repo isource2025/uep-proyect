@@ -208,12 +208,23 @@ function sanitizarLiquidacionCabecera(liq: any) {
   const totalGastos = Math.max(0, netoAPagar - (totalHonorarios + totalSobreasignaciones));
   const totalDistribuido = totalHonorarios + totalSobreasignaciones + totalGastos;
 
+  const attachments = (liq.attachments || [])
+    .filter((a: any) => !a.deletedAt)
+    .map((a: any) => ({
+      id: a.id,
+      liquidationId: a.liquidationId,
+      fileName: a.fileName,
+      fileUrl: a.fileUrl,
+      createdAt: a.createdAt,
+    }));
+
   return {
     ...liq,
     rc: sanitizeCbte(liq.rc),
     details,
     distributions,
     personalDistributions,
+    attachments,
     totalFacturado,
     creditos,
     debitos,
@@ -444,6 +455,10 @@ export async function fetchLiquidationData(
           },
         },
         personalDistributions: true,
+        attachments: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: "desc" },
+        },
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -961,68 +976,141 @@ export async function updateLiquidationObservaciones(
   }
 }
 
-// 4. Upload scanned PDF file with debit breakdown sent by Obra Social
+// 4. Upload file(s) with debit breakdown sent by Obra Social (PDF, Excel, Images)
 export async function uploadDebitsFile(formData: FormData) {
   try {
     const liquidationIdStr = formData.get("liquidationId") as string;
-    const file = formData.get("file") as File;
+    const rawFiles = formData.getAll("files");
+    const singleFile = formData.get("file") as File | null;
+    const files: File[] = [];
 
-    if (!liquidationIdStr || !file) {
-      return { error: "Faltan parámetros requeridos para la carga de débitos." };
+    if (rawFiles && rawFiles.length > 0) {
+      for (const item of rawFiles) {
+        if (item instanceof File && item.size > 0) {
+          files.push(item);
+        }
+      }
+    }
+    if (files.length === 0 && singleFile instanceof File && singleFile.size > 0) {
+      files.push(singleFile);
+    }
+
+    if (!liquidationIdStr || files.length === 0) {
+      return { error: "Faltan parámetros requeridos para la carga de comprobantes." };
     }
 
     const liquidationId = parseInt(liquidationIdStr, 10);
+    const uploadedResults: { fileName: string; fileUrl: string }[] = [];
 
-    const filename = `debits-liq-${liquidationId}-${Date.now()}${path.extname(file.name)}`;
-    const storageRes = await uploadToStorage({
-      file,
-      fileName: file.name,
-      customFileName: filename,
-    });
-    const fileUrl = storageRes.url;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const filename = `debits-liq-${liquidationId}-${Date.now()}-${i}${path.extname(file.name)}`;
+      const storageRes = await uploadToStorage({
+        file,
+        fileName: file.name,
+        customFileName: filename,
+      });
+      uploadedResults.push({
+        fileName: file.name,
+        fileUrl: storageRes.url,
+      });
+    }
 
-    await prisma.liquidacion.update({
-      where: { id: liquidationId },
-      data: {
-        debitsFileUrl: fileUrl,
-        debitsFileName: file.name,
-      },
+    // Atomic transaction for database persistence
+    const createdAttachments = await prisma.$transaction(async (tx) => {
+      const createdList: any[] = [];
+      for (const res of uploadedResults) {
+        const item = await tx.adjunto.create({
+          data: {
+            liquidationId,
+            fileName: res.fileName,
+            fileUrl: res.fileUrl,
+          },
+        });
+        createdList.push(item);
+      }
+
+      return createdList;
     });
 
     revalidatePath("/dashboard/liquidations");
-    return { success: true, fileUrl, fileName: file.name };
+    revalidatePath(`/dashboard/liquidations/${liquidationId}`);
+    return {
+      success: true,
+      fileUrl: uploadedResults[uploadedResults.length - 1].fileUrl,
+      fileName: uploadedResults[uploadedResults.length - 1].fileName,
+      attachments: createdAttachments,
+    };
   } catch (e: any) {
-    console.error("Error uploading debits file:", e);
-    return { error: e.message || "Error al guardar el comprobante escaneado de débitos." };
+    console.error("Error uploading debits file(s):", e);
+    return { error: e.message || "Error al guardar el comprobante de débitos." };
+  }
+}
+
+export async function deleteDebitAttachment(attachmentId: string, liquidationId: number) {
+  try {
+    const attachment = await prisma.adjunto.findUnique({
+      where: { id: attachmentId },
+    });
+
+    if (attachment?.fileUrl) {
+      await deleteFromStorage(attachment.fileUrl).catch((err) =>
+        console.warn("Failed to delete file from storage:", err)
+      );
+    }
+
+    const remainingAttachments = await prisma.$transaction(async (tx) => {
+      // Borrado lógico: se preserva el registro y link en la BD asignando deletedAt
+      await tx.adjunto.update({
+        where: { id: attachmentId },
+        data: { deletedAt: new Date() },
+      });
+
+      const remaining = await tx.adjunto.findMany({
+        where: { liquidationId, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+      });
+
+      return remaining;
+    });
+
+    revalidatePath("/dashboard/liquidations");
+    revalidatePath(`/dashboard/liquidations/${liquidationId}`);
+    return { success: true, remaining: remainingAttachments };
+  } catch (e: any) {
+    console.error("Error deleting debit attachment:", e);
+    return { success: false, error: e.message || "Error al eliminar el archivo adjunto.", remaining: [] as any[] };
   }
 }
 
 export async function deleteDebitsFile(liquidationId: number) {
   try {
-    const existing = await prisma.liquidacion.findUnique({
-      where: { id: liquidationId },
-      select: { debitsFileUrl: true },
+    const attachments = await prisma.adjunto.findMany({
+      where: { liquidationId, deletedAt: null },
     });
 
-    if (existing?.debitsFileUrl) {
-      await deleteFromStorage(existing.debitsFileUrl).catch((err) =>
-        console.warn("Failed to delete file from storage:", err)
-      );
+    for (const att of attachments) {
+      if (att.fileUrl) {
+        await deleteFromStorage(att.fileUrl).catch((err) =>
+          console.warn("Failed to delete attachment from storage:", err)
+        );
+      }
     }
 
-    await prisma.liquidacion.update({
-      where: { id: liquidationId },
-      data: {
-        debitsFileUrl: null,
-        debitsFileName: null,
-      },
+    await prisma.$transaction(async (tx) => {
+      // Borrado lógico masivo: se preservan los registros y links en la BD asignando deletedAt
+      await tx.adjunto.updateMany({
+        where: { liquidationId, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
     });
 
     revalidatePath("/dashboard/liquidations");
-    return { success: true };
+    revalidatePath(`/dashboard/liquidations/${liquidationId}`);
+    return { success: true, remaining: [] as any[] };
   } catch (e: any) {
-    console.error("Error deleting debits file:", e);
-    return { error: e.message || "Error al borrar el comprobante escaneado." };
+    console.error("Error deleting debits files:", e);
+    return { success: false, error: e.message || "Error al borrar los comprobantes escaneados.", remaining: [] as any[] };
   }
 }
 
@@ -1238,6 +1326,10 @@ export async function fetchLiquidationById(id: number) {
             include: {
               agent: true,
             },
+          },
+          attachments: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: "desc" },
           },
         },
       }),

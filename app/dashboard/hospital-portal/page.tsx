@@ -132,7 +132,10 @@ export default async function HospitalPortalPage() {
             agent: true,
           },
         },
-        attachments: true,
+        attachments: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: "desc" },
+        },
       },
       orderBy: { createdAt: "desc" },
     }),

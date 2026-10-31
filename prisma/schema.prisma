@@ -202,8 +202,6 @@ model Liquidacion {
   rc             Cbte                 @relation(fields: [rcId], references: [id])
   
   mesCarga       String?              // e.g. "oct 25"
-  debitsFileUrl  String?              // Local path to scanned PDF of debits sent by Obra Social
-  debitsFileName String?              // Original filename of debits PDF
   
   reportePendienteUrl         String?
   reportePendienteFileName    String?
@@ -278,6 +276,7 @@ model Adjunto {
   liquidation   Liquidacion @relation(fields: [liquidationId], references: [id], onDelete: Cascade)
   fileName      String
   fileUrl       String
+  deletedAt     DateTime?
   createdAt     DateTime    @default(now())
 }
 

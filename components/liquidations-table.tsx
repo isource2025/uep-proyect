@@ -829,22 +829,39 @@ export function LiquidationsTable({
                                     </DropdownMenuItem>
                                   )}
 
-                                  {/* Opción Ver Débitos PDF */}
-                                  {liq.debitsFileUrl && (
+                                  {/* Opción Ver Comprobantes de Débitos Adjuntos */}
+                                  {liq.attachments && liq.attachments.length > 0 && (
                                     <>
                                       <DropdownMenuSeparator className="my-1 bg-border/60" />
-                                      <DropdownMenuItem asChild>
-                                        <a
-                                          href={liq.debitsFileUrl}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          download
-                                          className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-red-600 dark:text-red-400 hover:bg-red-500/10 focus:bg-red-500/10 w-full"
-                                        >
-                                          <FileDown className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                                          <span>Ver Débitos PDF</span>
-                                        </a>
-                                      </DropdownMenuItem>
+                                      {liq.attachments.length === 1 ? (
+                                        <DropdownMenuItem asChild>
+                                          <a
+                                            href={liq.attachments[0].fileUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            download
+                                            className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-red-600 dark:text-red-400 hover:bg-red-500/10 focus:bg-red-500/10 w-full"
+                                          >
+                                            <FileDown className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                                            <span className="truncate">Ver Débitos ({liq.attachments[0].fileName})</span>
+                                          </a>
+                                        </DropdownMenuItem>
+                                      ) : (
+                                        liq.attachments.map((att: any, idx: number) => (
+                                          <DropdownMenuItem key={att.id || idx} asChild>
+                                            <a
+                                              href={att.fileUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              download
+                                              className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-red-600 dark:text-red-400 hover:bg-red-500/10 focus:bg-red-500/10 w-full"
+                                            >
+                                              <FileDown className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                                              <span className="truncate">Débito {idx + 1}: {att.fileName}</span>
+                                            </a>
+                                          </DropdownMenuItem>
+                                        ))
+                                      )}
                                     </>
                                   )}
                                 </DropdownMenuContent>

@@ -30,6 +30,7 @@ import {
   User,
   MessageSquare,
   Scale,
+  Image as ImageIcon,
 } from "lucide-react";
 import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,7 +48,7 @@ import {
 } from "@/components/ui/dialog";
 import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isUserHospital } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, updateLiquidationNormaLegal, uploadDebitsFile, deleteDebitsFile, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, searchBatchAgentsForLiquidationAction } from "../actions";
+import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, updateLiquidationNormaLegal, uploadDebitsFile, deleteDebitsFile, deleteDebitAttachment, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, searchBatchAgentsForLiquidationAction } from "../actions";
 import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
 import { NormaLegalModal } from "@/components/norma-legal-modal";
 import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
@@ -99,6 +100,8 @@ export default function LiquidationDetailClient({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [goingBack, setGoingBack] = useState(false);
   const [deletedDetailIds, setDeletedDetailIds] = useState<string[]>([]);
+  const [isDraggingDebits, setIsDraggingDebits] = useState(false);
+  const debitsFileInputRef = useRef<HTMLInputElement>(null);
 
   // Descarga de reporte en modo PENDIENTE (siempre disponible en todos los estados)
   const handleDownloadPendingReport = async () => {
@@ -184,6 +187,8 @@ export default function LiquidationDetailClient({
 
   // Store current liquidation state locally to dynamically display updates
   const [liq, setLiq] = useState(liquidation);
+  const [attachments, setAttachments] = useState<any[]>(liquidation.attachments || []);
+  const [isAttachmentsModalOpen, setIsAttachmentsModalOpen] = useState(false);
   const [mesCarga, setMesCarga] = useState(liq.mesCarga || "");
   const [observaciones, setObservaciones] = useState(liq.observaciones || "");
   const [savingObs, setSavingObs] = useState(false);
@@ -987,13 +992,75 @@ export default function LiquidationDetailClient({
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const ALLOWED_DEBIT_EXTENSIONS = [
+    ".pdf",
+    ".xlsx",
+    ".xls",
+    ".csv",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+  ];
 
-    if (file.type !== "application/pdf") {
-      setErrorMsg("Solo se permiten archivos en formato PDF para el detalle de débitos.");
-      return;
+  const getDebitFileInfo = (fileName?: string | null) => {
+    const name = (fileName || "").toLowerCase();
+    if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) {
+      return {
+        type: "excel",
+        label: "Excel",
+        icon: FileSpreadsheet,
+        iconColor: "text-emerald-500",
+        btnBg: "bg-emerald-600 hover:bg-emerald-500",
+        badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+      };
+    }
+    if (name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp")) {
+      return {
+        type: "image",
+        label: "Imagen",
+        icon: ImageIcon,
+        iconColor: "text-cyan-500",
+        btnBg: "bg-cyan-600 hover:bg-cyan-500",
+        badgeClass: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30",
+      };
+    }
+    return {
+      type: "pdf",
+      label: "PDF",
+      icon: FileText,
+      iconColor: "text-red-500",
+      btnBg: "bg-red-600 hover:bg-red-500",
+      badgeClass: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30",
+    };
+  };
+
+  const processFilesUpload = async (incomingFiles: FileList | File[]) => {
+    const files = Array.from(incomingFiles).filter((f) => f && f.size > 0);
+    if (files.length === 0) return;
+
+    // Validate files
+    for (const file of files) {
+      const lowerName = file.name.toLowerCase();
+      const hasValidExt = ALLOWED_DEBIT_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+      const hasValidMime =
+        file.type === "application/pdf" ||
+        file.type.startsWith("image/") ||
+        file.type.includes("spreadsheet") ||
+        file.type.includes("excel") ||
+        file.type.includes("csv");
+
+      if (!hasValidExt && !hasValidMime) {
+        setErrorMsg(
+          `El archivo "${file.name}" no es compatible. Por favor suba archivos PDF, planillas Excel (.xlsx, .xls) o Imágenes (PNG, JPG, WEBP).`
+        );
+        return;
+      }
+
+      if (file.size > 50 * 1024 * 1024) {
+        setErrorMsg(`El archivo "${file.name}" excede el tamaño máximo permitido (50 MB).`);
+        return;
+      }
     }
 
     setUploading(true);
@@ -1002,7 +1069,7 @@ export default function LiquidationDetailClient({
 
     const formData = new FormData();
     formData.append("liquidationId", String(liq.id));
-    formData.append("file", file);
+    files.forEach((f) => formData.append("files", f));
 
     try {
       const res = await uploadDebitsFile(formData);
@@ -1010,22 +1077,63 @@ export default function LiquidationDetailClient({
         setErrorMsg(res.error);
         return;
       }
-      setSuccessMsg("Comprobante escaneado de débitos adjuntado correctamente.");
 
-      setLiq((prev: any) => ({
-        ...prev,
-        debitsFileUrl: res.fileUrl,
-        debitsFileName: res.fileName,
-      }));
+      const count = files.length;
+      setSuccessMsg(
+        count === 1
+          ? "Comprobante adjuntado y guardado correctamente."
+          : `${count} comprobantes adjuntados y guardados correctamente.`
+      );
+
+      if (res.attachments && res.attachments.length > 0) {
+        setAttachments((prev) => {
+          const newAtts = res.attachments || [];
+          const existingIds = new Set(newAtts.map((n: any) => n.id));
+          return [...newAtts, ...prev.filter((p) => !existingIds.has(p.id))];
+        });
+      }
     } catch (e: any) {
-      setErrorMsg("Error al subir el archivo escaneado.");
+      setErrorMsg("Error al subir los archivos a Cloudflare R2.");
+    } finally {
+      setUploading(false);
+      setIsDraggingDebits(false);
+    }
+  };
+
+  const handleFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      await processFilesUpload(files);
+    }
+    e.target.value = "";
+  };
+
+  const handleDeleteAttachment = async (attachmentId: string, fileName?: string) => {
+    const confirmName = fileName ? ` "${fileName}"` : "";
+    if (!confirm(`¿Está seguro de que desea eliminar el comprobante${confirmName}?`)) return;
+
+    setUploading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const res = await deleteDebitAttachment(attachmentId, liq.id);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      setSuccessMsg("Comprobante de débitos eliminado correctamente.");
+
+      setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+    } catch (e: any) {
+      setErrorMsg("Error al eliminar el archivo.");
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDeleteFile = async () => {
-    if (!confirm("¿Está seguro de que desea eliminar el archivo PDF adjunto?")) return;
+  const handleDeleteAllFiles = async () => {
+    if (!confirm("¿Está seguro de que desea eliminar TODOS los comprobantes de débitos adjuntos?")) return;
 
     setUploading(true);
     setErrorMsg(null);
@@ -1037,15 +1145,11 @@ export default function LiquidationDetailClient({
         setErrorMsg(res.error);
         return;
       }
-      setSuccessMsg("Comprobante escaneado de débitos eliminado correctamente.");
+      setSuccessMsg("Todos los comprobantes de débitos fueron eliminados correctamente.");
 
-      setLiq((prev: any) => ({
-        ...prev,
-        debitsFileUrl: null,
-        debitsFileName: null,
-      }));
+      setAttachments([]);
     } catch (e: any) {
-      setErrorMsg("Error al eliminar el archivo.");
+      setErrorMsg("Error al eliminar los archivos.");
     } finally {
       setUploading(false);
     }
@@ -1333,17 +1437,38 @@ export default function LiquidationDetailClient({
             )
           )}
 
-          {liq.debitsFileUrl && (
-            <a
-              href={liq.debitsFileUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold text-xs transition-colors shadow-sm"
-            >
-              <FileDown className="h-4 w-4" />
-              Descargar PDF Débitos
-            </a>
+          {attachments.length > 0 && (
+            attachments.length === 1 ? (() => {
+              const single = attachments[0];
+              const fileInfo = getDebitFileInfo(single.fileName);
+              const Icon = fileInfo.icon;
+              return (
+                <a
+                  href={single.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-3 py-1.5 text-white rounded-lg font-bold text-xs transition-colors shadow-sm cursor-pointer",
+                    fileInfo.btnBg
+                  )}
+                  title={single.fileName || `Descargar comprobante (${fileInfo.label})`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>Descargar Débitos ({fileInfo.label})</span>
+                </a>
+              );
+            })() : (
+              <Button
+                variant="outline"
+                onClick={() => setIsAttachmentsModalOpen(true)}
+                className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
+                title="Ver y descargar los comprobantes de débitos adjuntos"
+              >
+                <FileDown className="h-4 w-4 text-emerald-500" />
+                <span>Comprobantes ({attachments.length})</span>
+              </Button>
+            )
           )}
           <span
             className={cn(
@@ -1543,68 +1668,140 @@ export default function LiquidationDetailClient({
             )}
           </div>
 
-          {/* PDF DEBITS UPLOAD MODULE */}
-          <div className="space-y-1 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 self-center">
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold flex items-center gap-1">
-              <UploadCloud className="h-3.5 w-3.5" />
-              Detalle Débitos Escaneados (Obra Social)
-            </span>
+          {/* DEBITS ATTACHMENTS & DRAG-AND-DROP MODULE */}
+          <div className="space-y-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 flex flex-col justify-between">
+            <div className="flex items-center justify-between gap-1 flex-wrap">
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold flex items-center gap-1">
+                <UploadCloud className="h-3.5 w-3.5" />
+                Comprobantes de Débitos {attachments.length > 0 && `(${attachments.length})`}
+              </span>
+              <span className="text-[9px] text-muted-foreground font-mono">
+                PDF • Excel • Imagen
+              </span>
+            </div>
 
-            {liq.debitsFileUrl ? (
-              <div className="flex items-center justify-between gap-2 mt-1.5">
-                <a
-                  href={liq.debitsFileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-semibold text-emerald-600 hover:underline flex items-center gap-1 truncate"
-                >
-                  <FileText className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{liq.debitsFileName || "Ver PDF Escaneado"}</span>
-                </a>
-                <div className="flex items-center gap-2 shrink-0 text-3xs">
-                  <label className="text-muted-foreground hover:text-foreground cursor-pointer underline">
-                    Cambiar
-                    <input
-                      type="file"
-                      accept=".pdf"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                  </label>
-                  <span className="text-muted-foreground">|</span>
-                  <button
-                    type="button"
-                    onClick={handleDeleteFile}
-                    className="text-red-500 hover:text-red-400 cursor-pointer underline"
-                  >
-                    Eliminar
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-1.5">
-                <label className="flex items-center justify-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-card border border-emerald-500/30 hover:bg-emerald-500/10 rounded-md py-1.5 px-3 cursor-pointer transition-colors">
-                  {uploading ? (
-                    <>
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      Subiendo archivo...
-                    </>
-                  ) : (
-                    <>
-                      <UploadCloud className="h-3.5 w-3.5" />
-                      Adjuntar Escaneado PDF
-                    </>
-                  )}
-                  <input
-                    type="file"
-                    accept=".pdf"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    disabled={uploading}
-                  />
-                </label>
+            {/* Hidden native input for browsing multiple files */}
+            <input
+              ref={debitsFileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.webp,image/*,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              onChange={handleFilesChange}
+              className="hidden"
+              disabled={uploading}
+            />
+
+            {/* List of uploaded files if any */}
+            {attachments.length > 0 && (
+              <div className="max-h-[130px] overflow-y-auto space-y-1.5 pr-0.5 custom-scrollbar mt-1">
+                {attachments.map((att: any, idx: number) => {
+                  const fileInfo = getDebitFileInfo(att.fileName);
+                  const Icon = fileInfo.icon;
+                  return (
+                    <div
+                      key={att.id || idx}
+                      className="flex items-center justify-between gap-1.5 p-1.5 rounded-md bg-background/80 border border-border/60 shadow-xs hover:border-emerald-500/30 transition-colors"
+                    >
+                      <a
+                        href={att.fileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 min-w-0 flex-1 hover:underline text-xs font-semibold text-foreground hover:text-emerald-600 dark:hover:text-emerald-400"
+                        title={att.fileName || "Ver archivo adjunto"}
+                      >
+                        <Icon className={cn("h-3.5 w-3.5 shrink-0", fileInfo.iconColor)} />
+                        <span className="truncate">{att.fileName || "Comprobante"}</span>
+                      </a>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span
+                          className={cn(
+                            "text-[9px] uppercase font-bold px-1 py-0.2 rounded border",
+                            fileInfo.badgeClass
+                          )}
+                        >
+                          {fileInfo.label}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAttachment(att.id, att.fileName)}
+                          disabled={uploading}
+                          title="Eliminar este comprobante"
+                          className="text-muted-foreground hover:text-red-500 cursor-pointer p-0.5 rounded transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
+
+            {/* Drag-and-drop dropzone (always visible for adding files) */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!uploading) setIsDraggingDebits(true);
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!uploading) setIsDraggingDebits(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingDebits(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingDebits(false);
+                if (uploading) return;
+                const droppedFiles = Array.from(e.dataTransfer.files || []);
+                if (droppedFiles.length > 0) processFilesUpload(droppedFiles);
+              }}
+              onClick={() => {
+                if (!uploading) debitsFileInputRef.current?.click();
+              }}
+              className={cn(
+                "relative flex flex-col items-center justify-center p-2 rounded-lg border-2 border-dashed transition-all cursor-pointer text-center select-none mt-1",
+                isDraggingDebits
+                  ? "border-emerald-500 bg-emerald-500/15 ring-2 ring-emerald-500/30 scale-[1.01]"
+                  : "border-emerald-500/30 hover:border-emerald-500/60 bg-emerald-500/5 hover:bg-emerald-500/10",
+                attachments.length > 0 ? "py-2" : "py-3"
+              )}
+            >
+              {uploading ? (
+                <div className="flex items-center justify-center gap-1.5 py-1">
+                  <RefreshCw className="h-4 w-4 animate-spin text-emerald-500" />
+                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    Subiendo archivo(s)...
+                  </span>
+                </div>
+              ) : isDraggingDebits ? (
+                <div className="flex items-center justify-center gap-1.5 py-1 animate-pulse">
+                  <UploadCloud className="h-5 w-5 text-emerald-500" />
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    ¡Soltá los archivos aquí!
+                  </span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-0.5">
+                  <div className="flex items-center gap-1 text-xs font-bold text-foreground">
+                    <UploadCloud className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>
+                      {attachments.length > 0 ? "Agregar más comprobantes" : "Arrastrá archivos aquí"} o{" "}
+                      <span className="text-emerald-600 dark:text-emerald-400 underline">examinar</span>
+                    </span>
+                  </div>
+                  <p className="text-[9px] text-muted-foreground font-medium">
+                    Múltiples archivos permitidos (PDF, Excel, JPG, PNG)
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* OBSERVACIONES DEL LIQUIDADOR (Estrictamente uso interno para operadores y administradores - editable en todos los estados) */}
@@ -3182,6 +3379,71 @@ export default function LiquidationDetailClient({
         liquidationId={liq.id}
         liquidationCode={`LIQ-${String(liq.id).padStart(4, "0")}`}
       />
+
+      {/* MODAL LISTA DE COMPROBANTES DE DÉBITOS */}
+      <Dialog open={isAttachmentsModalOpen} onOpenChange={setIsAttachmentsModalOpen}>
+        <DialogContent className="max-w-md w-full bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-foreground flex items-center gap-2">
+              <FileDown className="h-5 w-5 text-emerald-500" />
+              Comprobantes de Débitos ({attachments.length})
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Archivos respaldatorios adjuntados para la liquidación LIQ-{String(liq.id).padStart(4, "0")}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[300px] overflow-y-auto space-y-2 py-2 pr-1 custom-scrollbar">
+            {attachments.map((att: any, idx: number) => {
+              const fileInfo = getDebitFileInfo(att.fileName);
+              const Icon = fileInfo.icon;
+              return (
+                <div
+                  key={att.id || idx}
+                  className="flex items-center justify-between gap-2 p-2.5 rounded-lg border border-border/80 bg-muted/40 hover:bg-muted/70 transition-colors"
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <Icon className={cn("h-4 w-4 shrink-0", fileInfo.iconColor)} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-foreground truncate" title={att.fileName}>
+                        {att.fileName || `Comprobante #${idx + 1}`}
+                      </p>
+                      <span className={cn("text-[9px] uppercase font-bold px-1 rounded border", fileInfo.badgeClass)}>
+                        {fileInfo.label}
+                      </span>
+                    </div>
+                  </div>
+                  <a
+                    href={att.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-md bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shrink-0"
+                  >
+                    <FileDown className="h-3.5 w-3.5" />
+                    Descargar
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+
+          <DialogFooter className="border-t border-border/60 pt-3 flex justify-between items-center sm:justify-between">
+            <span className="text-3xs text-muted-foreground font-mono">
+              Almacenamiento: Cloudflare R2
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAttachmentsModalOpen(false)}
+              className="text-xs"
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

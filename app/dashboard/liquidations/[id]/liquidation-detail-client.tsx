@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/dialog";
 import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isUserHospital } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, updateLiquidationNormaLegal, uploadDebitsFile, deleteDebitsFile, deleteDebitAttachment, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, searchBatchAgentsForLiquidationAction } from "../actions";
+import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, updateLiquidationNormaLegal, uploadDebitsFile, deleteDebitsFile, deleteDebitAttachment, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, searchBatchAgentsForLiquidationAction, syncLiquidationComprasFromErp } from "../actions";
 import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
 import { NormaLegalModal } from "@/components/norma-legal-modal";
 import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
@@ -92,6 +92,7 @@ export default function LiquidationDetailClient({
 
   // Loading and feedback states
   const [saving, setSaving] = useState(false);
+  const [syncingFromErp, setSyncingFromErp] = useState(false);
   const [savingAgents, setSavingAgents] = useState(false);
   const [notifying, setNotifying] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -206,51 +207,55 @@ export default function LiquidationDetailClient({
   const isClosed = liq.status === "CERRADA" || liq.status === "CERRADO";
   const isLockedForLiquidationEdits = isHospitalUser || (!isAdmin && wasNotifiedBefore) || isClosed || isDistributed;
 
+  const mapDetailToEditable = (d: any) => {
+    const totalFact = Math.max(0, Number(d.totalFacturado || 0));
+    const cred = Math.max(0, Number(d.creditos || 0));
+    const deb = Math.max(0, Number(d.debitos || 0));
+    const ajOs = Number(d.ajustesOs || 0) || 0;
+    const pend = Math.max(0, Number(d.pendientesCobro || 0));
+    const pagParc = Math.max(0, Number(d.pagosParcialesAnteriores || 0));
+    const bruto = Math.max(0, totalFact + cred - deb + ajOs - pend - pagParc);
+    const gaVal = Math.max(0, Number(d.ga || 0));
+    let initPct: number | string = 6;
+    if (bruto > 0) {
+      initPct = Math.round(((gaVal / bruto) * 100) * 10) / 10;
+    } else if (gaVal === 0) {
+      initPct = 0;
+    }
+    return {
+      id: d.id,
+      totalFacturado: totalFact,
+      creditos: cred,
+      debitos: deb,
+      ajustesOs: ajOs,
+      pendientesCobro: pend,
+      pagosParcialesAnteriores: pagParc,
+      ga: gaVal,
+      gaPercent: initPct,
+      ajusteRecupero: Math.max(0, Number(d.ajusteRecupero || 0)),
+    };
+  };
+
+  const mapDetailToSnapshot = (d: any) => ({
+    id: d.id,
+    totalFacturado: Math.max(0, Number(d.totalFacturado || 0)),
+    creditos: Math.max(0, Number(d.creditos || 0)),
+    debitos: Math.max(0, Number(d.debitos || 0)),
+    ajustesOs: Number(d.ajustesOs || 0) || 0,
+    pendientesCobro: Math.max(0, Number(d.pendientesCobro || 0)),
+    pagosParcialesAnteriores: Math.max(0, Number(d.pagosParcialesAnteriores || 0)),
+    ga: Math.max(0, Number(d.ga || 0)),
+    ajusteRecupero: Math.max(0, Number(d.ajusteRecupero || 0)),
+  });
+
   // Initialise editable detail rows ensuring no negative values (minimum is 0)
   const [editableDetails, setEditableDetails] = useState<any[]>(
-    liq.details.map((d: any) => {
-      const totalFact = Math.max(0, Number(d.totalFacturado));
-      const cred = Math.max(0, Number(d.creditos));
-      const deb = Math.max(0, Number(d.debitos));
-      const ajOs = Number(d.ajustesOs) || 0;
-      const pend = Math.max(0, Number(d.pendientesCobro));
-      const pagParc = Math.max(0, Number(d.pagosParcialesAnteriores || 0));
-      const bruto = Math.max(0, totalFact + cred - deb + ajOs - pend - pagParc);
-      const gaVal = Math.max(0, Number(d.ga));
-      let initPct: number | string = 6;
-      if (bruto > 0) {
-        initPct = Math.round(((gaVal / bruto) * 100) * 10) / 10;
-      } else if (gaVal === 0) {
-        initPct = 0;
-      }
-      return {
-        id: d.id,
-        totalFacturado: totalFact,
-        creditos: Math.max(0, Number(d.creditos)),
-        debitos: Math.max(0, Number(d.debitos)),
-        ajustesOs: Number(d.ajustesOs) || 0,
-        pendientesCobro: Math.max(0, Number(d.pendientesCobro)),
-        pagosParcialesAnteriores: Math.max(0, Number(d.pagosParcialesAnteriores || 0)),
-        ga: gaVal,
-        gaPercent: initPct,
-        ajusteRecupero: Math.max(0, Number(d.ajusteRecupero)),
-      };
-    })
+    (liq.details || []).map(mapDetailToEditable)
   );
 
   // Baseline snapshots for tracking if liquidation has been modified
   const initialDetailsRef = useRef(
-    liq.details.map((d: any) => ({
-      id: d.id,
-      totalFacturado: Math.max(0, Number(d.totalFacturado)),
-      creditos: Math.max(0, Number(d.creditos)),
-      debitos: Math.max(0, Number(d.debitos)),
-      ajustesOs: Number(d.ajustesOs) || 0,
-      pendientesCobro: Math.max(0, Number(d.pendientesCobro)),
-      pagosParcialesAnteriores: Math.max(0, Number(d.pagosParcialesAnteriores || 0)),
-      ga: Math.max(0, Number(d.ga)),
-      ajusteRecupero: Math.max(0, Number(d.ajusteRecupero)),
-    }))
+    (liq.details || []).map(mapDetailToSnapshot)
   );
   const initialMesCargaRef = useRef(liq.mesCarga || "");
   const initialObservacionesRef = useRef(liq.observaciones || "");
@@ -744,6 +749,63 @@ export default function LiquidationDetailClient({
     );
     setErrorMsg(null);
     setSuccessMsg(null);
+  };
+
+  const handleSyncFromErp = async () => {
+    if ((liq.details || []).length > 0 && hasUnsavedChanges) {
+      if (
+        !confirm(
+          "Tiene cambios locales sin guardar en la planilla. Al sincronizar desde el ERP se recargarán los renglones guardados desde la base de datos. ¿Desea continuar?"
+        )
+      ) {
+        return;
+      }
+    }
+
+    setSyncingFromErp(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const res = await syncLiquidationComprasFromErp(liq.id);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+
+      if (res.liquidation) {
+        setLiq(res.liquidation);
+        const syncedDetails = res.liquidation.details || [];
+        setEditableDetails(syncedDetails.map(mapDetailToEditable));
+        initialDetailsRef.current = syncedDetails.map(mapDetailToSnapshot);
+        const nextObs = res.liquidation.observaciones || "";
+        setObservaciones(nextObs);
+        initialObservacionesRef.current = nextObs;
+        setDeletedDetailIds([]);
+      }
+
+      if ((res.addedCount || 0) > 0) {
+        const extraMsg =
+          (res.unmatchedCount || 0) > 0
+            ? ` (${res.unmatchedCount} renglón(es) de CbtesItems sin coincidencia en Compras).`
+            : "";
+        setSuccessMsg(
+          `Sincronización completada: se incorporaron ${res.addedCount} ${
+            res.addedCount === 1 ? "factura de compra" : "facturas de compra"
+          } desde el ERP.${extraMsg}`
+        );
+      } else {
+        setSuccessMsg(
+          `Todas las facturas de compra del ERP (${res.totalResolvedCount || 0}) ya se encuentran sincronizadas en esta liquidación.`
+        );
+      }
+
+      router.refresh();
+    } catch (e: any) {
+      setErrorMsg("Error al sincronizar comprobantes desde el ERP.");
+    } finally {
+      setSyncingFromErp(false);
+    }
   };
 
   const handleSaveDetails = async () => {
@@ -2002,6 +2064,21 @@ export default function LiquidationDetailClient({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {!isHospitalUser && !isLockedForLiquidationEdits && (liq.details || []).length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSyncFromErp}
+                disabled={syncingFromErp || saving || goingBack}
+                className="h-8 text-3xs px-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-bold gap-1.5 cursor-pointer shrink-0"
+                title="Buscar en el ERP (IdTransaccionFacturaVta y CbtesItems) facturas de hospitales faltantes"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5 shrink-0", syncingFromErp && "animate-spin")} />
+                <span>{syncingFromErp ? "Sincronizando..." : "Sincronizar ERP"}</span>
+              </Button>
+            )}
+
             {!isHospitalUser && (liq.details || []).length > 0 && (
               <div className="flex items-center gap-1.5 bg-muted/50 border border-border rounded-lg p-1 px-2 text-3xs">
                 <Percent className="h-3.5 w-3.5 text-blue-500" />
@@ -2071,28 +2148,44 @@ export default function LiquidationDetailClient({
                   <h4 className="font-bold text-foreground text-sm sm:text-base tracking-tight">
                     Sin comprobantes de compras vinculados en el ERP
                   </h4>
-                  <p className="text-muted-foreground text-xs leading-relaxed max-w-md mx-auto">
-                    Las Facturas de Venta asociadas a este cobro no poseen compras de hospitales vinculadas en el campo{" "}
+                  <p className="text-muted-foreground text-xs leading-relaxed max-w-md mx-auto break-words">
+                    Las Facturas de Venta asociadas a este cobro aún no tienen compras vinculadas cargadas en la planilla (campo{" "}
                     <code className="text-3xs font-mono bg-muted/80 px-1.5 py-0.5 rounded border border-border/60">
                       IdTransaccionFacturaVta
+                    </code>{" "}
+                    o detalle en{" "}
+                    <code className="text-3xs font-mono bg-muted/80 px-1.5 py-0.5 rounded border border-border/60">
+                      CbtesItems
                     </code>
-                    .
+                    ).
                   </p>
-                  <p className="text-muted-foreground/80 text-3xs leading-relaxed max-w-sm mx-auto">
-                    Los renglones se encuentran vacíos para evitar asignaciones erróneas. Puede agregar hospitales y facturas manualmente a continuación.
+                  <p className="text-muted-foreground/80 text-3xs leading-relaxed max-w-sm mx-auto break-words">
+                    Puede sincronizar automáticamente las facturas de hospitales desde el ERP o agregarlas manualmente a continuación.
                   </p>
                 </div>
 
                 {!isLockedForLiquidationEdits && (
-                  <div className="pt-2 w-full sm:w-auto">
+                  <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5 w-full">
+                    {!isHospitalUser && (
+                      <Button
+                        type="button"
+                        onClick={handleSyncFromErp}
+                        disabled={syncingFromErp || saving || goingBack}
+                        className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2 text-xs sm:text-sm h-9 px-4 cursor-pointer shadow-md transition-all active:scale-95"
+                      >
+                        <RefreshCw className={cn("h-4 w-4 shrink-0", syncingFromErp && "animate-spin")} />
+                        <span>{syncingFromErp ? "Sincronizando ERP..." : "Sincronizar Compras desde ERP"}</span>
+                      </Button>
+                    )}
                     <Button
                       type="button"
+                      variant="outline"
                       onClick={handleAddManualDetail}
-                      disabled={saving}
-                      className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2 text-xs sm:text-sm h-9 px-4 cursor-pointer shadow-md transition-all active:scale-95"
+                      disabled={saving || syncingFromErp}
+                      className="w-full sm:w-auto border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-2 text-xs sm:text-sm h-9 px-4 cursor-pointer transition-all active:scale-95"
                     >
                       <Plus className="h-4 w-4 shrink-0" />
-                      Agregar Factura Manualmente
+                      <span>Agregar Factura Manualmente</span>
                     </Button>
                   </div>
                 )}

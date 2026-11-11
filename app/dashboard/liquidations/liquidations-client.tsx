@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { fetchLiquidationData, calculateLiquidation, notifyHospital } from "./actions";
+import { fetchLiquidationData, calculateLiquidation, notifyHospital, syncLiquidationComprasFromErp } from "./actions";
 import { cn } from "@/lib/utils";
 import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +45,7 @@ export default function LiquidationsClientPage({ initialData, isAdmin = false }:
   const [calculatingRcId, setCalculatingRcId] = useState<number | null>(null);
   const [enteringDetailsId, setEnteringDetailsId] = useState<number | null>(null);
   const [notifyingIds, setNotifyingIds] = useState<number[]>([]);
+  const [syncingIds, setSyncingIds] = useState<number[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [warningMsg, setWarningMsg] = useState("");
@@ -241,6 +242,48 @@ export default function LiquidationsClientPage({ initialData, isAdmin = false }:
       setErrorMsg("Error de red al calcular la liquidación.");
     } finally {
       setCalculatingRcId(null);
+    }
+  };
+
+  const handleSyncFromErp = async (id: number) => {
+    setSyncingIds((prev) => [...prev, id]);
+    setErrorMsg("");
+    setSuccessMsg("");
+    setWarningMsg("");
+    try {
+      const res = await syncLiquidationComprasFromErp(id);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+
+      if ((res.addedCount || 0) > 0) {
+        setSuccessMsg(
+          `Liquidación LIQ-${String(id).padStart(4, "0")} sincronizada: se incorporaron ${res.addedCount} ${
+            res.addedCount === 1 ? "factura de compra" : "facturas de compra"
+          } desde el ERP.`
+        );
+      } else {
+        setSuccessMsg(
+          `Liquidación LIQ-${String(id).padStart(4, "0")}: todas las facturas del ERP (${res.totalResolvedCount || 0}) ya estaban cargadas.`
+        );
+      }
+
+      if ((res.unmatchedCount || 0) > 0) {
+        setWarningMsg(
+          `Nota: ${res.unmatchedCount} renglón(es) de CbtesItems no pudieron emparejarse automáticamente con Compras.`
+        );
+      }
+
+      setHighlightedLiquidationId(id);
+      await loadData();
+      setTimeout(() => {
+        setHighlightedLiquidationId((prev) => (prev === id ? null : prev));
+      }, 4000);
+    } catch (e: any) {
+      setErrorMsg("Error de red al sincronizar comprobantes desde el ERP.");
+    } finally {
+      setSyncingIds((prev) => prev.filter((x) => x !== id));
     }
   };
 
@@ -502,6 +545,8 @@ export default function LiquidationsClientPage({ initialData, isAdmin = false }:
         highlightedId={highlightedLiquidationId}
         onNotifyHospital={handleNotifyHospital}
         notifyingIds={notifyingIds}
+        onSyncFromErp={handleSyncFromErp}
+        syncingIds={syncingIds}
         isLoading={isLoading}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}

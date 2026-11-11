@@ -58,6 +58,8 @@ export interface LiquidationsTableProps {
   onAddAttachment?: (formData: FormData) => Promise<void>;
   onNotifyHospital?: (id: number) => Promise<void>;
   notifyingIds?: number[];
+  onSyncFromErp?: (id: number) => Promise<void>;
+  syncingIds?: number[];
   isLoading?: boolean;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
@@ -86,6 +88,8 @@ export function LiquidationsTable({
   onAddAttachment,
   onNotifyHospital,
   notifyingIds = [],
+  onSyncFromErp,
+  syncingIds = [],
   isLoading = false,
   searchQuery,
   onSearchChange,
@@ -747,7 +751,7 @@ export function LiquidationsTable({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    disabled={isEnteringAny || notifyingIds.includes(liq.id)}
+                                    disabled={isEnteringAny || notifyingIds.includes(liq.id) || syncingIds.includes(liq.id)}
                                     className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted border border-border/60 rounded-md cursor-pointer transition-colors"
                                     title="Opciones de liquidación"
                                   >
@@ -755,6 +759,8 @@ export function LiquidationsTable({
                                       <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
                                     ) : notifyingIds.includes(liq.id) ? (
                                       <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-500" />
+                                    ) : syncingIds.includes(liq.id) ? (
+                                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
                                     ) : (
                                       <MoreVertical className="h-4 w-4" />
                                     )}
@@ -774,6 +780,18 @@ export function LiquidationsTable({
                                     <Eye className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                                     <span>{canEdit ? "Ver / Editar Liquidación" : "Ver Liquidación"}</span>
                                   </DropdownMenuItem>
+
+                                  {/* Opción Sincronizar Compras desde ERP */}
+                                  {!isHospitalUser && canEdit && onSyncFromErp && (
+                                    <DropdownMenuItem
+                                      onClick={() => onSyncFromErp(liq.id)}
+                                      disabled={syncingIds.includes(liq.id)}
+                                      className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 focus:bg-emerald-500/10"
+                                    >
+                                      <RefreshCw className={cn("h-3.5 w-3.5 text-emerald-500 shrink-0", syncingIds.includes(liq.id) && "animate-spin")} />
+                                      <span>Sincronizar Compras ERP</span>
+                                    </DropdownMenuItem>
+                                  )}
 
                                   {/* Opción Notificar Hospital (si PENDIENTE) */}
                                   {!isHospitalUser && liq.status === "PENDIENTE" && onNotifyHospital && (

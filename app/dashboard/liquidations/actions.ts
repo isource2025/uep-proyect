@@ -10,8 +10,13 @@ import { headers } from "next/headers";
 import { getActivePeriodInfo } from "@/lib/periods";
 import { cleanCuit } from "@/lib/hospital-mapping";
 import { serializeData } from "@/lib/utils";
-import { isUserAdmin } from "@/lib/constants"
+import { isUserAdmin, isUserHospital } from "@/lib/constants";
 import { generateLiquidationExcelBuffer } from "@/lib/export-liquidation-excel";
+import {
+  resolveHospitalPurchasesForFcs,
+  buildLiquidacionDetailInputFromCompra,
+  formatCompraVoucherNumber,
+} from "@/lib/erp-compras-resolver";
 
 function toNum(val: any): number {
   if (val === null || val === undefined) return 0;
@@ -134,9 +139,7 @@ function sanitizarLiquidacionDetalle(d: any) {
   // Format FC Hospital string using point of sale (grupoCbte) if compra relation is loaded
   let fcNumStr = d.fcHospital;
   if (d.compra) {
-    const ptoVta = d.compra.grupoCbte ? String(d.compra.grupoCbte).padStart(4, "0") : "0000";
-    const nroCbte = d.compra.numero ? String(d.compra.numero).padStart(8, "0") : "";
-    fcNumStr = d.compra.numero ? `FC-${ptoVta}-${nroCbte}` : `FC-${d.compra.id}`;
+    fcNumStr = formatCompraVoucherNumber(d.compra);
   }
 
   return {
@@ -550,10 +553,6 @@ export async function fetchLiquidationData(
   });
 }
 
-function calculateDefaultGA(brutoAPagar: number): number {
-  return Number((Math.max(0, brutoAPagar) * 0.06).toFixed(2));
-}
-
 // 2. Generate a new Liquidation header and hospital detail rows from an RC
 export async function calculateLiquidation(rcId: number) {
   try {
@@ -565,24 +564,20 @@ export async function calculateLiquidation(rcId: number) {
 
     const activePeriod = await getActivePeriodInfo();
 
-    // Find applied sales invoices (FC)
+    // Find applied sales invoices (FC / ND)
     const applications = await prisma.cbteAplica.findMany({
       where: { rcId },
       include: { fc: true },
     });
 
-    const fcIds = applications.map((a) => a.fcId);
-
-    // Find hospital purchase invoices (Compras) linked to these FC sales invoices
-    const hospitalPurchases = await prisma.compra.findMany({
-      where: {
-        fcVentaId: { in: fcIds },
-      },
-      include: {
-        hospital: true,
-        cliente: true,
-      },
-    });
+    // Resolve linked hospital purchases via IdTransaccionFacturaVta + fallback/complement via CbtesItems
+    const resolved = await resolveHospitalPurchasesForFcs(
+      prisma,
+      applications.map((a) => ({
+        fcId: a.fcId,
+        clienteId: a.fc?.clienteId ?? rc.clienteId,
+      }))
+    );
 
     const monthStr = `${activePeriod.mes.toString().padStart(2, "0")}/${activePeriod.anio}`;
 
@@ -590,93 +585,215 @@ export async function calculateLiquidation(rcId: number) {
       .map((a) => (a.fc ? `FC-${String(a.fc.puntoVenta || "0").padStart(4, "0")}-${String(a.fc.numero || a.fc.id).padStart(8, "0")}` : `FC-${a.fcId}`))
       .join(", ");
 
-    const noComprasWarning = hospitalPurchases.length === 0
-      ? `Sin comprobantes vinculados en el ERP: Las Facturas de Venta aplicadas (${appliedFcNumbers || "N/A"}) no poseen compras de hospitales asociadas (IdTransaccionFacturaVta vacío). Renglones generados vacíos.`
+    const noComprasWarning = resolved.purchases.length === 0
+      ? `Sin comprobantes vinculados en el ERP: Las Facturas de Venta aplicadas (${appliedFcNumbers || "N/A"}) no poseen compras de hospitales asociadas (ni en IdTransaccionFacturaVta ni en CbtesItems). Renglones generados vacíos.`
       : "";
 
-    // Create Liquidation Header record (createdByName is null until the liquidador loads and saves values)
-    const liquidation = await prisma.liquidacion.create({
-      data: {
-        periodAnio: activePeriod.anio,
-        periodMes: activePeriod.mes,
-        rcId,
-        mesCarga: monthStr,
-        createdByName: null,
-        observaciones: noComprasWarning,
-        status: "PENDIENTE",
-      },
-    });
-
-    // Create LiquidationDetail rows for each Hospital if linked Compras exist
-    if (hospitalPurchases.length > 0) {
-      const extractLocalidad = (name: string | null | undefined): string => {
-        if (!name) return "CAPITAL";
-        const parts = name.split("-");
-        if (parts.length > 1) {
-          return parts[parts.length - 1].trim().toUpperCase();
-        }
-        return "CAPITAL";
-      };
-
-      const detailPromises = hospitalPurchases.map((comp) => {
-        const total = toNum(comp.importe);
-        const ptoVta = comp.grupoCbte ? String(comp.grupoCbte).padStart(4, "0") : "0000";
-        const nroCbte = comp.numero ? String(comp.numero).padStart(8, "0") : "";
-        const fcNumStr = comp.numero ? `FC-${ptoVta}-${nroCbte}` : `FC-${comp.id}`;
-
-        // bruto = total + creditos - debitos + ajustesOs - pendientesCobro - pagosParcialesAnteriores
-        // since creditos, debitos, ajustesOs, pendientesCobro, pagosParcialesAnteriores are 0 initially:
-        const defaultBruto = total;
-        // El porcentaje de GA se toma del bruto a pagar
-        const defaultGa = calculateDefaultGA(defaultBruto);
-        // neto = bruto - ga - adelantos (ajusteRecupero)
-        // since adelantos son 0 inicialmente:
-        const defaultNeto = Math.max(0, defaultBruto - defaultGa);
-
-        const compPeriod = comp.fecha
-          ? `${(comp.fecha.getMonth() + 1).toString().padStart(2, "0")}/${comp.fecha.getFullYear()}`
-          : monthStr;
-
-        const hospitalCuit = cleanCuit(comp.hospital?.cuit);
-
-        return prisma.liquidacionDetalle.create({
+    const liquidation = await prisma.$transaction(
+      async (tx) => {
+        // Create Liquidation Header record (createdByName is null until the liquidador loads and saves values)
+        const createdLiq = await tx.liquidacion.create({
           data: {
-            liquidationId: liquidation.id,
-            compraId: comp.id,
-            hospitalId: comp.hospitalId,
-            clienteId: comp.clienteId || rc.clienteId,
-            periodo: compPeriod,
-            cuit: hospitalCuit || (rc.cliente?.cuit ? cleanCuit(rc.cliente.cuit) : ""),
-            prestadorNombre: comp.hospital?.nombre || "Hospital Prestador",
-            localidad: extractLocalidad(comp.hospital?.nombre),
-            fcHospital: fcNumStr,
-            totalFacturado: total,
-            creditos: 0,
-            debitos: 0,
-            ajustesOs: 0,
-            pendientesCobro: 0,
-            pagosParcialesAnteriores: 0,
-            brutoAPagar: defaultBruto,
-            ga: defaultGa,
-            ajusteRecupero: 0,
-            netoAPagar: defaultNeto,
+            periodAnio: activePeriod.anio,
+            periodMes: activePeriod.mes,
+            rcId,
+            mesCarga: monthStr,
+            createdByName: null,
+            observaciones: noComprasWarning,
+            status: "PENDIENTE",
           },
         });
-      });
-      await Promise.all(detailPromises);
-    }
+
+        for (const comp of resolved.purchases) {
+          const detailData = buildLiquidacionDetailInputFromCompra(comp, {
+            liquidationId: createdLiq.id,
+            defaultMonthStr: monthStr,
+            fallbackClienteId: rc.clienteId,
+            fallbackClienteCuit: rc.cliente?.cuit,
+          });
+          await tx.liquidacionDetalle.create({ data: detailData });
+        }
+
+        return createdLiq;
+      },
+      { maxWait: 10000, timeout: 25000 }
+    );
 
     revalidatePath("/dashboard/liquidations");
+
+    let warning: string | undefined;
+    if (resolved.purchases.length === 0) {
+      warning = `La Factura de Venta aplicada (${appliedFcNumbers || "N/A"}) no posee compras de hospitales vinculadas en el ERP (ni en IdTransaccionFacturaVta ni en CbtesItems). La liquidación se generó con los renglones vacíos.`;
+    } else if (resolved.unmatchedRefs.length > 0) {
+      warning = `Se vincularon ${resolved.purchases.length} facturas de compra, pero ${resolved.unmatchedRefs.length} renglón(es) de CbtesItems no pudieron emparejarse automáticamente con Compras.`;
+    }
+
     return {
       success: true,
       liquidationId: liquidation.id,
-      warning: hospitalPurchases.length === 0
-        ? `La Factura de Venta aplicada (${appliedFcNumbers || "N/A"}) no posee compras de hospitales vinculadas en el ERP (campo IdTransaccionFacturaVta vacío). La liquidación se generó con los renglones vacíos.`
-        : undefined,
+      warning,
     };
   } catch (e: any) {
     console.error("Error generating liquidation:", e);
     return { error: e.message || "Error al calcular liquidación." };
+  }
+}
+
+function buildVoucherMatchKey(cuit?: unknown, fcText?: string | null): string {
+  const cleanedCuit = cleanCuit(cuit);
+  const nums = (String(fcText || "").match(/\d+/g) || []).map((n) => String(parseInt(n, 10)));
+  if (!cleanedCuit || nums.length < 2) return "";
+  return `${cleanedCuit}|${nums[nums.length - 2]}|${nums[nums.length - 1]}`;
+}
+
+// 2b. Sync missing hospital purchase invoices (Compras) from ERP / CbtesItems into an existing Liquidation
+export async function syncLiquidationComprasFromErp(liquidationId: number) {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    const userRole = (session?.user as any)?.role;
+    const userHospitalId = (session?.user as any)?.hospitalId;
+
+    if (isUserHospital(userRole, userHospitalId)) {
+      return {
+        error: "Acceso denegado. Los establecimientos de salud no pueden sincronizar comprobantes del ERP.",
+      };
+    }
+
+    const isAdmin = isUserAdmin(userRole);
+
+    const currentLiq = await prisma.liquidacion.findUnique({
+      where: { id: liquidationId },
+      include: {
+        rc: {
+          include: {
+            cliente: true,
+            appliedAsRc: {
+              include: {
+                fc: true,
+              },
+            },
+          },
+        },
+        details: {
+          include: {
+            hospital: true,
+            compra: true,
+          },
+        },
+      },
+    });
+
+    if (!currentLiq) {
+      return { error: "Liquidación no encontrada." };
+    }
+
+    const isDistributed = currentLiq.status === "DISTRIBUIDA" || currentLiq.status === "DISTRIBUIDO";
+    const isClosed = currentLiq.status === "CERRADA" || currentLiq.status === "CERRADO";
+    if (isDistributed || isClosed) {
+      return {
+        error: `No se puede sincronizar una liquidación que ya se encuentra en estado ${currentLiq.status}.`,
+      };
+    }
+
+    if (currentLiq.status !== "PENDIENTE" && !isAdmin) {
+      return {
+        error: "Acceso denegado. Esta liquidación ya fue notificada; solo los Administradores Generales pueden sincronizar renglones posteriormente.",
+      };
+    }
+
+    const applications = currentLiq.rc?.appliedAsRc || [];
+    if (applications.length === 0) {
+      return {
+        error: "El recibo de cobro asociado no posee Facturas de Venta aplicadas en Cbtes_Aplica.",
+      };
+    }
+
+    const resolved = await resolveHospitalPurchasesForFcs(
+      prisma,
+      applications.map((a) => ({
+        fcId: a.fcId,
+        clienteId: a.fc?.clienteId ?? currentLiq.rc?.clienteId,
+      }))
+    );
+
+    if (resolved.purchases.length === 0) {
+      return {
+        error: "No se encontraron facturas de compra vinculadas en el ERP (ni por IdTransaccionFacturaVta ni en CbtesItems) para las facturas de venta aplicadas.",
+      };
+    }
+
+    const existingCompraIds = new Set<number>(
+      currentLiq.details
+        .map((d) => d.compraId)
+        .filter((id): id is number => typeof id === "number" && id > 0)
+    );
+    const existingDetailKeys = new Set<string>(
+      currentLiq.details
+        .map((d) => buildVoucherMatchKey(d.cuit || d.hospital?.cuit, d.fcHospital))
+        .filter(Boolean)
+    );
+
+    const missingPurchases = resolved.purchases.filter((comp) => {
+      if (existingCompraIds.has(comp.id)) return false;
+      const voucherStr = formatCompraVoucherNumber(comp);
+      const vKey = buildVoucherMatchKey(comp.hospital?.cuit, voucherStr);
+      if (vKey && existingDetailKeys.has(vKey)) return false;
+      return true;
+    });
+
+    const fallbackMonthStr =
+      currentLiq.mesCarga ||
+      `${currentLiq.periodMes.toString().padStart(2, "0")}/${currentLiq.periodAnio}`;
+
+    await prisma.$transaction(
+      async (tx) => {
+        for (const comp of missingPurchases) {
+          const detailData = buildLiquidacionDetailInputFromCompra(comp, {
+            liquidationId,
+            defaultMonthStr: fallbackMonthStr,
+            fallbackClienteId: currentLiq.rc.clienteId,
+            fallbackClienteCuit: currentLiq.rc.cliente?.cuit,
+          });
+          await tx.liquidacionDetalle.create({ data: detailData });
+        }
+
+        if (missingPurchases.length > 0) {
+          const rawObs = currentLiq.observaciones || "";
+          const hasAutoEmptyWarning = rawObs.startsWith("Sin comprobantes vinculados en el ERP:");
+          const nextObservaciones = hasAutoEmptyWarning ? "" : undefined;
+          const nextStatus = currentLiq.status !== "PENDIENTE" ? "RECTIFICADA_PENDIENTE" : undefined;
+
+          if (nextObservaciones !== undefined || nextStatus !== undefined) {
+            await tx.liquidacion.update({
+              where: { id: liquidationId },
+              data: {
+                ...(nextObservaciones !== undefined ? { observaciones: nextObservaciones } : {}),
+                ...(nextStatus !== undefined ? { status: nextStatus } : {}),
+              },
+            });
+          }
+        }
+      },
+      { maxWait: 10000, timeout: 25000 }
+    );
+
+    revalidatePath("/dashboard/liquidations");
+    revalidatePath(`/dashboard/liquidations/${liquidationId}`);
+
+    const updatedLiquidation = await fetchLiquidationById(liquidationId);
+
+    return {
+      success: true,
+      addedCount: missingPurchases.length,
+      alreadySynced: missingPurchases.length === 0,
+      fromCbtesItemsCount: resolved.cbtesItemsCount,
+      totalResolvedCount: resolved.purchases.length,
+      unmatchedCount: resolved.unmatchedRefs.length,
+      liquidation: updatedLiquidation,
+    };
+  } catch (e: any) {
+    console.error("Error syncing liquidation compras from ERP:", e);
+    return { error: e.message || "Error al sincronizar comprobantes desde el ERP." };
   }
 }
 

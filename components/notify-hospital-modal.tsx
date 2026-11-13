@@ -128,8 +128,7 @@ export function NotifyHospitalModal({
       setSubject(`Nueva Liquidación Disponible - Período: ${periodStr} - ${liqIdStr}`);
     }
 
-    // 3. Build default professional message body
-    const totalNetoStr = formatCurrency(liquidation.totalNeto);
+    // 3. Build default professional message body (sin montos por política de seguridad y privacidad)
     const hospitalsListed = hospitalNames.length > 0 ? hospitalNames.join(", ") : "Establecimientos Asignados";
 
     if (isRectification) {
@@ -142,9 +141,8 @@ Nos comunicamos desde la Unidad Ejecutora Provincial (UEP) para informarle que s
 • Período: ${periodStr}
 • Liquidación N°: ${liqIdStr}
 • Establecimiento(s): ${hospitalsListed}
-• Importe Neto Total Ajustado: ${totalNetoStr}
 
-Por favor, ingrese a la brevedad al Portal de Hospitales (UEP) para verificar los nuevos montos rectificados y revalidar la distribución de fondos entre Honorarios Médicos, Sobreasignaciones y Gastos.
+Por favor, ingrese a la brevedad al Portal de Hospitales (UEP) para consultar los comprobantes rectificados y revalidar la distribución de fondos entre Honorarios Médicos, Sobreasignaciones y Gastos.
 
 Atentamente,
 Mesa de Liquidaciones - UEP
@@ -160,9 +158,8 @@ Nos comunicamos desde la Unidad Ejecutora Provincial (UEP) para informarle que s
 • Período: ${periodStr}
 • Liquidación N°: ${liqIdStr}
 • Establecimiento(s): ${hospitalsListed}
-• Importe Neto Total a Distribuir: ${totalNetoStr}
 
-Por favor, ingrese al Portal de Hospitales (UEP) antes de la fecha límite establecida para realizar la distribución de fondos correspondiente a Honorarios Médicos, Sobreasignaciones y Gastos.
+Por favor, ingrese al Portal de Hospitales (UEP) antes de la fecha límite establecida para consultar los comprobantes y realizar la distribución de fondos correspondiente a Honorarios Médicos, Sobreasignaciones y Gastos.
 
 Atentamente,
 Mesa de Liquidaciones - UEP

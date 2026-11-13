@@ -1356,9 +1356,6 @@ export async function notifyHospital(
       },
     });
 
-    // Calculate total net final to display in email
-    const totalNet = details.reduce((sum, d) => sum + toNum(d.netoAPagar), 0);
-
     // Format local date
     const formattedDate = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
 
@@ -1381,8 +1378,8 @@ export async function notifyHospital(
 
     const emailBody = customOptions?.message?.trim() || (
       wasNotifiedBefore
-        ? `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha emitido una RECTIFICACIÓN sobre la liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}. Por favor, revise los montos actualizados y revalide su distribución.`
-        : `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha generado y procesado una nueva liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}.`
+        ? `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha emitido una RECTIFICACIÓN sobre la liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}. Por favor, ingrese al Portal de Hospitales (UEP) para consultar los comprobantes actualizados y revalidar su distribución.`
+        : `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha generado y procesado una nueva liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}. Por favor, ingrese al Portal de Hospitales (UEP) antes de la fecha límite para realizar la distribución de fondos.`
     );
 
     const emailLog = `

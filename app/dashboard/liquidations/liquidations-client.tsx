@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchLiquidationData, calculateLiquidation, notifyHospital, syncLiquidationComprasFromErp } from "./actions";
@@ -31,9 +31,14 @@ interface LiquidationsClientPageProps {
     totalPendingRcsCount: number;
   };
   isAdmin?: boolean;
+  initialHighlightId?: number | null;
 }
 
-export default function LiquidationsClientPage({ initialData, isAdmin = false }: LiquidationsClientPageProps) {
+export default function LiquidationsClientPage({
+  initialData,
+  isAdmin = false,
+  initialHighlightId = null,
+}: LiquidationsClientPageProps) {
   const router = useRouter();
   const [data, setData] = useState(initialData);
   const [totalCount, setTotalCount] = useState(initialData.totalLiquidationsCount);
@@ -49,7 +54,91 @@ export default function LiquidationsClientPage({ initialData, isAdmin = false }:
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [warningMsg, setWarningMsg] = useState("");
-  const [highlightedLiquidationId, setHighlightedLiquidationId] = useState<number | null>(null);
+  const [highlightedLiquidationId, setHighlightedLiquidationId] = useState<number | null>(initialHighlightId);
+  const [pendingHighlightId, setPendingHighlightId] = useState<number | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liquidationsRef = useRef<any[]>(initialData.liquidations);
+
+  useEffect(() => {
+    liquidationsRef.current = data.liquidations;
+  }, [data.liquidations]);
+
+  const triggerHighlightAndScroll = useCallback((targetId: number) => {
+    setHighlightedLiquidationId(targetId);
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+
+    setTimeout(() => {
+      const rowEl = document.getElementById(`liquidation-row-${targetId}`);
+      if (rowEl) {
+        rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 250);
+
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedLiquidationId((prev) => (prev === targetId ? null : prev));
+    }, 4500);
+  }, []);
+
+  const focusOrSearchLiquidation = useCallback(
+    (targetId: number) => {
+      const existsInCurrentPage = liquidationsRef.current.some((l: any) => l.id === targetId);
+      if (existsInCurrentPage) {
+        setPendingHighlightId(null);
+        triggerHighlightAndScroll(targetId);
+      } else {
+        setPendingHighlightId(targetId);
+        setSearchQuery(String(targetId));
+        setCurrentPage(1);
+      }
+    },
+    [triggerHighlightAndScroll]
+  );
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paramId = params.get("highlight");
+    const parsedFromUrl = paramId ? parseInt(paramId, 10) : NaN;
+    const targetId = initialHighlightId ?? (!isNaN(parsedFromUrl) && parsedFromUrl > 0 ? parsedFromUrl : null);
+
+    if (targetId) {
+      focusOrSearchLiquidation(targetId);
+      if (params.has("highlight")) {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
+  }, [initialHighlightId, focusOrSearchLiquidation]);
+
+  useEffect(() => {
+    if (!pendingHighlightId) return;
+    const found = data.liquidations.some((l: any) => l.id === pendingHighlightId);
+    if (found) {
+      triggerHighlightAndScroll(pendingHighlightId);
+      setPendingHighlightId(null);
+    }
+  }, [data.liquidations, pendingHighlightId, triggerHighlightAndScroll]);
+
+  useEffect(() => {
+    const onHighlightEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<{ liquidationId?: number }>;
+      const targetId = customEvent.detail?.liquidationId;
+      if (typeof targetId === "number" && targetId > 0) {
+        focusOrSearchLiquidation(targetId);
+        if (window.location.search.includes("highlight=")) {
+          window.history.replaceState(null, "", window.location.pathname);
+        }
+      }
+    };
+
+    window.addEventListener("uep:highlight-liquidation", onHighlightEvent);
+    return () => {
+      window.removeEventListener("uep:highlight-liquidation", onHighlightEvent);
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, [focusOrSearchLiquidation]);
 
   const [selectedNotifyLiq, setSelectedNotifyLiq] = useState<any | null>(null);
   const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);

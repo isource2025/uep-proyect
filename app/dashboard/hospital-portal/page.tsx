@@ -11,7 +11,14 @@ import { Building2 } from "lucide-react";
 
 export const revalidate = 0;
 
-export default async function HospitalPortalPage() {
+export default async function HospitalPortalPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ highlight?: string }>;
+}) {
+  const resolvedParams = searchParams ? await searchParams : undefined;
+  const parsedHighlight = resolvedParams?.highlight ? parseInt(resolvedParams.highlight, 10) : NaN;
+  const initialHighlightId = !isNaN(parsedHighlight) && parsedHighlight > 0 ? parsedHighlight : null;
   // 1. Get authenticated user session
   const session = await auth.api.getSession({
     headers: await headers(),
@@ -189,6 +196,7 @@ export default async function HospitalPortalPage() {
       initialLiquidations={serializeData(hospitalLiquidations)}
       agents={serializeData(agents)}
       onAddAttachment={handleAddAttachment}
+      initialHighlightId={initialHighlightId}
     />
   );
 }

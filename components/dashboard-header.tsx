@@ -13,19 +13,29 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
+import { NotificationBell } from "./notification-bell";
+import type { InAppNotificationItem } from "@/lib/notification-types";
 import { User as UserIcon, LogOut, Shield, ChevronDown, Calendar, Menu, PanelLeft, Loader2 } from "lucide-react";
 import { useDashboard } from "./dashboard-context";
 
 interface DashboardHeaderProps {
   user: {
+    id: number;
     name: string;
     email: string;
     role: string;
   };
   activePeriodLabel?: string;
+  initialNotifications?: InAppNotificationItem[];
+  showNotifications?: boolean;
 }
 
-export function DashboardHeader({ user, activePeriodLabel = "Junio 2026" }: DashboardHeaderProps) {
+export function DashboardHeader({
+  user,
+  activePeriodLabel = "Junio 2026",
+  initialNotifications = [],
+  showNotifications = true,
+}: DashboardHeaderProps) {
   const { isDesktopCollapsed, toggleDesktopSidebar, toggleMobileSidebar, closeMobileSidebar } = useDashboard();
   const [isSigningOut, setIsSigningOut] = useState(false);
 
@@ -66,19 +76,19 @@ export function DashboardHeader({ user, activePeriodLabel = "Junio 2026" }: Dash
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-4 sm:px-6 dark:bg-[#171717] transition-colors">
+    <header className="flex h-16 w-full max-w-full shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3 sm:px-6 dark:bg-[#171717] transition-colors overflow-x-clip">
       {/* Left side: Sidebar Toggle & Period Widget */}
-      <div className="flex items-center gap-2.5 sm:gap-4">
+      <div className="flex flex-1 min-w-0 items-center gap-2 sm:gap-4">
         {/* Mobile Toggle Button */}
         <Button
           type="button"
           variant="ghost"
           size="icon"
           onClick={toggleMobileSidebar}
-          className="flex md:hidden h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer rounded-lg border border-border"
+          className="flex lg:hidden h-8 w-8 sm:h-9 sm:w-9 shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer rounded-lg border border-border"
           aria-label="Abrir menú"
         >
-          <Menu className="h-5 w-5" />
+          <Menu className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
         </Button>
 
         {/* Desktop Collapse / Expand Toggle Button */}
@@ -87,7 +97,7 @@ export function DashboardHeader({ user, activePeriodLabel = "Junio 2026" }: Dash
           variant="ghost"
           size="icon"
           onClick={toggleDesktopSidebar}
-          className="hidden md:flex h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer rounded-lg border border-border transition-colors"
+          className="hidden lg:flex h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer rounded-lg border border-border transition-colors"
           title={isDesktopCollapsed ? "Mostrar barra lateral" : "Ocultar barra lateral"}
           aria-label="Alternar barra lateral"
         >
@@ -95,9 +105,9 @@ export function DashboardHeader({ user, activePeriodLabel = "Junio 2026" }: Dash
         </Button>
 
         {/* Current Active Period Widget */}
-        <div className="flex items-center gap-1.5 sm:gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/25 px-2.5 sm:px-3 py-1 text-2xs sm:text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+        <div className="flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/25 px-2 sm:px-3 py-1 text-[11px] sm:text-xs text-emerald-600 dark:text-emerald-400 font-medium">
           <Calendar className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate max-w-[140px] sm:max-w-none">
+          <span className="truncate min-w-0">
             <span className="hidden sm:inline text-muted-foreground">Período Activo: </span>
             <strong className="text-foreground">{activePeriodLabel}</strong>
           </span>
@@ -106,7 +116,13 @@ export function DashboardHeader({ user, activePeriodLabel = "Junio 2026" }: Dash
       </div>
 
       {/* Right side: User Actions & Theme Toggle */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+        {showNotifications && (
+          <NotificationBell
+            userId={user.id}
+            initialNotifications={initialNotifications}
+          />
+        )}
         <ThemeToggle />
 
         <DropdownMenu>
@@ -114,7 +130,7 @@ export function DashboardHeader({ user, activePeriodLabel = "Junio 2026" }: Dash
             <Button
               disabled={isSigningOut}
               variant="ghost"
-              className="flex items-center gap-2 hover:bg-accent text-muted-foreground hover:text-foreground px-2 sm:px-3 py-1.5 rounded-lg text-sm transition-all border border-border bg-card cursor-pointer h-9"
+              className="flex shrink-0 items-center gap-2 hover:bg-accent text-muted-foreground hover:text-foreground px-1.5 sm:px-3 py-1.5 rounded-lg text-sm transition-all border border-border bg-card cursor-pointer h-8 sm:h-9"
             >
               <div className="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-emerald-600/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                 {user.role === "ADMIN" ? (

@@ -243,7 +243,7 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
       {isMobileOpen && (
         <div
           onClick={closeMobileSidebar}
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs transition-opacity duration-300 md:hidden animate-fade-in"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs transition-opacity duration-300 lg:hidden animate-fade-in"
           aria-hidden="true"
         />
       )}
@@ -251,7 +251,7 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
       {/* ---------------- MOBILE SIDEBAR DRAWER ---------------- */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-border bg-card text-card-foreground shadow-2xl transition-transform duration-300 ease-in-out md:hidden",
+          "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-border bg-card text-card-foreground shadow-2xl transition-transform duration-300 ease-in-out lg:hidden",
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -290,7 +290,7 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
       {/* ---------------- DESKTOP SIDEBAR ---------------- */}
       <aside
         className={cn(
-          "hidden md:flex flex-col border-r border-border bg-card text-card-foreground transition-all duration-300 ease-in-out shrink-0 overflow-hidden",
+          "hidden lg:flex flex-col border-r border-border bg-card text-card-foreground transition-all duration-300 ease-in-out shrink-0 overflow-hidden",
           isDesktopCollapsed
             ? "w-0 border-r-0 opacity-0 pointer-events-none"
             : "w-64 opacity-100"

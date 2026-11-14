@@ -7,6 +7,7 @@ import { DashboardProvider } from "@/components/dashboard-context";
 import { getActivePeriodInfo } from "@/lib/periods";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import { parseUserRoleIds, isUserAdmin, isUserHospital, getUserRoleConfig } from "@/lib/constants";
+import { fetchInAppNotificationsAction } from "@/app/dashboard/notifications/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,13 @@ export default async function DashboardLayout({
   }
 
   const userId = parseInt(String(session.user.id), 10);
-  const [activePeriod, resolvedHospitalId] = await Promise.all([
+  const rawRoleStr = (session.user as any).role || "";
+  const userRoles = parseUserRoleIds(rawRoleStr);
+  const isAdmin = isUserAdmin(rawRoleStr);
+  const isMedico = userRoles.includes("2");
+  const isUepOperator = isAdmin || userRoles.includes("3") || userRoles.includes("5");
+
+  const [activePeriod, resolvedHospitalId, initialNotifications] = await Promise.all([
     getActivePeriodInfo(),
     // EMPRESA del usuario: imPersonalEmpresas, o imPersonal.hospitalId (IDPROVEEDOR) -> EMPRESA validada por CUIT
     resolveUserEmpresaId({
@@ -36,13 +43,11 @@ export default async function DashboardLayout({
       hospitalId: (session.user as any).hospitalId,
       cuit: (session.user as any).cuit,
     }),
+    fetchInAppNotificationsAction(),
   ]);
 
-  const rawRoleStr = (session.user as any).role || "";
-  const userRoles = parseUserRoleIds(rawRoleStr);
-  const isAdmin = isUserAdmin(rawRoleStr);
-  const isMedico = userRoles.includes("2");
   const isHospital = isUserHospital(rawRoleStr, resolvedHospitalId);
+  const showNotifications = isHospital || isUepOperator;
 
   const primaryRoleConfig = userRoles.length > 0 ? getUserRoleConfig(userRoles[0]) : null;
   const displayRole = isAdmin
@@ -65,11 +70,14 @@ export default async function DashboardLayout({
         <div className="flex flex-1 flex-col overflow-hidden min-w-0">
           <DashboardHeader
             user={{
+              id: userId,
               name: session.user.name,
               email: session.user.email,
               role: displayRole,
             }}
             activePeriodLabel={activePeriod.label}
+            initialNotifications={initialNotifications}
+            showNotifications={showNotifications}
           />
           <main className="flex-1 overflow-y-auto bg-background p-4 sm:p-6 md:p-8 dark:bg-[#171717]">
             {children}

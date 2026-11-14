@@ -368,11 +368,11 @@ Unidad Ejecutora Provincial`
                 {loadingRecipients ? (
                   <span className="text-xs text-muted-foreground inline-flex items-center gap-2">
                     <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
-                    Buscando operadores Rol 4 (Hospital) vinculados por CUIT...
+                    Buscando correos corporativos de establecimientos (EMPRESAS) por CUIT...
                   </span>
                 ) : recipientsList.length === 0 ? (
                   <span className="text-xs text-muted-foreground italic">
-                    No se encontraron operadores Rol 4 ni correos asignados. Agregue un correo destinatario debajo.
+                    No se encontraron correos corporativos asignados en EMPRESAS. Agregue un correo destinatario debajo.
                   </span>
                 ) : (
                   recipientsList.map((rec) => (
@@ -412,10 +412,10 @@ Unidad Ejecutora Provincial`
                         <div className="flex items-center gap-1.5 font-bold text-primary text-2xs mb-1.5 pb-1 border-b border-border/60 relative z-10">
                           <Mail className="h-3.5 w-3.5 shrink-0" />
                           <span>
-                            {rec.source === "user"
-                              ? "Operador Hospital UEP (Rol 4)"
-                              : rec.source === "empresa"
-                              ? "Correo Institucional (EMPRESAS)"
+                            {rec.source === "empresa"
+                              ? "Correo Corporativo (EMPRESAS)"
+                              : rec.source === "user"
+                              ? "Operador Hospital UEP"
                               : "Destinatario Manual"}
                           </span>
                         </div>
@@ -446,7 +446,7 @@ Unidad Ejecutora Provincial`
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-2xs text-amber-800 dark:text-amber-300 space-y-1">
                   <p className="font-bold flex items-center gap-1.5">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                    Establecimientos sin operador Rol 4 ni correo registrado:
+                    Establecimientos sin correo corporativo registrado en EMPRESAS:
                   </p>
                   <ul className="list-disc pl-5 space-y-0.5 break-words">
                     {missingHospitals.map((mh, i) => (
@@ -457,7 +457,7 @@ Unidad Ejecutora Provincial`
                     ))}
                   </ul>
                   <p className="text-3xs opacity-90">
-                    Asigne un usuario con Rol 4 en Gestión de Usuarios o agregue un correo manual debajo.
+                    Cargue el correo corporativo en Gestión de Hospitales o agregue un correo manual debajo.
                   </p>
                 </div>
               )}

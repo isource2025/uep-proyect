@@ -1395,7 +1395,7 @@ export async function notifyHospital(
       }
     }
 
-    // Resolve real hospital names & Rol 4 / EMPRESAS emails strictly by CUIT
+    // Resolve real hospital names & corporate emails from EMPRESAS strictly by CUIT
     const details = liq.details;
     const detailCuits = Array.from(
       new Set(
@@ -1424,7 +1424,7 @@ export async function notifyHospital(
     if (finalRecipients.length === 0) {
       return {
         error:
-          "No se encontraron operadores con Rol 4 (Hospital) ni correos institucionales asociados por CUIT. Agregue al menos un destinatario manual.",
+          "No se encontraron correos corporativos registrados en EMPRESAS para los hospitales de esta liquidación. Cárguelos en Gestión de Hospitales o agregue al menos un destinatario manual.",
       };
     }
 

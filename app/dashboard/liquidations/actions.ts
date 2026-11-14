@@ -41,38 +41,20 @@ function findMatchingDetailHospital(
   pCuil: string,
   cuilEmpresas: { id: number; descripcion: string; cuit: string }[],
   details: any[]
-): { hospitalId?: number; hospitalKey?: string } {
+): { hospitalId?: number; hospitalKey?: string; hospitalCuit?: string } {
   if (!details || details.length === 0) return {};
   if (!cuilEmpresas || cuilEmpresas.length === 0) return {};
 
-  // 1. Coincidencia estricta y primaria por CUIT entre la Empresa de SISPER y el Renglón de Liquidación
+  // Cruce EXCLUSIVO por CUIT normalizado: EMPRESAS.Nro_CUIT (SISPER) === CUIT del renglón (PROVEEDORES.NRO_CUIT)
   for (const emp of cuilEmpresas) {
     const cleanEmpCuit = cleanCuit(emp.cuit);
-    if (cleanEmpCuit) {
-      for (const d of details) {
-        const cleanDetCuit = cleanCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit);
-        if (cleanDetCuit && cleanDetCuit === cleanEmpCuit) {
-          const hid = d.hospitalId || d.compra?.hospitalId;
-          const key = hid ? `id-${hid}` : `cuit-${cleanDetCuit}`;
-          return { hospitalId: hid, hospitalKey: key };
-        }
-      }
-    }
-  }
-
-  // 2. Coincidencia secundaria por nombre si no hay CUITs disponibles
-  for (const emp of cuilEmpresas) {
-    if (emp.descripcion) {
-      const cleanEmpName = emp.descripcion.toLowerCase().split("-")[0].trim();
-      if (cleanEmpName.length > 4) {
-        for (const d of details) {
-          const detName = (d.prestadorNombre || d.hospital?.nombre || "").toLowerCase();
-          if (detName.includes(cleanEmpName)) {
-            const hid = d.hospitalId || d.compra?.hospitalId;
-            const key = hid ? `id-${hid}` : `name-${d.prestadorNombre}`;
-            return { hospitalId: hid, hospitalKey: key };
-          }
-        }
+    if (!cleanEmpCuit) continue;
+    for (const d of details) {
+      const cleanDetCuit = cleanCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit);
+      if (cleanDetCuit && cleanDetCuit === cleanEmpCuit) {
+        const hid = d.hospitalId || d.compra?.hospitalId;
+        const key = hid ? `id-${hid}` : `cuit-${cleanDetCuit}`;
+        return { hospitalId: hid, hospitalKey: key, hospitalCuit: cleanDetCuit };
       }
     }
   }
@@ -530,6 +512,7 @@ export async function fetchLiquidationData(
           ...p,
           hospitalId: match.hospitalId,
           hospitalKey: match.hospitalKey,
+          hospitalCuit: match.hospitalCuit,
         };
       });
     }
@@ -1438,7 +1421,9 @@ export async function fetchLiquidationById(id: number) {
           },
           distributions: {
             include: {
-              agent: true,
+              agent: {
+                include: { hospital: true },
+              },
             },
           },
           attachments: {
@@ -1489,6 +1474,7 @@ export async function fetchLiquidationById(id: number) {
           ...p,
           hospitalId: match.hospitalId,
           hospitalKey: match.hospitalKey,
+          hospitalCuit: match.hospitalCuit,
         };
       });
     }

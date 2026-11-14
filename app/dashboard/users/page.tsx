@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils";
 import { CreateUserModal, EditUserModal } from "./create-user-modal";
 import { toggleUserStatusAction } from "./actions";
 import { parseUserRoleIds, getUserRoleConfig, getUserRoleBadge, isUserAdmin, USER_ROLES } from "@/lib/constants";
+import { cleanCuit } from "@/lib/hospital-mapping";
+import { UEP_DEFAULT_CUIT, UEP_EMPRESA_ID } from "@/lib/hospital-resolver";
 
 export const revalidate = 0;
 
@@ -66,7 +68,7 @@ export default async function UsersPage({
   // Fetch intermediate relation imPersonalEmpresas
   const [empresas, personalEmpresas] = await Promise.all([
     prisma.empresa.findMany({
-      select: { id: true, descripcion: true },
+      select: { id: true, descripcion: true, cuit: true },
       orderBy: { descripcion: "asc" },
     }),
     prisma.imPersonalEmpresas.findMany({
@@ -78,18 +80,35 @@ export default async function UsersPage({
     }),
   ]);
 
-  const empresaMap = new Map(empresas.map((e) => [e.id, e.descripcion?.trim()]));
+  const uepEmpresaRecord = empresas.find((e) => e.id === UEP_EMPRESA_ID);
+  const uepCuit = cleanCuit(uepEmpresaRecord?.cuit) || UEP_DEFAULT_CUIT;
+
   const userEmpresaMap = new Map(
-    personalEmpresas.map((pe) => [
-      pe.idPersonal,
-      { idEmpresa: pe.idEmpresa, descripcion: pe.empresa?.descripcion?.trim() },
-    ])
+    personalEmpresas
+      .filter((pe) => pe.idEmpresa !== UEP_EMPRESA_ID)
+      .map((pe) => [
+        pe.idPersonal,
+        { idEmpresa: pe.idEmpresa, descripcion: pe.empresa?.descripcion?.trim() },
+      ])
   );
 
-  const hospitals = empresas.map((e) => ({
-    id: e.id,
-    nombre: e.descripcion?.trim() || `Hospital ${e.id}`,
-  }));
+  // imPersonal.hospitalId es un IDPROVEEDOR: su Empresa se resuelve EXCLUSIVAMENTE por CUIT (PROVEEDORES.NRO_CUIT === EMPRESAS.Nro_CUIT)
+  const empresaByCuit = new Map<string, { idEmpresa: number; descripcion?: string }>();
+  for (const e of empresas) {
+    if (e.id === UEP_EMPRESA_ID) continue;
+    const c = cleanCuit(e.cuit);
+    if (c && !empresaByCuit.has(c)) empresaByCuit.set(c, { idEmpresa: e.id, descripcion: e.descripcion?.trim() });
+  }
+  const resolveUserEmpresa = (u: (typeof users)[number]) =>
+    userEmpresaMap.get(u.id) ?? (u.hospital?.cuit ? empresaByCuit.get(cleanCuit(u.hospital.cuit)) : undefined);
+
+  const hospitals = empresas
+    .filter((e) => e.id !== UEP_EMPRESA_ID)
+    .map((e) => ({
+      id: e.id,
+      nombre: e.descripcion?.trim() || `Hospital ${e.id}`,
+      cuit: cleanCuit(e.cuit) || null,
+    }));
 
   return (
     <div className="space-y-6 text-foreground">
@@ -103,7 +122,7 @@ export default async function UsersPage({
         </div>
 
         {/* Create User Modal with Eye password toggle */}
-        <CreateUserModal roles={roles} hospitals={hospitals} />
+        <CreateUserModal roles={roles} hospitals={hospitals} uepCuit={uepCuit} />
       </div>
 
       {/* Summary Stat Cards */}
@@ -248,7 +267,7 @@ export default async function UsersPage({
                           <div className="flex items-center gap-1.5">
                             <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                             <span className="text-xs truncate max-w-[180px]">
-                              {userEmpresaMap.get(u.id)?.descripcion || (u.hospitalId ? empresaMap.get(u.hospitalId) : null) || "Unidad Ejecutora (Sede)"}
+                              {resolveUserEmpresa(u)?.descripcion || "Sede Central UEP"}
                             </span>
                           </div>
                         </TableCell>
@@ -275,10 +294,11 @@ export default async function UsersPage({
                                 operador: u.operador,
                                 cuit: u.cuit,
                                 role: u.role,
-                                hospitalId: userEmpresaMap.get(u.id)?.idEmpresa ?? u.hospitalId ?? undefined,
+                                hospitalId: resolveUserEmpresa(u)?.idEmpresa ?? undefined,
                               }}
                               roles={roles}
                               hospitals={hospitals}
+                              uepCuit={uepCuit}
                             />
                             <form action={toggleUserStatusAction} className="inline-block">
                               <input type="hidden" name="userId" value={u.id} />

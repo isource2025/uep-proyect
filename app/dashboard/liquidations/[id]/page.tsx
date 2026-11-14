@@ -6,6 +6,7 @@ import { serializeData } from "@/lib/utils";
 import { fetchLiquidationById } from "../actions";
 import { isUserAdmin, isUserHospital } from "@/lib/constants";
 import { cleanCuit } from "@/lib/hospital-mapping";
+import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import LiquidationDetailClient from "./liquidation-detail-client";
 
 interface PageProps {
@@ -37,39 +38,9 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
   let targetEmpresaId: number | undefined = undefined;
 
   if (isHospitalUser) {
-    if (user?.id) {
-      const personalId = parseInt(String(user.id), 10);
-      if (!isNaN(personalId)) {
-        const personalEmpresa = await prisma.imPersonalEmpresas.findFirst({
-          where: { idPersonal: personalId },
-        });
-        if (personalEmpresa) {
-          targetEmpresaId = personalEmpresa.idEmpresa;
-        }
-      }
-    }
-
-    if (!targetEmpresaId && user?.hospitalId) {
-      const hospId = parseInt(String(user.hospitalId), 10);
-      const empresa = await prisma.empresa.findUnique({ where: { id: hospId } });
-      if (empresa) {
-        targetEmpresaId = empresa.id;
-      } else {
-        targetEmpresaId = hospId;
-      }
-    }
-
-    // Si aún no se encontró, resolver la empresa a partir del CUIT del primer renglón
-    if (!targetEmpresaId && liquidationRaw.details && liquidationRaw.details.length > 0) {
-      const firstDetCuit = cleanCuit(liquidationRaw.details[0]?.cuit || liquidationRaw.details[0]?.hospital?.cuit);
-      if (firstDetCuit) {
-        const allEmpresas = await prisma.empresa.findMany({ select: { id: true, cuit: true } });
-        const match = allEmpresas.find((e) => cleanCuit(e.cuit) === firstDetCuit);
-        if (match) {
-          targetEmpresaId = match.id;
-        }
-      }
-    }
+    // EMPRESA del usuario: imPersonalEmpresas, o imPersonal.hospitalId (IDPROVEEDOR) -> EMPRESA validada por CUIT.
+    // Sin efector resuelto NO se infiere ningún hospital (fail-closed): no verá renglones ni distribuciones.
+    targetEmpresaId = await resolveUserEmpresaId(user);
   }
 
   let targetEmpresaIds: number[] = [];
@@ -79,34 +50,19 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
       targetEmpresaIds = [targetEmpresaId];
     }
   } else {
-    // Admin user: recopilar efectores de los renglones y buscar sus Empresas vinculando explícitamente por CUIT
+    // Admin user: recopilar efectores de los renglones y buscar sus Empresas vinculando EXCLUSIVAMENTE por CUIT
     if (liquidationRaw.details && liquidationRaw.details.length > 0) {
       const rawCuits = liquidationRaw.details
         .map((d: any) => cleanCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit))
         .filter((c: string) => c.length >= 10);
 
-      const hospNames = liquidationRaw.details
-        .map((d: any) => d.prestadorNombre || d.hospital?.nombre)
-        .filter((n: any): n is string => typeof n === "string" && n.trim().length > 0);
-
       const allEmpresas = await prisma.empresa.findMany({
-        select: { id: true, cuit: true, descripcion: true },
+        select: { id: true, cuit: true },
       });
 
       const matchedEmpresas = allEmpresas.filter((emp) => {
         const empCuit = cleanCuit(emp.cuit);
-        if (empCuit && rawCuits.includes(empCuit)) {
-          return true;
-        }
-        // Fallback por nombre solo si no hay CUITs disponibles
-        if (rawCuits.length === 0 && emp.descripcion) {
-          const empDesc = emp.descripcion.toLowerCase();
-          return hospNames.some((hn: string) => {
-            const cleanHn = hn.toLowerCase().split("-")[0].trim();
-            return cleanHn.length > 4 && empDesc.includes(cleanHn);
-          });
-        }
-        return false;
+        return Boolean(empCuit && rawCuits.includes(empCuit));
       });
 
       targetEmpresaIds = Array.from(new Set(matchedEmpresas.map((m) => m.id)));
@@ -121,6 +77,9 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
   const whereAg: any = {};
   if (targetEmpresaIds.length > 0) {
     whereAg.idEmpresa = { in: targetEmpresaIds };
+  } else if (isHospitalUser) {
+    // Hospital sin efector resuelto: no exponer nómina de otros establecimientos
+    whereAg.idEmpresa = { in: [] };
   }
 
   const mspAgents = await prisma.imPersonalMsp.findMany({
@@ -158,8 +117,8 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     }
   }
 
-  // Fallback to legacy Agente table if imPersonalMsp is empty
-  if (agents.length === 0) {
+  // Fallback to legacy Agente table if imPersonalMsp is empty (nunca para usuarios de hospital: evitaría el aislamiento por CUIT)
+  if (agents.length === 0 && !isHospitalUser) {
     const legacyAgents = await prisma.agente.findMany({
       orderBy: { nombre: "asc" },
     });
@@ -223,38 +182,37 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     }
   }
 
-  // Strict hospital data isolation:
+  // Strict hospital data isolation (cruce EXCLUSIVO por CUIT normalizado):
   // A hospital user MUST NEVER see distributions, details or amounts assigned to other hospitals
   let liquidation = { ...liquidationRaw };
 
-  if (isHospitalUser && targetEmpresaId) {
-    const targetEmpresa = await prisma.empresa.findUnique({
-      where: { id: targetEmpresaId },
-      select: { id: true, cuit: true, descripcion: true },
-    });
+  if (isHospitalUser) {
+    const targetEmpresa = targetEmpresaId
+      ? await prisma.empresa.findUnique({
+          where: { id: targetEmpresaId },
+          select: { id: true, cuit: true },
+        })
+      : null;
+    // Sin CUIT resuelto => cadena vacía => ningún renglón coincide (fail-closed)
     const targetEmpresaCuit = cleanCuit(targetEmpresa?.cuit);
+    const matchesTargetCuit = (raw: any) => {
+      const c = cleanCuit(raw);
+      return Boolean(targetEmpresaCuit && c && c === targetEmpresaCuit);
+    };
 
-    // 1. Details: Only include details for this hospital matching by CUIT
-    liquidation.details = (liquidationRaw.details || []).filter((d: any) => {
-      const dCuit = cleanCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit);
-      if (targetEmpresaCuit && dCuit) {
-        return dCuit === targetEmpresaCuit;
-      }
-      if (targetEmpresa?.descripcion && d.prestadorNombre) {
-        const cleanName = targetEmpresa.descripcion.toLowerCase().split("-")[0].trim();
-        return cleanName.length > 4 && d.prestadorNombre.toLowerCase().includes(cleanName);
-      }
-      return false;
-    });
-
-    // 2. Personal distributions: Only include distributions made for this specific hospital
-    liquidation.personalDistributions = (liquidationRaw.personalDistributions || []).filter(
-      (p: any) => p.hospitalId === targetEmpresaId
+    // 1. Details: solo renglones cuyo CUIT (PROVEEDORES.NRO_CUIT) coincide con EMPRESAS.Nro_CUIT del usuario
+    liquidation.details = (liquidationRaw.details || []).filter((d: any) =>
+      matchesTargetCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit)
     );
 
-    // 3. Legacy distributions: Only include distributions for agents of this hospital
-    liquidation.distributions = (liquidationRaw.distributions || []).filter(
-      (d: any) => d.agent?.hospitalId === targetEmpresaId
+    // 2. Personal distributions (SISPER): hospitalCuit resuelto por CUIT en fetchLiquidationById
+    liquidation.personalDistributions = (liquidationRaw.personalDistributions || []).filter((p: any) =>
+      matchesTargetCuit(p.hospitalCuit)
+    );
+
+    // 3. Legacy distributions: por CUIT del proveedor del agente
+    liquidation.distributions = (liquidationRaw.distributions || []).filter((d: any) =>
+      matchesTargetCuit(d.agent?.hospital?.cuit)
     );
 
     // 4. Recalculate all aggregated header metrics strictly for this hospital
@@ -335,7 +293,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
       agents={serializeData(agents)}
       extraSavedAgents={serializeData(extraSavedAgents)}
       agentsPeriodOrigin={agentsPeriodOrigin}
-      hospitalId={targetEmpresaId || user?.hospitalId}
+      hospitalId={targetEmpresaId ?? null}
       hospitals={serializeData(allHospitals)}
     />
   );

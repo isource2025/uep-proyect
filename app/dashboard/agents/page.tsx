@@ -1,9 +1,9 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { serializeData } from "@/lib/utils";
 import { isUserAdmin, isUserHospital } from "@/lib/constants";
+import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import { fetchAgentsData } from "./actions";
 import AgentsClient from "./agents-client";
 
@@ -29,28 +29,11 @@ export default async function AgentsPage() {
   let targetEmpresaId: number | undefined = undefined;
 
   if (isHospitalUser) {
-    const personalId = parseInt(String(user.id), 10);
-    const hospId = user.hospitalId ? parseInt(String(user.hospitalId), 10) : undefined;
-
-    // 1. Check imPersonalEmpresas for this user
-    if (!isNaN(personalId)) {
-      const personalEmpresa = await prisma.imPersonalEmpresas.findFirst({
-        where: { idPersonal: personalId },
-      });
-      if (personalEmpresa) {
-        targetEmpresaId = personalEmpresa.idEmpresa;
-      }
-    }
-
-    if (!targetEmpresaId && hospId && !isNaN(hospId)) {
-      const empresa = await prisma.empresa.findUnique({
-        where: { id: hospId },
-      });
-      if (empresa) {
-        targetEmpresaId = empresa.id;
-      } else {
-        targetEmpresaId = hospId;
-      }
+    // EMPRESA del usuario: imPersonalEmpresas, o imPersonal.hospitalId (IDPROVEEDOR) -> EMPRESA validada por CUIT
+    targetEmpresaId = await resolveUserEmpresaId(user);
+    if (!targetEmpresaId) {
+      // Fail-closed: un hospital sin efector resuelto no puede ver la nómina de todos los establecimientos
+      redirect("/dashboard/hospital-portal");
     }
   }
 

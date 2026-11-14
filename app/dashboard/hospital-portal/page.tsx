@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { serializeData } from "@/lib/utils";
 import { cleanCuit } from "@/lib/hospital-mapping";
+import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import HospitalPortalClient from "./hospital-portal-client";
 import { Building2 } from "lucide-react";
 
@@ -27,26 +28,8 @@ export default async function HospitalPortalPage() {
     .filter(Boolean);
   const isAdmin = userRoles.includes("1");
 
-  const personalId = parseInt(String(user.id), 10);
-  let rawHospitalId: number | undefined = undefined;
-
-  // 1. Prioritize imPersonalEmpresas intermediate table
-  if (!isNaN(personalId)) {
-    const pe = await prisma.imPersonalEmpresas.findFirst({
-      where: { idPersonal: personalId },
-    });
-    if (pe) {
-      rawHospitalId = pe.idEmpresa;
-    }
-  }
-
-  // Fallback to user.hospitalId
-  if (!rawHospitalId && user.hospitalId) {
-    const parsed = parseInt(String(user.hospitalId), 10);
-    if (!isNaN(parsed)) {
-      rawHospitalId = parsed;
-    }
-  }
+  // EMPRESA del usuario: imPersonalEmpresas, o imPersonal.hospitalId (IDPROVEEDOR) -> EMPRESA validada por CUIT
+  const rawHospitalId: number | undefined = await resolveUserEmpresaId(user);
 
   // If admin user without a specific hospitalId, redirect to full dashboard
   if (isAdmin && (!rawHospitalId || isNaN(rawHospitalId))) {
@@ -70,7 +53,7 @@ export default async function HospitalPortalPage() {
         <div className="space-y-2 max-w-md">
           <h2 className="text-2xl font-bold tracking-tight">Establecimiento no Asignado</h2>
           <p className="text-sm text-muted-foreground">
-            Su usuario no tiene un establecimiento válido asignado en la tabla <strong>EMPRESAS</strong> (ID configurado: {user?.hospitalId ?? "ninguno"}).
+            Su usuario no tiene un establecimiento válido asignado en la tabla <strong>EMPRESAS</strong> (no se pudo resolver por CUIT desde el proveedor configurado: {user?.hospitalId ?? "ninguno"}).
           </p>
           <p className="text-xs text-muted-foreground">
             Por favor, comuníquese con el administrador para verificar y asignar su efector sanitario en la sección de Gestión de Usuarios.
@@ -95,21 +78,21 @@ export default async function HospitalPortalPage() {
     : [];
   const proveedorIds = matchingProveedores.map((p) => p.id);
 
-  // 3. Find liquidations and agents that belong to this hospital in parallel
-  const [hospitalLiquidations, agents] = await Promise.all([
-    prisma.liquidacion.findMany({
+  // 3. Find liquidations and agents that belong to this hospital in parallel (cruce EXCLUSIVO por CUIT)
+  const [hospitalLiquidationsRaw, agents, empresaCuils] = await Promise.all([
+    hospitalCuit
+      ? prisma.liquidacion.findMany({
       where: {
         details: {
           some: {
             OR: [
-              ...(hospitalCuit ? [{ cuit: hospitalCuit }] : []),
+              { cuit: hospitalCuit },
               ...(proveedorIds.length > 0
                 ? [
                     { hospitalId: { in: proveedorIds } },
                     { compra: { hospitalId: { in: proveedorIds } } },
                   ]
                 : []),
-              ...(hospitalName ? [{ prestadorNombre: { contains: hospitalName.split("-")[0].trim() } }] : []),
             ],
           },
         },
@@ -129,21 +112,51 @@ export default async function HospitalPortalPage() {
         },
         distributions: {
           include: {
-            agent: true,
+            agent: {
+              include: { hospital: true },
+            },
           },
         },
+        personalDistributions: true,
         attachments: {
           where: { deletedAt: null },
           orderBy: { createdAt: "desc" },
         },
       },
       orderBy: { createdAt: "desc" },
-    }),
-    prisma.agente.findMany({
-      where: { hospitalId },
-      orderBy: { nombre: "asc" },
-    }),
+    })
+      : Promise.resolve([]),
+    // Agentes legacy: Agente.hospitalId referencia a PROVEEDORES, por eso se usan los proveedores resueltos por CUIT
+    proveedorIds.length > 0
+      ? prisma.agente.findMany({
+          where: { hospitalId: { in: proveedorIds } },
+          orderBy: { nombre: "asc" },
+        })
+      : Promise.resolve([]),
+    // Nómina SISPER de TODAS las Empresas con el mismo CUIT del efector
+    hospitalCuit
+      ? prisma.imPersonalMsp.findMany({
+          where: { empresa: { cuit: Number(hospitalCuit) } },
+          select: { cuil: true },
+        })
+      : Promise.resolve([]),
   ]);
+
+  // Aislamiento por CUIT: el hospital solo ve las distribuciones de su propio personal y sus propios renglones
+  const hospitalCuilSet = new Set(
+    empresaCuils.map((a) => (a.cuil ? a.cuil.toString() : "")).filter(Boolean)
+  );
+  const matchesHospitalCuit = (raw: any) => {
+    const c = cleanCuit(raw);
+    return Boolean(hospitalCuit && c && c === hospitalCuit);
+  };
+  const hospitalLiquidations = hospitalLiquidationsRaw.map((liq: any) => ({
+    ...liq,
+    personalDistributions: (liq.personalDistributions || []).filter((p: any) =>
+      hospitalCuilSet.has(String(p.cuil))
+    ),
+    distributions: (liq.distributions || []).filter((d: any) => matchesHospitalCuit(d.agent?.hospital?.cuit)),
+  }));
 
   // Server Action to add an attachment
   const handleAddAttachment = async (formData: FormData) => {

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { isUserAdmin } from "@/lib/constants";
+import { resolveHospitalWorkAssignment, UEP_EMPRESA_ID } from "@/lib/hospital-resolver";
 
 export type UserActionResult = {
   success?: boolean;
@@ -127,7 +128,12 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
     const authContext = await auth.$context;
     const hashedPassword = await authContext.password.hash(password);
 
-    const empresaId = hospitalIdStr ? parseInt(hospitalIdStr, 10) : null;
+    const isLiquidador = allRoles.includes("3");
+    // El rol Liquidador es exclusivo de la UEP (sede bloqueada en null/Sede Central)
+    const rawEmpresaId = (!isLiquidador && hospitalIdStr) ? parseInt(hospitalIdStr, 10) : null;
+    const assignment = await resolveHospitalWorkAssignment(rawEmpresaId);
+    const manualCuit = cuit ? cuit.replace(/[^\d]/g, "") : null;
+    const effectiveCuit = assignment.cuit || manualCuit || null;
 
     await prisma.$transaction(async (tx) => {
       const maxUser = await tx.user.aggregate({
@@ -143,18 +149,18 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
           password: hashedPassword,
           role,
           operador: operador || normalizedEmail.split("@")[0].substring(0, 10),
-          cuit: cuit ? cuit.replace(/[^\d]/g, "") : null,
-          hospitalId: empresaId, // informative sync with imPersonalEmpresas
+          cuit: effectiveCuit,
+          hospitalId: assignment.proveedorId, // IDPROVEEDOR (match por CUIT con la Empresa de imPersonalEmpresas)
           emailVerified: true,
           estado: 1, // Modo Activo
         },
       });
 
-      if (empresaId) {
+      if (assignment.empresaId && assignment.empresaId !== UEP_EMPRESA_ID) {
         await tx.imPersonalEmpresas.create({
           data: {
             idPersonal: newUser.id,
-            idEmpresa: empresaId,
+            idEmpresa: assignment.empresaId,
           },
         });
       }
@@ -312,7 +318,12 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
       hashedPassword = await authContext.password.hash(password);
     }
 
-    const empresaId = hospitalIdStr ? parseInt(hospitalIdStr, 10) : null;
+    const isLiquidador = allRoles.includes("3");
+    // El rol Liquidador es exclusivo de la UEP (sede bloqueada en null/Sede Central)
+    const rawEmpresaId = (!isLiquidador && hospitalIdStr) ? parseInt(hospitalIdStr, 10) : null;
+    const assignment = await resolveHospitalWorkAssignment(rawEmpresaId);
+    const manualCuit = cuit ? cuit.replace(/[^\d]/g, "") : null;
+    const effectiveCuit = assignment.cuit || manualCuit || null;
 
     await prisma.$transaction(async (tx) => {
       // 1. Update user in imPersonal
@@ -321,8 +332,8 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
         email: normalizedEmail,
         role,
         operador: operador || normalizedEmail.split("@")[0].substring(0, 10),
-        cuit: cuit ? cuit.replace(/[^\d]/g, "") : null,
-        hospitalId: empresaId, // informative sync with imPersonalEmpresas
+        cuit: effectiveCuit,
+        hospitalId: assignment.proveedorId, // IDPROVEEDOR (match por CUIT con la Empresa de imPersonalEmpresas)
       };
 
       if (hashedPassword) {
@@ -339,11 +350,11 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
         where: { idPersonal: userId },
       });
 
-      if (empresaId) {
+      if (assignment.empresaId && assignment.empresaId !== UEP_EMPRESA_ID) {
         await tx.imPersonalEmpresas.create({
           data: {
             idPersonal: userId,
-            idEmpresa: empresaId,
+            idEmpresa: assignment.empresaId,
           },
         });
       }

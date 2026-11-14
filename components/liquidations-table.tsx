@@ -339,31 +339,24 @@ export function LiquidationsTable({
                   let netoFinal = Number(liq.netoAPagar || 0);
                   let totalDistributed = 0;
 
-                  if (isHospitalUser && (hospitalId || hospitalCuit) && liq.details) {
+                  if (isHospitalUser && liq.details) {
+                    // Cruce EXCLUSIVO por CUIT normalizado (sin fallback por ID ni por nombre)
                     const cleanHospCuit = hospitalCuit ? cleanCuit(hospitalCuit) : "";
-                    const hospitalDetails = liq.details.filter(
-                      (d: any) => {
-                        const dCuit = cleanCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit);
-                        if (cleanHospCuit && dCuit) {
-                          return dCuit === cleanHospCuit;
-                        }
-                        return (
-                          (hospitalId && d.hospitalId === hospitalId) ||
-                          (d.prestadorNombre &&
-                            hospitalName &&
-                            d.prestadorNombre.toLowerCase().trim().includes(hospitalName.toLowerCase().trim())) ||
-                          (hospitalName &&
-                            d.prestadorNombre &&
-                            hospitalName.toLowerCase().trim().includes(d.prestadorNombre.toLowerCase().trim()))
-                        );
-                      }
-                    );
-                    const currentDetails = hospitalDetails.length > 0 ? hospitalDetails : liq.details;
+                    const currentDetails = liq.details.filter((d: any) => {
+                      const dCuit = cleanCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit);
+                      return Boolean(cleanHospCuit && dCuit && dCuit === cleanHospCuit);
+                    });
 
                     totalFacturado = currentDetails.reduce((sum: number, d: any) => sum + Number(d.totalFacturado || 0), 0);
                     netoFinal = currentDetails.reduce((sum: number, d: any) => sum + Number(d.netoAPagar || 0), 0);
 
-                    if (liq.distributions) {
+                    if (liq.personalDistributions && liq.personalDistributions.length > 0) {
+                      totalDistributed = liq.personalDistributions.reduce(
+                        (sum: number, p: any) =>
+                          sum + Number(p.honorarios || 0) + Number(p.sobreasignacion || 0),
+                        0
+                      );
+                    } else if (liq.distributions) {
                       totalDistributed = liq.distributions.reduce(
                         (sum: number, d: any) =>
                           sum + Number(d.honorarios || 0) + Number(d.sobreasignaciones || 0) + Number(d.gastos || 0),

@@ -32,20 +32,21 @@ export async function bulkSaveDistributions(
       : [];
     const provIds = matchingProveedores.map((p) => p.id);
 
-    // 1. Fetch liquidation and its details to calculate the limit for this hospital
+    // 1. Fetch liquidation details for this hospital (cruce EXCLUSIVO por CUIT) to calculate the limit
+    if (!hospitalCuit) {
+      return { error: "El establecimiento no posee un CUIT válido configurado en EMPRESAS. No es posible validar el límite de distribución." };
+    }
+
     const details = await prisma.liquidacionDetalle.findMany({
       where: {
         liquidationId,
         OR: [
-          ...(hospitalCuit ? [{ cuit: hospitalCuit }] : []),
+          { cuit: hospitalCuit },
           ...(provIds.length > 0
             ? [
                 { hospitalId: { in: provIds } },
                 { compra: { hospitalId: { in: provIds } } },
               ]
-            : []),
-          ...(empresa?.descripcion
-            ? [{ prestadorNombre: { contains: empresa.descripcion.split("-")[0].trim() } }]
             : []),
         ],
       },

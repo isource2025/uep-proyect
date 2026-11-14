@@ -1,11 +1,11 @@
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { DashboardProvider } from "@/components/dashboard-context";
 import { getActivePeriodInfo } from "@/lib/periods";
+import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import { parseUserRoleIds, isUserAdmin, isUserHospital, getUserRoleConfig } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
@@ -28,17 +28,15 @@ export default async function DashboardLayout({
   }
 
   const userId = parseInt(String(session.user.id), 10);
-  const [activePeriod, personalEmpresa] = await Promise.all([
+  const [activePeriod, resolvedHospitalId] = await Promise.all([
     getActivePeriodInfo(),
-    !isNaN(userId)
-      ? prisma.imPersonalEmpresas.findFirst({
-          where: { idPersonal: userId },
-          select: { idEmpresa: true },
-        })
-      : null,
+    // EMPRESA del usuario: imPersonalEmpresas, o imPersonal.hospitalId (IDPROVEEDOR) -> EMPRESA validada por CUIT
+    resolveUserEmpresaId({
+      id: userId,
+      hospitalId: (session.user as any).hospitalId,
+      cuit: (session.user as any).cuit,
+    }),
   ]);
-
-  const resolvedHospitalId = personalEmpresa?.idEmpresa ?? (session.user as any).hospitalId;
 
   const rawRoleStr = (session.user as any).role || "";
   const userRoles = parseUserRoleIds(rawRoleStr);

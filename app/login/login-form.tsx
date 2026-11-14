@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,9 +24,20 @@ export default function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(initialError);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) {
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  const submitLogin = async () => {
+    if (loading) return;
+
+    // Respaldo con refs por si el navegador autocompletó los campos sin disparar onChange
+    const currentEmail = (email || emailRef.current?.value || "").trim();
+    const currentPassword = password || passwordRef.current?.value || "";
+
+    if (currentEmail !== email) setEmail(currentEmail);
+    if (currentPassword !== password) setPassword(currentPassword);
+
+    if (!currentEmail || !currentPassword) {
       setError("Por favor completa todos los campos.");
       return;
     }
@@ -36,8 +47,8 @@ export default function LoginForm() {
 
     try {
       const { data, error: authError } = await authClient.signIn.email({
-        email,
-        password,
+        email: currentEmail,
+        password: currentPassword,
       });
 
       if (authError) {
@@ -58,9 +69,24 @@ export default function LoginForm() {
         const destination = !isAdmin && u.hospitalId ? "/dashboard/hospital-portal" : "/dashboard";
         router.replace(destination);
       }
-    } catch (err: any) {
+    } catch {
       setError("Ocurrió un error inesperado. Inténtalo de nuevo.");
       setLoading(false);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitLogin();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (
+      (e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter") &&
+      !e.nativeEvent.isComposing
+    ) {
+      e.preventDefault();
+      void submitLogin();
     }
   };
 
@@ -85,7 +111,7 @@ export default function LoginForm() {
           </CardDescription>
         </CardHeader>
 
-        <form onSubmit={handleLogin}>
+        <form onSubmit={handleLogin} onKeyDown={handleKeyDown} noValidate>
           <CardContent className="space-y-4">
             {error && (
               <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400">
@@ -99,8 +125,11 @@ export default function LoginForm() {
                 Correo Electrónico
               </Label>
               <Input
+                ref={emailRef}
                 id="email"
+                name="email"
                 type="email"
+                autoComplete="email"
                 placeholder="correo@ejemplo.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -117,8 +146,11 @@ export default function LoginForm() {
               </div>
               <div className="relative">
                 <Input
+                  ref={passwordRef}
                   id="password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
@@ -126,6 +158,7 @@ export default function LoginForm() {
                 />
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 transition-colors focus:outline-none cursor-pointer"
                   tabIndex={-1}

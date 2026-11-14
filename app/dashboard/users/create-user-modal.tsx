@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { createUserAction, updateUserAction } from "./actions";
 import { getUserRoleConfig, USER_ROLES } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 export interface RoleOption {
   id: number;
@@ -36,6 +37,7 @@ export interface RoleOption {
 export interface HospitalOption {
   id: number;
   nombre: string | null;
+  cuit?: string | null;
 }
 
 export interface UserFormData {
@@ -53,6 +55,7 @@ interface UserModalProps {
   user?: UserFormData | null;
   roles?: RoleOption[];
   hospitals: HospitalOption[];
+  uepCuit?: string;
   trigger?: React.ReactNode;
 }
 
@@ -61,6 +64,7 @@ export function UserModal({
   user = null,
   roles,
   hospitals,
+  uepCuit = "30707307591",
   trigger,
 }: UserModalProps) {
   const [open, setOpen] = useState(false);
@@ -85,32 +89,47 @@ export function UserModal({
 
   const isEdit = mode === "edit" || !!user;
 
+  const getWorkplaceCuit = (hospitalIdValue: string, isLiq: boolean) => {
+    if (isLiq || !hospitalIdValue) return uepCuit;
+    const matched = hospitals.find((h) => String(h.id) === hospitalIdValue);
+    return matched?.cuit || "";
+  };
+
   // Initialize or reset form values when opening or when user changes
   useEffect(() => {
     if (open) {
       if (isEdit && user) {
-        setFormData({
-          name: user.name || "",
-          email: user.email || "",
-          operador: user.operador || "",
-          cuit: user.cuit || "",
-          hospitalId: user.hospitalId ? String(user.hospitalId) : "",
-          password: "",
-          confirmPassword: "",
-        });
-
         // Parse comma-separated roles
         const initialRoles = (user.role || "")
           .split(",")
           .map((r) => r.trim())
           .filter(Boolean);
         setSelectedRoles(initialRoles);
+
+        const isUserLiquidador = initialRoles.includes("3");
+        const initialHospitalId = isUserLiquidador
+          ? ""
+          : user.hospitalId
+          ? String(user.hospitalId)
+          : "";
+        const resolvedCuit =
+          getWorkplaceCuit(initialHospitalId, isUserLiquidador) || user.cuit || "";
+
+        setFormData({
+          name: user.name || "",
+          email: user.email || "",
+          operador: user.operador || "",
+          cuit: resolvedCuit,
+          hospitalId: initialHospitalId,
+          password: "",
+          confirmPassword: "",
+        });
       } else {
         setFormData({
           name: "",
           email: "",
           operador: "",
-          cuit: "",
+          cuit: uepCuit,
           hospitalId: "",
           password: "",
           confirmPassword: "",
@@ -122,7 +141,7 @@ export function UserModal({
       setShowPassword(false);
       setShowConfirmPassword(false);
     }
-  }, [open, isEdit, user]);
+  }, [open, isEdit, user, uepCuit, hospitals]);
 
   const clearFieldError = (field: string) => {
     if (fieldErrors[field]) {
@@ -149,6 +168,10 @@ export function UserModal({
       }
       return updated;
     });
+    if (roleIdStr === "3" && !selectedRoles.includes("3")) {
+      // El rol Liquidador es exclusivo de la UEP: forzar sede a Sede Central UEP y su CUIT
+      setFormData((prevData) => ({ ...prevData, hospitalId: "", cuit: uepCuit }));
+    }
     clearFieldError("role");
   };
 
@@ -156,6 +179,13 @@ export function UserModal({
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
+    if (name === "hospitalId") {
+      const nextCuit = getWorkplaceCuit(value, selectedRoles.includes("3"));
+      setFormData((prev) => ({ ...prev, hospitalId: value, cuit: nextCuit }));
+      clearFieldError("hospitalId");
+      clearFieldError("cuit");
+      return;
+    }
     setFormData((prev) => ({ ...prev, [name]: value }));
     clearFieldError(name);
   };
@@ -180,12 +210,13 @@ export function UserModal({
     if (isEdit && user) {
       data.append("userId", String(user.id));
     }
+    const isLiquidador = selectedRoles.includes("3");
     data.append("name", formData.name);
     data.append("email", formData.email);
     data.append("operador", formData.operador);
     data.append("cuit", formData.cuit);
     data.append("role", selectedRoles.join(","));
-    data.append("hospitalId", formData.hospitalId);
+    data.append("hospitalId", isLiquidador ? "" : formData.hospitalId);
     data.append("password", formData.password);
     data.append("confirmPassword", formData.confirmPassword);
 
@@ -324,22 +355,46 @@ export function UserModal({
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="cuit" className="text-foreground text-xs font-semibold">
-                  CUIT / CUIL
-                </Label>
-                <Input
-                  id="cuit"
-                  name="cuit"
-                  value={formData.cuit}
-                  onChange={handleChange}
-                  placeholder="11 dígitos numéricos"
-                  className={`bg-muted/40 text-foreground text-xs sm:text-sm h-10 focus-visible:ring-emerald-500 ${
-                    fieldErrors.cuit ? "border-red-500/70 focus-visible:ring-red-500" : "border-border"
-                  }`}
-                />
-                {fieldErrors.cuit && (
-                  <p className="text-[11px] text-red-500 font-medium">{fieldErrors.cuit}</p>
-                )}
+                {(() => {
+                  const isLiq = selectedRoles.includes("3");
+                  const resolvedCuit = getWorkplaceCuit(isLiq ? "" : formData.hospitalId, isLiq);
+                  const isCuitLocked = Boolean(resolvedCuit);
+                  return (
+                    <>
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="cuit" className="text-foreground text-xs font-semibold">
+                          CUIT del Lugar de Trabajo
+                        </Label>
+                        {isCuitLocked && (
+                          <span className="text-3xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded border border-border">
+                            Asignado por sede
+                          </span>
+                        )}
+                      </div>
+                      <Input
+                        id="cuit"
+                        name="cuit"
+                        value={formData.cuit}
+                        onChange={handleChange}
+                        readOnly={isCuitLocked}
+                        placeholder="11 dígitos numéricos"
+                        className={cn(
+                          "bg-muted/40 text-foreground text-xs sm:text-sm h-10 focus-visible:ring-emerald-500 font-mono",
+                          isCuitLocked && "opacity-80 cursor-not-allowed bg-muted/70 text-muted-foreground",
+                          fieldErrors.cuit ? "border-red-500/70 focus-visible:ring-red-500" : "border-border"
+                        )}
+                      />
+                      {isCuitLocked && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Se guarda automáticamente el CUIT del efector o Sede Central UEP en <code className="text-3xs">imPersonal.CUIT</code>.
+                        </p>
+                      )}
+                      {fieldErrors.cuit && (
+                        <p className="text-[11px] text-red-500 font-medium">{fieldErrors.cuit}</p>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Selector de Roles Múltiples */}
@@ -391,23 +446,44 @@ export function UserModal({
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="hospitalId" className="text-foreground text-xs font-semibold">
-                  Lugar Trabajo / Establecimiento Efector
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="hospitalId" className="text-foreground text-xs font-semibold">
+                    Lugar Trabajo / Establecimiento Efector
+                  </Label>
+                  {selectedRoles.includes("3") && (
+                    <span className="text-3xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      Exclusivo Sede UEP
+                    </span>
+                  )}
+                </div>
                 <select
                   id="hospitalId"
                   name="hospitalId"
-                  value={formData.hospitalId}
+                  value={selectedRoles.includes("3") ? "" : formData.hospitalId}
                   onChange={handleChange}
-                  className="flex h-10 w-full rounded-md border border-input bg-muted/40 text-foreground px-3 py-2 text-xs sm:text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 cursor-pointer"
+                  disabled={selectedRoles.includes("3")}
+                  className={cn(
+                    "flex h-10 w-full rounded-md border border-input bg-muted/40 text-foreground px-3 py-2 text-xs sm:text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 transition-colors",
+                    selectedRoles.includes("3")
+                      ? "opacity-75 cursor-not-allowed bg-muted/70 text-muted-foreground"
+                      : "cursor-pointer"
+                  )}
                 >
-                  <option value="" className="bg-card text-foreground">Ninguno (Sede Central UEP)</option>
-                  {hospitals.map((h) => (
-                    <option key={h.id} value={h.id} className="bg-card text-foreground">
-                      {h.nombre || `Hospital ${h.id}`}
-                    </option>
-                  ))}
+                  <option value="" className="bg-card text-foreground">
+                    Sede Central UEP
+                  </option>
+                  {!selectedRoles.includes("3") &&
+                    hospitals.map((h) => (
+                      <option key={h.id} value={h.id} className="bg-card text-foreground">
+                        {h.nombre || `Hospital ${h.id}`}
+                      </option>
+                    ))}
                 </select>
+                {selectedRoles.includes("3") && (
+                  <p className="text-[11px] text-muted-foreground">
+                    El rol <strong>Liquidador</strong> es exclusivo para agentes de la Unidad Ejecutora Provincial. La sede queda bloqueada y asignada a la <strong>Sede Central UEP</strong>.
+                  </p>
+                )}
               </div>
             </div>
           </div>

@@ -81,11 +81,9 @@ export default function LiquidationDetailClient({
   const isAdmin = isUserAdmin(currentUser?.role);
   const isHospitalUser = isUserHospital(currentUser?.role, currentUser?.hospitalId);
 
-  const targetHospitalId = isHospitalUser
-    ? (currentUser?.hospitalId ||
-       initialHospitalId ||
-       (liquidation.details && liquidation.details[0]?.hospitalId))
-    : undefined;
+  // EMPRESA (universo SISPER) del usuario hospital, resuelta en el servidor por CUIT.
+  // Nunca usar currentUser.hospitalId (IDPROVEEDOR) ni el hospitalId de un renglón para filtrar nómina SISPER.
+  const targetHospitalId = isHospitalUser ? (initialHospitalId ?? undefined) : undefined;
 
   // Search query state for filtering details
   const [searchQuery, setSearchQuery] = useState("");
@@ -311,17 +309,9 @@ export default function LiquidationDetailClient({
   // Only SAVED financial modifications warrant a hospital rectification notification button
   const isFinancialModified = hasSavedFinancialModifications;
 
-  // Initialise agents state starting ONLY with previously saved distributions for this liquidation and hospital
-  const rawDistributions = (liq.personalDistributions || []).filter((p: any) => {
-    if (!isHospitalUser) return true;
-    if (targetHospitalId && p.hospitalId && p.hospitalId !== targetHospitalId) return false;
-    const agMeta =
-      (agents || []).find((a: any) => String(a.idAgente || a.id || a.cuil) === String(p.idAgente || p.cuil)) ||
-      (extraSavedAgents || []).find((a: any) => String(a.idAgente || a.id || a.cuil) === String(p.idAgente || p.cuil));
-    if (!agMeta) return false;
-    if (targetHospitalId && agMeta.hospitalId && agMeta.hospitalId !== targetHospitalId) return false;
-    return true;
-  });
+  // Initialise agents state starting ONLY with previously saved distributions for this liquidation and hospital.
+  // Para usuarios de hospital, el servidor (page.tsx) ya aisló las distribuciones EXCLUSIVAMENTE por CUIT.
+  const rawDistributions = liq.personalDistributions || [];
 
   const initialDistRows = rawDistributions.map((p: any) => {
     const agMeta =
@@ -1222,20 +1212,10 @@ export default function LiquidationDetailClient({
     return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(num);
   };
 
-  const displayedDetails = isHospitalUser
-    ? liq.details.filter(
-        (d: any) =>
-          d.hospitalId === currentUser?.hospitalId ||
-          (d.prestadorNombre &&
-            currentUser?.name &&
-            d.prestadorNombre.toLowerCase().trim().includes(currentUser.name.toLowerCase().trim())) ||
-          (currentUser?.name &&
-            d.prestadorNombre &&
-            currentUser.name.toLowerCase().trim().includes(d.prestadorNombre.toLowerCase().trim()))
-      )
-    : liq.details;
+  // Para usuarios de hospital, liq.details ya llega filtrado por CUIT desde el servidor (page.tsx)
+  const displayedDetails = liq.details || [];
 
-  const currentDetails = displayedDetails.length > 0 ? displayedDetails : liq.details;
+  const currentDetails = displayedDetails;
 
   const round2 = (val: any) => Math.round((Number(val) || 0) * 100) / 100;
 

@@ -23,6 +23,10 @@ export const auth = betterAuth({
         type: "number",
         required: false,
       },
+      cuit: {
+        type: "string",
+        required: false,
+      },
       operador: {
         type: "string",
         required: false,

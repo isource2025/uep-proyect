@@ -9,6 +9,11 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { getActivePeriodInfo } from "@/lib/periods";
 import { cleanCuit } from "@/lib/hospital-mapping";
+import {
+  resolveHospitalRecipientsByCuits,
+  resolveUserEmpresaId,
+  type HospitalNotificationRecipient,
+} from "@/lib/hospital-resolver";
 import { serializeData } from "@/lib/utils";
 import { isUserAdmin, isUserHospital } from "@/lib/constants";
 import { generateLiquidationExcelBuffer } from "@/lib/export-liquidation-excel";
@@ -1254,6 +1259,76 @@ async function uploadLiquidationSnapshotToCloud(
   }
 }
 
+export async function getHospitalNotificationRecipients(liquidationId: number): Promise<{
+  recipients?: HospitalNotificationRecipient[];
+  missingHospitals?: { nombre: string; cuit: string }[];
+  error?: string;
+}> {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) {
+      return { error: "No autorizado." };
+    }
+
+    const userRole = (session.user as any)?.role;
+    const isAdmin = isUserAdmin(userRole);
+    const resolvedEmpresaId = await resolveUserEmpresaId(session.user as any);
+    if (!isAdmin && isUserHospital(userRole, resolvedEmpresaId)) {
+      return { error: "Acceso denegado." };
+    }
+
+    const liq = await prisma.liquidacion.findUnique({
+      where: { id: liquidationId },
+      select: {
+        id: true,
+        details: {
+          select: {
+            cuit: true,
+            prestadorNombre: true,
+            hospitalId: true,
+            hospital: { select: { cuit: true, nombre: true } },
+          },
+        },
+      },
+    });
+
+    if (!liq) return { error: "Liquidación no encontrada." };
+
+    const hospitalByCuit = new Map<string, string>();
+    const hospitalsWithoutCuit: { nombre: string; cuit: string }[] = [];
+
+    for (const d of liq.details) {
+      const cuit = cleanCuit(d.cuit) || cleanCuit(d.hospital?.cuit);
+      const nombre = d.prestadorNombre?.trim() || d.hospital?.nombre?.trim() || "Establecimiento";
+      if (!cuit) {
+        if (!hospitalsWithoutCuit.some((h) => h.nombre === nombre)) {
+          hospitalsWithoutCuit.push({ nombre, cuit: "" });
+        }
+        continue;
+      }
+      if (!hospitalByCuit.has(cuit)) {
+        hospitalByCuit.set(cuit, nombre);
+      }
+    }
+
+    const recipients = await resolveHospitalRecipientsByCuits(Array.from(hospitalByCuit.keys()));
+    const coveredCuits = new Set(recipients.map((r) => cleanCuit(r.cuit)).filter(Boolean));
+
+    const missingHospitals: { nombre: string; cuit: string }[] = [];
+    for (const [cuit, nombre] of hospitalByCuit.entries()) {
+      if (!coveredCuits.has(cuit)) {
+        missingHospitals.push({ nombre, cuit });
+      }
+    }
+    missingHospitals.push(...hospitalsWithoutCuit);
+
+    return { recipients, missingHospitals };
+  } catch (e: any) {
+    console.error("Error resolving hospital notification recipients:", e);
+    return { error: e.message || "Error al obtener destinatarios del hospital." };
+  }
+}
+
 // 5. Notify hospital by updating liquidation status to NOTIFICADO (or RECTIFICADA) and writing mock email logs
 export async function notifyHospital(
   liquidationId: number,
@@ -1320,15 +1395,38 @@ export async function notifyHospital(
       }
     }
 
-    // Get default hospital names & emails involved
+    // Resolve real hospital names & Rol 4 / EMPRESAS emails strictly by CUIT
     const details = liq.details;
-    const hospitalEmails = details
-      .map((d) => d.hospital?.nombre ? `${d.hospital.nombre.toLowerCase().replace(/\s+/g, "")}@uep.gov.ar` : null)
-      .filter((email, index, self) => email !== null && self.indexOf(email) === index) as string[];
+    const detailCuits = Array.from(
+      new Set(
+        details
+          .map((d) => cleanCuit(d.cuit) || cleanCuit(d.hospital?.cuit))
+          .filter(Boolean)
+      )
+    );
+    const resolvedHospitalRecipients =
+      customOptions?.recipients && customOptions.recipients.length > 0
+        ? []
+        : await resolveHospitalRecipientsByCuits(detailCuits);
+
+    const hospitalEmails = resolvedHospitalRecipients.map((r) => r.email);
 
     const hospitalNames = details
-      .map((d) => d.hospital?.nombre || "Hospital Prestador")
+      .map((d) => d.prestadorNombre?.trim() || d.hospital?.nombre?.trim() || "Hospital Prestador")
       .filter((name, index, self) => self.indexOf(name) === index);
+
+    // Determine final recipients before transitioning status
+    const finalRecipients =
+      customOptions?.recipients && customOptions.recipients.length > 0
+        ? customOptions.recipients
+        : hospitalEmails;
+
+    if (finalRecipients.length === 0) {
+      return {
+        error:
+          "No se encontraron operadores con Rol 4 (Hospital) ni correos institucionales asociados por CUIT. Agregue al menos un destinatario manual.",
+      };
+    }
 
     // Update status to NOTIFICADO and save snapshot
     await prisma.liquidacion.update({
@@ -1341,13 +1439,6 @@ export async function notifyHospital(
 
     // Format local date
     const formattedDate = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
-
-    // Determine final recipients, subject, and message
-    const finalRecipients = (customOptions?.recipients && customOptions.recipients.length > 0)
-      ? customOptions.recipients
-      : hospitalEmails.length > 0
-        ? hospitalEmails
-        : ["hospital@uep.gov.ar"];
 
     const emailHeaderTitle = wasNotifiedBefore
       ? "📧 NOTIFICACIÓN DE LIQUIDACIÓN RECTIFICADA DE OBRA SOCIAL"

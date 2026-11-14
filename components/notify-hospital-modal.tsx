@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { getHospitalNotificationRecipients } from "@/app/dashboard/liquidations/actions";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,10 @@ export interface RecipientItem {
   name: string;
   email: string;
   isCustom?: boolean;
+  cuit?: string;
+  hospitalName?: string;
+  source?: "user" | "empresa" | "custom";
+  userName?: string;
 }
 
 export interface NotifyHospitalModalProps {
@@ -63,6 +68,8 @@ export function NotifyHospitalModal({
   isRectification = false,
 }: NotifyHospitalModalProps) {
   const [recipientsList, setRecipientsList] = useState<RecipientItem[]>([]);
+  const [missingHospitals, setMissingHospitals] = useState<{ nombre: string; cuit: string }[]>([]);
+  const [loadingRecipients, setLoadingRecipients] = useState(false);
   const [newEmailInput, setNewEmailInput] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
@@ -81,9 +88,9 @@ export function NotifyHospitalModal({
   useEffect(() => {
     if (!liquidation || !isOpen) return;
 
-    // 1. Calculate default hospital recipient items
+    let cancelled = false;
+
     const details = liquidation.details || [];
-    const items: RecipientItem[] = [];
     const hospitalNames: string[] = [];
 
     details.forEach((d: any, idx: number) => {
@@ -91,31 +98,44 @@ export function NotifyHospitalModal({
       if (!hospitalNames.includes(hName)) {
         hospitalNames.push(hName);
       }
-      const rawEmail =
-        d.hospital?.email ||
-        `${hName.toLowerCase().replace(/\s+/g, "")}@uep.gov.ar`;
-
-      if (!items.some((it) => it.email.toLowerCase() === rawEmail.toLowerCase())) {
-        items.push({
-          id: `hosp-${d.hospitalId || idx}`,
-          name: hName,
-          email: rawEmail,
-          isCustom: false,
-        });
-      }
     });
 
-    if (items.length === 0) {
-      items.push({
-        id: "default-1",
-        name: "Hospital Prestador",
-        email: "hospital@uep.gov.ar",
-        isCustom: false,
-      });
-    }
-
-    setRecipientsList(items);
+    setRecipientsList([]);
+    setMissingHospitals([]);
+    setLoadingRecipients(true);
     setNewEmailInput("");
+
+    getHospitalNotificationRecipients(liquidation.id)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.error) {
+          setErrorMsg(res.error);
+          setRecipientsList([]);
+          setMissingHospitals([]);
+          return;
+        }
+        setRecipientsList(
+          (res.recipients || []).map((r) => ({
+            id: r.id,
+            name: r.name,
+            email: r.email,
+            cuit: r.cuit,
+            hospitalName: r.hospitalName,
+            source: r.source,
+            userName: r.userName,
+            isCustom: false,
+          }))
+        );
+        setMissingHospitals(res.missingHospitals || []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("Error loading Rol 4 recipients:", err);
+        setErrorMsg("No se pudieron cargar los destinatarios Rol 4 del hospital.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRecipients(false);
+      });
 
     // 2. Build default subject
     const periodStr = liquidation.mesCarga?.trim() || "Período Actual";
@@ -167,6 +187,10 @@ Unidad Ejecutora Provincial`
       );
     }
     setErrorMsg("");
+
+    return () => {
+      cancelled = true;
+    };
   }, [liquidation, isOpen, isRectification]);
 
   const handleAddEmail = (e?: React.FormEvent) => {
@@ -341,23 +365,30 @@ Unidad Ejecutora Provincial`
 
               {/* Badges Container */}
               <div className="p-3 bg-background border border-border rounded-lg flex flex-wrap items-center gap-2 min-h-[52px] overflow-visible">
-                {recipientsList.length === 0 ? (
+                {loadingRecipients ? (
+                  <span className="text-xs text-muted-foreground inline-flex items-center gap-2">
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
+                    Buscando operadores Rol 4 (Hospital) vinculados por CUIT...
+                  </span>
+                ) : recipientsList.length === 0 ? (
                   <span className="text-xs text-muted-foreground italic">
-                    No hay destinatarios seleccionados. Agregue un correo debajo.
+                    No se encontraron operadores Rol 4 ni correos asignados. Agregue un correo destinatario debajo.
                   </span>
                 ) : (
                   recipientsList.map((rec) => (
                     <div
                       key={rec.id}
-                      className="group relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 text-xs font-semibold shadow-2xs hover:bg-primary/15 hover:z-30 transition-all cursor-default"
+                      className="group relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 text-xs font-semibold shadow-2xs hover:bg-primary/15 hover:z-30 transition-all cursor-default max-w-full"
                       title={`Correo de destino: ${rec.email}`}
                     >
                       {rec.isCustom ? (
                         <Mail className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                      ) : rec.source === "user" ? (
+                        <UserCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                       ) : (
-                        <Building2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                        <Building2 className="h-3.5 w-3.5 text-teal-500 shrink-0" />
                       )}
-                      <span className="max-w-[240px] sm:max-w-[320px] truncate">
+                      <span className="max-w-[220px] sm:max-w-[300px] truncate">
                         {rec.name}
                       </span>
                       <button
@@ -367,7 +398,7 @@ Unidad Ejecutora Provincial`
                           handleRemoveRecipient(rec.id);
                         }}
                         disabled={isSending}
-                        className="p-0.5 rounded-full hover:bg-primary/20 text-primary/70 hover:text-primary transition-colors cursor-pointer ml-1"
+                        className="p-0.5 rounded-full hover:bg-primary/20 text-primary/70 hover:text-primary transition-colors cursor-pointer ml-1 shrink-0"
                         title={`Eliminar ${rec.name}`}
                       >
                         <X className="h-3 w-3" />
@@ -377,24 +408,59 @@ Unidad Ejecutora Provincial`
                       <div className="absolute left-0 sm:left-1/2 sm:-translate-x-1/2 top-full mt-2 hidden group-hover:flex flex-col z-50 w-72 sm:w-80 max-w-[90vw] p-3 bg-popover text-popover-foreground rounded-lg shadow-2xl border border-border text-xs pointer-events-none animate-in fade-in-0 zoom-in-95 whitespace-normal break-words text-left">
                         {/* Upward Arrow */}
                         <div className="absolute -top-1.5 left-4 sm:left-1/2 sm:-translate-x-1/2 w-3 h-3 bg-popover border-t border-l border-border rotate-45" />
-                        
+
                         <div className="flex items-center gap-1.5 font-bold text-primary text-2xs mb-1.5 pb-1 border-b border-border/60 relative z-10">
                           <Mail className="h-3.5 w-3.5 shrink-0" />
-                          <span>Dirección de Correo Destino</span>
+                          <span>
+                            {rec.source === "user"
+                              ? "Operador Hospital UEP (Rol 4)"
+                              : rec.source === "empresa"
+                              ? "Correo Institucional (EMPRESAS)"
+                              : "Destinatario Manual"}
+                          </span>
                         </div>
                         <div className="p-1.5 rounded bg-muted/60 border border-border/50 font-mono text-2xs text-foreground font-bold break-all select-text relative z-10">
                           {rec.email}
                         </div>
                         {!rec.isCustom && (
-                          <p className="text-3xs text-muted-foreground mt-1.5 leading-tight relative z-10">
-                            <strong className="text-foreground font-semibold">Establecimiento:</strong> {rec.name}
-                          </p>
+                          <div className="text-3xs text-muted-foreground mt-1.5 space-y-0.5 leading-tight relative z-10">
+                            <p>
+                              <strong className="text-foreground font-semibold">Establecimiento:</strong>{" "}
+                              {rec.hospitalName || rec.name}
+                            </p>
+                            {rec.cuit && (
+                              <p className="font-mono">
+                                <strong className="text-foreground font-semibold font-sans">CUIT:</strong>{" "}
+                                {rec.cuit}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
                   ))
                 )}
               </div>
+
+              {!loadingRecipients && missingHospitals.length > 0 && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-2xs text-amber-800 dark:text-amber-300 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    Establecimientos sin operador Rol 4 ni correo registrado:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-0.5 break-words">
+                    {missingHospitals.map((mh, i) => (
+                      <li key={`${mh.cuit || mh.nombre}-${i}`}>
+                        <span className="font-semibold">{mh.nombre}</span>
+                        {mh.cuit ? ` (CUIT ${mh.cuit})` : " (sin CUIT)"}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-3xs opacity-90">
+                    Asigne un usuario con Rol 4 en Gestión de Usuarios o agregue un correo manual debajo.
+                  </p>
+                </div>
+              )}
 
               {/* Input para agregar nuevos destinatarios */}
               <div className="flex items-center gap-2 pt-1">
@@ -482,7 +548,7 @@ Unidad Ejecutora Provincial`
             <Button
               type="submit"
               form="notify-form"
-              disabled={isSending || recipientsList.length === 0}
+              disabled={isSending || loadingRecipients || recipientsList.length === 0}
               className={`h-9 px-5 text-xs font-bold gap-2 cursor-pointer shadow-sm ${
                 isRectification
                   ? "bg-amber-600 hover:bg-amber-500 text-zinc-950"

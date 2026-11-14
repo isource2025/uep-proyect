@@ -2,24 +2,11 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import {
-  ShieldCheck,
-  Mail,
-  Users2,
-  UserCheck,
-  UserX,
-  CheckCircle2,
-  XCircle,
-  Building2,
-} from "lucide-react";
-import { SearchBar } from "@/components/search-bar";
-import { cn } from "@/lib/utils";
-import { CreateUserModal, EditUserModal } from "./create-user-modal";
-import { toggleUserStatusAction } from "./actions";
-import { parseUserRoleIds, getUserRoleConfig, getUserRoleBadge, isUserAdmin, USER_ROLES } from "@/lib/constants";
+import { Card, CardContent } from "@/components/ui/card";
+import { Users2, UserCheck, UserX } from "lucide-react";
+import { CreateUserModal } from "./create-user-modal";
+import { UsersTableClient, type UserListItem } from "./users-client";
+import { parseUserRoleIds, isUserAdmin, USER_ROLES } from "@/lib/constants";
 import { cleanCuit } from "@/lib/hospital-mapping";
 import { UEP_DEFAULT_CUIT, UEP_EMPRESA_ID } from "@/lib/hospital-resolver";
 
@@ -38,14 +25,16 @@ export default async function UsersPage({
   const resolvedSearchParams = await searchParams;
   const query = resolvedSearchParams.query || "";
 
-  // 1. Fetch users from imPersonal (those who have an email set)
-  const users = await prisma.user.findMany({
+  const trimmedQuery = query.trim();
+
+  // 1. Fetch all UEP operators from imPersonal (requiere email y rol UEP asignado, excluyendo usuarios de iMedic)
+  const rawUsers = await prisma.user.findMany({
     where: {
-      email: { not: null },
-      OR: [
-        { name: { contains: query } },
-        { email: { contains: query } },
-        { operador: { contains: query } },
+      AND: [
+        { email: { not: null } },
+        { email: { not: "" } },
+        { role: { not: null } },
+        { role: { not: "" } },
       ],
     },
     include: {
@@ -54,7 +43,12 @@ export default async function UsersPage({
     orderBy: { name: "asc" },
   });
 
-  // Calculate metrics
+  const hasValidUepRole = (roleStr?: string | null) =>
+    parseUserRoleIds(roleStr).some((roleId) => Boolean(USER_ROLES[roleId]));
+
+  const users = rawUsers.filter((u) => hasValidUepRole(u.role));
+
+  // Calculate metrics exclusivamente sobre la nómina de operadores UEP con rol asignado
   const totalCount = users.length;
   const activeCount = users.filter((u) => u.estado !== 0).length;
   const inactiveCount = users.filter((u) => u.estado === 0).length;
@@ -109,6 +103,21 @@ export default async function UsersPage({
       nombre: e.descripcion?.trim() || `Hospital ${e.id}`,
       cuit: cleanCuit(e.cuit) || null,
     }));
+
+  const serializedUsers: UserListItem[] = users.map((u) => {
+    const resolvedEmpresa = resolveUserEmpresa(u);
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      operador: u.operador,
+      cuit: u.cuit,
+      role: u.role,
+      estado: u.estado,
+      empresaId: resolvedEmpresa?.idEmpresa,
+      establecimiento: resolvedEmpresa?.descripcion || "Sede Central UEP",
+    };
+  });
 
   return (
     <div className="space-y-6 text-foreground">
@@ -176,166 +185,14 @@ export default async function UsersPage({
         </Card>
       </div>
 
-      {/* Search & List Card */}
-      <Card className="border-border bg-card text-card-foreground">
-        <CardHeader className="pb-4">
-          <SearchBar
-            name="query"
-            placeholder="Buscar por nombre, operador o email..."
-            defaultValue={query}
-            className="max-w-sm"
-          />
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-lg border border-border overflow-hidden">
-            <Table>
-              <TableHeader className="bg-muted/50 text-muted-foreground">
-                <TableRow className="hover:bg-transparent border-border">
-                  <TableHead className="font-semibold text-3xs uppercase py-3">Nombre</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase">Operador</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase">Email</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase">Rol ERP</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase">Establecimiento</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-center">Estado</TableHead>
-                  <TableHead className="font-semibold text-3xs uppercase text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.length === 0 ? (
-                  <TableRow className="border-border">
-                    <TableCell colSpan={7} className="text-center text-muted-foreground text-sm py-12">
-                      <div className="flex flex-col items-center gap-2">
-                        <Users2 className="h-8 w-8 text-muted-foreground animate-pulse" />
-                        <p>No se encontraron operadores registrados.</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  users.map((u) => {
-                    const isActive = u.estado !== 0;
-
-                    return (
-                      <TableRow
-                        key={u.id}
-                        className={cn(
-                          "hover:bg-muted/40 border-border text-foreground transition-colors",
-                          !isActive && "opacity-60 bg-muted/20"
-                        )}
-                      >
-                        <TableCell className="font-semibold text-foreground py-3.5 text-xs whitespace-normal break-words max-w-[200px]">
-                          {u.name}
-                        </TableCell>
-                        <TableCell>
-                          <code className="rounded bg-muted px-2 py-1 text-3xs font-mono text-emerald-600 dark:text-emerald-400 border border-border">
-                            {u.operador || "-"}
-                          </code>
-                        </TableCell>
-                        <TableCell className="text-xs font-mono text-muted-foreground">
-                          <div className="flex items-center gap-1.5">
-                            <Mail className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                            <span className="truncate max-w-[180px]">{u.email}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs">
-                          <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
-                            {(() => {
-                              const userRoles = parseUserRoleIds(u.role);
-                              if (userRoles.length === 0) {
-                                return <span className="text-muted-foreground text-3xs italic">Sin rol</span>;
-                              }
-                              return userRoles.map((roleId) => {
-                                const config = getUserRoleConfig(roleId);
-                                const roleName = config.name;
-                                return (
-                                  <span
-                                    key={roleId}
-                                    title={config.description}
-                                    className={cn(
-                                      "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-3xs font-semibold border",
-                                      getUserRoleBadge(roleId)
-                                    )}
-                                  >
-                                    <ShieldCheck className="h-3 w-3 shrink-0" />
-                                    {roleName}
-                                  </span>
-                                );
-                              });
-                            })()}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          <div className="flex items-center gap-1.5">
-                            <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                            <span className="text-xs truncate max-w-[180px]">
-                              {resolveUserEmpresa(u)?.descripcion || "Sede Central UEP"}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {isActive ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-3xs font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-                              <CheckCircle2 className="h-3 w-3 shrink-0" />
-                              Activo
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-3xs font-bold bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400">
-                              <XCircle className="h-3 w-3 shrink-0" />
-                              Inactivo
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <EditUserModal
-                              user={{
-                                id: u.id,
-                                name: u.name,
-                                email: u.email,
-                                operador: u.operador,
-                                cuit: u.cuit,
-                                role: u.role,
-                                hospitalId: resolveUserEmpresa(u)?.idEmpresa ?? undefined,
-                              }}
-                              roles={roles}
-                              hospitals={hospitals}
-                              uepCuit={uepCuit}
-                            />
-                            <form action={toggleUserStatusAction} className="inline-block">
-                              <input type="hidden" name="userId" value={u.id} />
-                              <input type="hidden" name="currentEstado" value={isActive ? 1 : 0} />
-                              {isActive ? (
-                                <Button
-                                  type="submit"
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-3xs border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 hover:text-rose-600 cursor-pointer gap-1 px-2.5 transition-colors"
-                                >
-                                  <UserX className="h-3 w-3" />
-                                  Dar de baja
-                                </Button>
-                              ) : (
-                                <Button
-                                  type="submit"
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 text-3xs border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-600 cursor-pointer gap-1 px-2.5 transition-colors"
-                                >
-                                  <UserCheck className="h-3 w-3" />
-                                  Reactivar
-                                </Button>
-                              )}
-                            </form>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Search & Live Filtering List Card */}
+      <UsersTableClient
+        users={serializedUsers}
+        roles={roles}
+        hospitals={hospitals}
+        uepCuit={uepCuit}
+        initialQuery={trimmedQuery}
+      />
     </div>
   );
 }

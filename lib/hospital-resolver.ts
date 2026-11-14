@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { cleanCuit, PROVEEDOR_TO_EMPRESA_MAP } from "@/lib/hospital-mapping";
+import { parseUserRoleIds } from "@/lib/constants";
 
 export const UEP_EMPRESA_ID = 1;
 export const UEP_DEFAULT_CUIT = "30707307591";
@@ -278,4 +279,178 @@ export async function resolveUserEmpresaId(user: {
   }
 
   return undefined;
+}
+
+export interface HospitalNotificationRecipient {
+  id: string;
+  name: string;
+  email: string;
+  cuit: string;
+  hospitalName: string;
+  source: "user" | "empresa";
+  userName?: string;
+}
+
+/**
+ * Resuelve destinatarios reales para notificaciones a hospitales a partir de una lista de CUITs:
+ * 1. Operadores UEP activos (estado !== 0) con Rol 4 (Hospital / CAPS) asignado y email válido,
+ *    vinculados estrictamente por CUIT normalizado (imPersonal.CUIT, imPersonalEmpresas->EMPRESAS o PROVEEDORES).
+ * 2. Correo institucional cargado en EMPRESAS.EMail coincidente por CUIT (si existiera).
+ * Descarta usuarios de iMedic (sin rol UEP) o con roles distintos a Hospital.
+ */
+export async function resolveHospitalRecipientsByCuits(
+  targetCuits: string[]
+): Promise<HospitalNotificationRecipient[]> {
+  const uepCuit = await getSedeCentralUepCuit();
+  const targetSet = new Set(
+    targetCuits
+      .map((c) => cleanCuit(c))
+      .filter((c) => Boolean(c) && c !== UEP_DEFAULT_CUIT && c !== uepCuit)
+  );
+
+  if (targetSet.size === 0) return [];
+
+  const [candidateUsers, allEmpresasWithCuit] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        estado: { not: 0 },
+        AND: [
+          { email: { not: null } },
+          { email: { not: "" } },
+          { role: { not: null } },
+          { role: { not: "" } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        cuit: true,
+        hospitalId: true,
+        hospital: { select: { id: true, cuit: true, nombre: true } },
+      },
+      orderBy: { name: "asc" },
+    }),
+    prisma.empresa.findMany({
+      where: { cuit: { not: null } },
+      select: { id: true, descripcion: true, cuit: true, email: true },
+    }),
+  ]);
+
+  const empresaByCuit = new Map<
+    string,
+    { id: number; descripcion: string; email: string | null }
+  >();
+  for (const emp of allEmpresasWithCuit) {
+    if (emp.id === UEP_EMPRESA_ID) continue;
+    const empCuit = cleanCuit(emp.cuit);
+    if (!empCuit || !targetSet.has(empCuit)) continue;
+    if (!empresaByCuit.has(empCuit)) {
+      empresaByCuit.set(empCuit, {
+        id: emp.id,
+        descripcion: emp.descripcion?.trim() || `Hospital ${emp.id}`,
+        email: emp.email?.trim() || null,
+      });
+    }
+  }
+
+  // Filtrar estrictamente usuarios activos con Rol 4 (Hospital / CAPS) y email válido
+  const rol4Users = candidateUsers.filter((u) => {
+    const email = u.email?.trim() || "";
+    if (!email.includes("@")) return false;
+    return parseUserRoleIds(u.role).includes("4");
+  });
+
+  const rol4UserIds = rol4Users.map((u) => u.id);
+  const links =
+    rol4UserIds.length > 0
+      ? await prisma.imPersonalEmpresas.findMany({
+          where: { idPersonal: { in: rol4UserIds } },
+          select: {
+            idPersonal: true,
+            idEmpresa: true,
+            empresa: { select: { id: true, cuit: true, descripcion: true } },
+          },
+          orderBy: { idEmpresa: "asc" },
+        })
+      : [];
+
+  const linkCuitByUserId = new Map<
+    number,
+    { cuit: string; descripcion?: string }
+  >();
+  for (const link of links) {
+    if (link.idEmpresa === UEP_EMPRESA_ID || linkCuitByUserId.has(link.idPersonal)) {
+      continue;
+    }
+    const c = cleanCuit(link.empresa?.cuit);
+    if (c) {
+      linkCuitByUserId.set(link.idPersonal, {
+        cuit: c,
+        descripcion: link.empresa?.descripcion?.trim(),
+      });
+    }
+  }
+
+  const results: HospitalNotificationRecipient[] = [];
+  const seenEmails = new Set<string>();
+
+  for (const u of rol4Users) {
+    const rawUserCuit = cleanCuit(u.cuit);
+    const linkInfo = linkCuitByUserId.get(u.id);
+    const provCuit = cleanCuit(u.hospital?.cuit);
+
+    const effectiveCuit =
+      (rawUserCuit && rawUserCuit !== UEP_DEFAULT_CUIT && rawUserCuit !== uepCuit
+        ? rawUserCuit
+        : "") ||
+      linkInfo?.cuit ||
+      provCuit;
+
+    if (!effectiveCuit || !targetSet.has(effectiveCuit)) continue;
+
+    const cleanEmail = u.email!.trim();
+    const emailKey = cleanEmail.toLowerCase();
+    if (seenEmails.has(emailKey)) continue;
+    seenEmails.add(emailKey);
+
+    const empInfo = empresaByCuit.get(effectiveCuit);
+    const hospitalName =
+      empInfo?.descripcion ||
+      linkInfo?.descripcion ||
+      u.hospital?.nombre?.trim() ||
+      `CUIT ${effectiveCuit}`;
+    const userName = u.name?.trim() || cleanEmail;
+
+    results.push({
+      id: `user-${u.id}`,
+      name: `${userName} (${hospitalName})`,
+      email: cleanEmail,
+      cuit: effectiveCuit,
+      hospitalName,
+      source: "user",
+      userName,
+    });
+  }
+
+  // Sumar correos institucionales de EMPRESAS.EMail (si estuvieran configurados)
+  for (const [empCuit, emp] of empresaByCuit.entries()) {
+    const empEmail = emp.email?.trim() || "";
+    if (!empEmail.includes("@")) continue;
+    const emailKey = empEmail.toLowerCase();
+    if (seenEmails.has(emailKey)) continue;
+    seenEmails.add(emailKey);
+
+    results.push({
+      id: `empresa-${emp.id}`,
+      name: emp.descripcion,
+      email: empEmail,
+      cuit: empCuit,
+      hospitalName: emp.descripcion,
+      source: "empresa",
+    });
+  }
+
+  return results;
 }

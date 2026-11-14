@@ -43,7 +43,7 @@ export const USER_ROLES: Record<string, UserRoleConfig> = {
     name: "Hospital / CAPS",
     shortCode: "HOSPITAL",
     description: "Director o administrador de efector sanitario. Realiza distribución de fondos asignados.",
-    badgeClasses: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25",
+    badgeClasses: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/25",
     isHospital: true,
   },
   "5": {

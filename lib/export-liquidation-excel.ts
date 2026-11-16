@@ -129,6 +129,10 @@ export function buildLiquidationWorkbook(
   const details = liq.details || [];
   const personalDistributions = isExplicitPending ? [] : (liq.personalDistributions || []);
   const distributions = isExplicitPending ? [] : (liq.distributions || []);
+  const hospitalScopeName = typeof liq.hospitalScopeName === "string" && liq.hospitalScopeName.trim()
+    ? liq.hospitalScopeName.trim()
+    : "";
+  const isHospitalScoped = Boolean(hospitalScopeName || liq.hospitalScopeCuit);
 
   // =========================================================================
   // 1. HOJA 1: LIQUIDACIÓN DE PRESTACIONES
@@ -149,7 +153,9 @@ export function buildLiquidationWorkbook(
   // Título principal
   ws1.mergeCells("A1:M1");
   const title1 = ws1.getCell("A1");
-  title1.value = "LIQUIDACIÓN DE PRESTACIONES - UEP MSP";
+  title1.value = isHospitalScoped
+    ? `LIQUIDACIÓN DE PRESTACIONES - ${hospitalScopeName || "ESTABLECIMIENTO SANITARIO"}`
+    : "LIQUIDACIÓN DE PRESTACIONES - UEP MSP";
   title1.font = { name: "Arial", size: 13, bold: true, color: { argb: "FFFFFFFF" } };
   title1.fill = titleFill;
   title1.alignment = { horizontal: "center", vertical: "middle" };
@@ -220,10 +226,12 @@ export function buildLiquidationWorkbook(
   }
   nextRowIdx++;
 
-  // Sección Totales Consolidados
+  // Sección Totales
   ws1.mergeCells(`A${nextRowIdx}:M${nextRowIdx}`);
   const secTot = ws1.getCell(`A${nextRowIdx}`);
-  secTot.value = "RESUMEN DE TOTALES CONSOLIDADOS ($)";
+  secTot.value = isHospitalScoped
+    ? "RESUMEN DE TOTALES DEL ESTABLECIMIENTO ($)"
+    : "RESUMEN DE TOTALES CONSOLIDADOS ($)";
   secTot.font = { name: "Arial", size: 10, bold: true, color: { argb: "FF1E293B" } };
   secTot.fill = sectionFill;
   secTot.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
@@ -272,7 +280,9 @@ export function buildLiquidationWorkbook(
   // Sección Detalle de Facturas
   ws1.mergeCells(`A${nextRowIdx}:M${nextRowIdx}`);
   const secDet = ws1.getCell(`A${nextRowIdx}`);
-  secDet.value = "DETALLE DE COMPROBANTES Y FACTURAS DE HOSPITALES";
+  secDet.value = isHospitalScoped
+    ? "DETALLE DE COMPROBANTES DEL ESTABLECIMIENTO"
+    : "DETALLE DE COMPROBANTES Y FACTURAS DE HOSPITALES";
   secDet.font = { name: "Arial", size: 10, bold: true, color: { argb: "FF1E293B" } };
   secDet.fill = sectionFill;
   secDet.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
@@ -435,7 +445,9 @@ export function buildLiquidationWorkbook(
   // Título principal
   ws2.mergeCells("A1:H1");
   const title2 = ws2.getCell("A1");
-  title2.value = "RESUMEN DISTRIBUCIÓN DE COBRANZA - UEP MSP";
+  title2.value = isHospitalScoped
+    ? `RESUMEN DE DISTRIBUCIÓN - ${hospitalScopeName || "ESTABLECIMIENTO SANITARIO"}`
+    : "RESUMEN DISTRIBUCIÓN DE COBRANZA - UEP MSP";
   title2.font = { name: "Arial", size: 13, bold: true, color: { argb: "FFFFFFFF" } };
   title2.fill = titleFill;
   title2.alignment = { horizontal: "center", vertical: "middle" };
@@ -728,7 +740,9 @@ export function buildLiquidationWorkbook(
 
     ws3.mergeCells("A1:H1");
     const title3 = ws3.getCell("A1");
-    title3.value = `NÓMINA DE AGENTES Y PROFESIONALES ASIGNADOS (SISPER) - ${liqCode}`;
+    title3.value = isHospitalScoped && hospitalScopeName
+      ? `NÓMINA DE AGENTES ASIGNADOS (SISPER) - ${liqCode} - ${hospitalScopeName}`
+      : `NÓMINA DE AGENTES Y PROFESIONALES ASIGNADOS (SISPER) - ${liqCode}`;
     title3.font = { name: "Arial", size: 12, bold: true, color: { argb: "FFFFFFFF" } };
     title3.fill = titleFill;
     title3.alignment = { horizontal: "center", vertical: "middle" };
@@ -804,7 +818,9 @@ export function buildLiquidationWorkbook(
 
   wsExpte.mergeCells("A1:G1");
   const titleExpte = wsExpte.getCell("A1");
-  titleExpte.value = "REPORTE RESUMEN POR EXPEDIENTE ADMINISTRATIVO - UEP MSP";
+  titleExpte.value = isHospitalScoped
+    ? `RESUMEN POR EXPEDIENTE - ${hospitalScopeName || "ESTABLECIMIENTO SANITARIO"}`
+    : "REPORTE RESUMEN POR EXPEDIENTE ADMINISTRATIVO - UEP MSP";
   titleExpte.font = { name: "Arial", size: 12, bold: true, color: { argb: "FFFFFFFF" } };
   titleExpte.fill = titleFill;
   titleExpte.alignment = { horizontal: "center", vertical: "middle" };
@@ -824,7 +840,9 @@ export function buildLiquidationWorkbook(
   const rowDataExp = wsExpte.getRow(4);
   rowDataExp.values = [
     clientName,
-    `Liq. N° ${liq.id} - ${clientName} - ${mesCarga}`,
+    isHospitalScoped && hospitalScopeName
+      ? `Liq. N° ${liq.id} - ${hospitalScopeName} - ${clientName} - ${mesCarga}`
+      : `Liq. N° ${liq.id} - ${clientName} - ${mesCarga}`,
     liq.expediente || "Pendiente de Asignación",
     normaLegalText,
     formatMoney(liq.totalHonorarios || 0),
@@ -874,7 +892,18 @@ export function buildLiquidationWorkbook(
   const sanitizedClient = clientName
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "")
     .slice(0, 20);
+
+  const sanitizedHospital = hospitalScopeName
+    ? hospitalScopeName
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^_|_$/g, "")
+        .slice(0, 22)
+    : "";
 
   let filePrefix = "Reporte_Liquidacion";
   if (isExplicitPending || effectiveStatus === "PENDIENTE") {
@@ -883,7 +912,9 @@ export function buildLiquidationWorkbook(
     filePrefix = "Reporte_Distribuido";
   }
 
-  const fileName = `${filePrefix}_${liqCode}_${sanitizedClient}.xlsx`;
+  const fileName = sanitizedHospital
+    ? `${filePrefix}_${liqCode}_${sanitizedHospital}_${sanitizedClient}.xlsx`
+    : `${filePrefix}_${liqCode}_${sanitizedClient}.xlsx`;
 
   return { workbook: wb, fileName };
 }
@@ -912,18 +943,14 @@ export async function downloadLiquidationExcel(
   reportMode: "PENDIENTE" | "DISTRIBUIDA" | "AUTO" = "AUTO"
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    let liq = existingLiquidation;
-    let mspAgentsMap: Record<string, { apellidoyNombre: string; idAgente: string; hospitalNombre: string }> = {};
-
     const res = await getLiquidationExcelReportData(liquidationId);
     if (!res || res.error || !res.liquidation) {
-      if (!liq) {
-        throw new Error(res?.error || "No se pudo cargar la información de la liquidación.");
-      }
-    } else {
-      liq = res.liquidation;
-      mspAgentsMap = res.mspAgentsMap || {};
+      throw new Error(res?.error || "No se pudo cargar la información de la liquidación.");
     }
+
+    const liq = res.liquidation;
+    const mspAgentsMap: Record<string, { apellidoyNombre: string; idAgente: string; hospitalNombre: string }> =
+      res.mspAgentsMap || {};
 
     const { workbook, fileName } = buildLiquidationWorkbook(liq, mspAgentsMap, customNormaLegal, reportMode);
     const arrayBuffer = await workbook.xlsx.writeBuffer();

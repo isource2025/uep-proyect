@@ -107,7 +107,10 @@ export default function LiquidationDetailClient({
     try {
       setDownloadingReport(true);
       setErrorMsg(null);
-      await downloadLiquidationExcel(liq.id, liq, undefined, "PENDIENTE");
+      const res = await downloadLiquidationExcel(liq.id, liq, undefined, "PENDIENTE");
+      if (!res.success && res.error) {
+        setErrorMsg(res.error);
+      }
     } catch (err: any) {
       console.error("Error al descargar reporte pendiente:", err);
       setErrorMsg(err.message || "Error al generar el reporte en estado pendiente.");
@@ -121,7 +124,10 @@ export default function LiquidationDetailClient({
     try {
       setDownloadingReport(true);
       setErrorMsg(null);
-      await downloadLiquidationExcel(liq.id, liq, overrideNorma, "DISTRIBUIDA");
+      const res = await downloadLiquidationExcel(liq.id, liq, overrideNorma, "DISTRIBUIDA");
+      if (!res.success && res.error) {
+        setErrorMsg(res.error);
+      }
     } catch (err: any) {
       console.error("Error al descargar reporte distribuido:", err);
       setErrorMsg(err.message || "Error al generar el reporte en estado distribuido.");
@@ -1447,36 +1453,26 @@ export default function LiquidationDetailClient({
             <span className="hidden sm:inline">Reporte Pendiente</span>
           </Button>
 
-          {/* BOTÓN DESCARGAR REPORTE DISTRIBUIDO (SOLO CUANDO ESTÁ DISTRIBUIDA) */}
+          {/* BOTÓN DESCARGAR REPORTE DISTRIBUIDO (SOLO CUANDO ESTÁ DISTRIBUIDA; para Hospitales se genera filtrado a su efector) */}
           {isDistributed && (
-            isHospitalUser && liq.reporteDistribuidoUrl ? (
-              <a
-                href={liq.reporteDistribuidoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-teal-500/30 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 rounded-lg font-bold text-xs transition-colors shadow-xs"
-                title="Descargar reporte oficial consolidado de distribución"
-              >
+            <Button
+              variant="outline"
+              onClick={handleTriggerDistributedDownload}
+              disabled={downloadingReport || saving || goingBack}
+              className="border-teal-500/30 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
+              title={
+                isHospitalUser
+                  ? "Descargar reporte de distribución correspondiente a su establecimiento"
+                  : "Asignar disposición ministerial y descargar reporte oficial distribuido"
+              }
+            >
+              {downloadingReport ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin text-teal-500" />
+              ) : (
                 <FileSpreadsheet className="h-4 w-4 text-teal-500" />
-                <span className="hidden sm:inline">Reporte Distribuido</span>
-              </a>
-            ) : (
-              <Button
-                variant="outline"
-                onClick={handleTriggerDistributedDownload}
-                disabled={downloadingReport || saving || goingBack}
-                className="border-teal-500/30 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
-                title="Asignar disposición ministerial y descargar reporte oficial distribuido"
-              >
-                {downloadingReport ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-teal-500" />
-                ) : (
-                  <FileSpreadsheet className="h-4 w-4 text-teal-500" />
-                )}
-                <span className="hidden sm:inline">Reporte Distribuido</span>
-              </Button>
-            )
+              )}
+              <span className="hidden sm:inline">Reporte Distribuido</span>
+            </Button>
           )}
 
           {attachments.length > 0 && (

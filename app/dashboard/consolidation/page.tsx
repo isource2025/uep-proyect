@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { ConsolidationClient } from "./consolidation-client";
 
 import { getAvailablePeriods } from "@/lib/periods";
+import { isUserAdmin, isUserHospital, parseUserRoleIds } from "@/lib/constants";
+import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 
 export const revalidate = 0;
 
@@ -14,10 +16,18 @@ export default async function ConsolidationPage() {
   });
 
   const user = session?.user as any;
+  const userRoles = parseUserRoleIds(user?.role);
+  const isAdmin = isUserAdmin(user?.role);
+  const resolvedEmpresaId = user ? await resolveUserEmpresaId(user) : undefined;
+  const isHospitalUser = !isAdmin && isUserHospital(user?.role, resolvedEmpresaId ?? user?.hospitalId);
 
-  if (!session || user?.role === "2") {
+  if (!session || (!isAdmin && userRoles.includes("2"))) {
     // Only Admins (role "1") and Operators can access consolidation reports
     redirect("/dashboard");
+  }
+
+  if (isHospitalUser) {
+    redirect("/dashboard/hospital-portal");
   }
 
   // Fetch available periods derived from SISPER / Liquidations

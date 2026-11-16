@@ -2,9 +2,29 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
+import { isUserAdmin, isUserHospital, parseUserRoleIds } from "@/lib/constants";
+import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
+
+async function assertConsolidationOperatorAccess(): Promise<string | null> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user) return "No autorizado.";
+  const user = session.user as any;
+  const isAdmin = isUserAdmin(user?.role);
+  const userRoles = parseUserRoleIds(user?.role);
+  const resolvedEmpresaId = await resolveUserEmpresaId(user);
+  const isHospitalUser = !isAdmin && isUserHospital(user?.role, resolvedEmpresaId ?? user?.hospitalId);
+  if (isHospitalUser || (!isAdmin && userRoles.includes("2"))) {
+    return "Acceso denegado: los reportes globales de consolidación son exclusivos para operadores UEP.";
+  }
+  return null;
+}
 
 export async function fetchConsolidationData(periodAnio: number, periodMes: number) {
   try {
+    const accessError = await assertConsolidationOperatorAccess();
+    if (accessError) return { error: accessError };
     const liquidations = await prisma.liquidacion.findMany({
       where: {
         periodAnio,
@@ -39,6 +59,8 @@ export async function fetchConsolidationData(periodAnio: number, periodMes: numb
 
 export async function closePeriodLiquidations(periodAnio: number, periodMes: number) {
   try {
+    const accessError = await assertConsolidationOperatorAccess();
+    if (accessError) return { error: accessError };
     // Lock all liquidations of this period to CERRADA
     await prisma.liquidacion.updateMany({
       where: {

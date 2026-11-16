@@ -6,6 +6,7 @@ import { serializeData } from "@/lib/utils";
 import { fetchLiquidationById } from "../actions";
 import { isUserAdmin, isUserHospital } from "@/lib/constants";
 import { cleanCuit } from "@/lib/hospital-mapping";
+import { filterLiquidationForHospital } from "@/lib/hospital-liquidation-scope";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import LiquidationDetailClient from "./liquidation-detail-client";
 
@@ -190,71 +191,13 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     const targetEmpresa = targetEmpresaId
       ? await prisma.empresa.findUnique({
           where: { id: targetEmpresaId },
-          select: { id: true, cuit: true },
+          select: { id: true, descripcion: true, cuit: true },
         })
       : null;
-    // Sin CUIT resuelto => cadena vacía => ningún renglón coincide (fail-closed)
     const targetEmpresaCuit = cleanCuit(targetEmpresa?.cuit);
-    const matchesTargetCuit = (raw: any) => {
-      const c = cleanCuit(raw);
-      return Boolean(targetEmpresaCuit && c && c === targetEmpresaCuit);
-    };
-
-    // 1. Details: solo renglones cuyo CUIT (PROVEEDORES.NRO_CUIT) coincide con EMPRESAS.Nro_CUIT del usuario
-    liquidation.details = (liquidationRaw.details || []).filter((d: any) =>
-      matchesTargetCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit)
-    );
-
-    // 2. Personal distributions (SISPER): hospitalCuit resuelto por CUIT en fetchLiquidationById
-    liquidation.personalDistributions = (liquidationRaw.personalDistributions || []).filter((p: any) =>
-      matchesTargetCuit(p.hospitalCuit)
-    );
-
-    // 3. Legacy distributions: por CUIT del proveedor del agente
-    liquidation.distributions = (liquidationRaw.distributions || []).filter((d: any) =>
-      matchesTargetCuit(d.agent?.hospital?.cuit)
-    );
-
-    // 4. Recalculate all aggregated header metrics strictly for this hospital
-    const totalFacturado = liquidation.details.reduce((sum: number, d: any) => sum + Number(d.totalFacturado || 0), 0);
-    const creditos = liquidation.details.reduce((sum: number, d: any) => sum + Number(d.creditos || 0), 0);
-    const debitos = liquidation.details.reduce((sum: number, d: any) => sum + Number(d.debitos || 0), 0);
-    const ajustesOs = liquidation.details.reduce((sum: number, d: any) => sum + Number(d.ajustesOs || 0), 0);
-    const pendientesCobro = liquidation.details.reduce((sum: number, d: any) => sum + Number(d.pendientesCobro || 0), 0);
-    const pagosParcialesAnteriores = liquidation.details.reduce((sum: number, d: any) => sum + Number(d.pagosParcialesAnteriores || 0), 0);
-    const brutoAPagar = liquidation.details.reduce((sum: number, d: any) => sum + Number(d.brutoAPagar || 0), 0);
-    const ga = liquidation.details.reduce((sum: number, d: any) => sum + Number(d.ga || 0), 0);
-    const ajusteRecupero = liquidation.details.reduce((sum: number, d: any) => sum + Number(d.ajusteRecupero || 0), 0);
-    const netoAPagar = liquidation.details.reduce((sum: number, d: any) => sum + Number(d.netoAPagar || 0), 0);
-
-    const personalHonorarios = liquidation.personalDistributions.reduce((sum: number, p: any) => sum + Number(p.honorarios || 0), 0);
-    const personalSobreasignacion = liquidation.personalDistributions.reduce((sum: number, p: any) => sum + Number(p.sobreasignacion || 0), 0);
-
-    const totalHonorarios = liquidation.personalDistributions.length > 0
-      ? personalHonorarios
-      : liquidation.distributions.reduce((sum: number, d: any) => sum + Number(d.honorarios || 0), 0);
-
-    const totalSobreasignaciones = liquidation.personalDistributions.length > 0
-      ? personalSobreasignacion
-      : liquidation.distributions.reduce((sum: number, d: any) => sum + Number(d.sobreasignaciones || 0), 0);
-
-    const totalGastos = Math.max(0, netoAPagar - (totalHonorarios + totalSobreasignaciones));
-    const totalDistribuido = totalHonorarios + totalSobreasignaciones + totalGastos;
-
-    liquidation.totalFacturado = totalFacturado;
-    liquidation.creditos = creditos;
-    liquidation.debitos = debitos;
-    liquidation.ajustesOs = ajustesOs;
-    liquidation.pendientesCobro = pendientesCobro;
-    liquidation.pagosParcialesAnteriores = pagosParcialesAnteriores;
-    liquidation.brutoAPagar = brutoAPagar;
-    liquidation.ga = ga;
-    liquidation.ajusteRecupero = ajusteRecupero;
-    liquidation.netoAPagar = netoAPagar;
-    liquidation.totalHonorarios = totalHonorarios;
-    liquidation.totalSobreasignaciones = totalSobreasignaciones;
-    liquidation.totalGastos = totalGastos;
-    liquidation.totalDistribuido = totalDistribuido;
+    liquidation = filterLiquidationForHospital(liquidationRaw, targetEmpresaCuit, {
+      hospitalName: targetEmpresa?.descripcion?.trim() || undefined,
+    });
   }
 
   const healthcareProviders = await prisma.proveedor.findMany({

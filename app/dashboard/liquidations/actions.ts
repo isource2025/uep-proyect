@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { getActivePeriodInfo } from "@/lib/periods";
 import { cleanCuit } from "@/lib/hospital-mapping";
+import { filterLiquidationForHospital } from "@/lib/hospital-liquidation-scope";
 import {
   resolveHospitalRecipientsByCuits,
   resolveUserEmpresaId,
@@ -1231,7 +1232,7 @@ async function uploadLiquidationSnapshotToCloud(
   tipo: "PENDIENTE" | "DISTRIBUIDA"
 ): Promise<{ url: string; fileName: string } | null> {
   try {
-    const reportData = await getLiquidationExcelReportData(liquidationId);
+    const reportData = await getFullLiquidationExcelReportDataInternal(liquidationId);
     if (!reportData || !reportData.liquidation) return null;
 
     const { buffer, fileName } = await generateLiquidationExcelBuffer(
@@ -1807,7 +1808,7 @@ export async function saveLiquidacionPersonalDistributions(
   }
 }
 
-export async function getLiquidationExcelReportData(id: number) {
+async function getFullLiquidationExcelReportDataInternal(id: number) {
   try {
     const liq = await fetchLiquidationById(id);
     if (!liq) return { error: "Liquidación no encontrada" };
@@ -1853,6 +1854,88 @@ export async function getLiquidationExcelReportData(id: number) {
     }
 
     return { success: true, liquidation: liq, mspAgentsMap };
+  } catch (e: any) {
+    console.error("Error fetching liquidation report data:", e);
+    return { error: e.message || "Error al obtener datos para el reporte." };
+  }
+}
+
+export async function getLiquidationExcelReportData(id: number) {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) {
+      return { error: "No autorizado para descargar reportes." };
+    }
+
+    const user = session.user as any;
+    const userRole = String(user?.role || "");
+    const isAdmin = isUserAdmin(userRole);
+    const resolvedEmpresaId = await resolveUserEmpresaId({
+      id: Number(user.id),
+      hospitalId: user.hospitalId,
+      cuit: user.cuit,
+    });
+    const isHospitalUser = !isAdmin && isUserHospital(userRole, resolvedEmpresaId ?? user?.hospitalId);
+
+    const fullData = await getFullLiquidationExcelReportDataInternal(id);
+    if (!fullData || fullData.error || !fullData.liquidation) {
+      return fullData;
+    }
+
+    if (!isHospitalUser) {
+      return fullData;
+    }
+
+    // Usuario Hospital (aislamiento estricto por CUIT): nunca exponer renglones, distribuciones ni totales de otros efectores
+    if (!resolvedEmpresaId) {
+      return { error: "No se pudo identificar el establecimiento sanitario asignado a su usuario." };
+    }
+
+    const targetEmpresa = await prisma.empresa.findUnique({
+      where: { id: resolvedEmpresaId },
+      select: { id: true, descripcion: true, cuit: true },
+    });
+
+    const hospitalCuit = cleanCuit(targetEmpresa?.cuit);
+    if (!hospitalCuit) {
+      return { error: "Su establecimiento no posee un CUIT configurado para generar reportes." };
+    }
+
+    const empresaAgents = await prisma.imPersonalMsp.findMany({
+      where: { empresa: { cuit: Number(hospitalCuit) } },
+      select: { cuil: true },
+    });
+    const hospitalCuilSet = new Set(
+      empresaAgents.map((a) => (a.cuil ? a.cuil.toString() : "")).filter(Boolean)
+    );
+
+    const scopedLiquidation = filterLiquidationForHospital(fullData.liquidation, hospitalCuit, {
+      hospitalCuilSet,
+      hospitalName: targetEmpresa?.descripcion?.trim() || undefined,
+    });
+
+    if (!scopedLiquidation.details || scopedLiquidation.details.length === 0) {
+      return { error: "Su establecimiento no posee comprobantes incluidos en esta liquidación." };
+    }
+
+    const allowedCuils = new Set(
+      (scopedLiquidation.personalDistributions || [])
+        .map((p: any) => String(p.cuil || p.idAgente || "").replace(/\D/g, ""))
+        .filter(Boolean)
+    );
+
+    const scopedAgentsMap: Record<string, { apellidoyNombre: string; idAgente: string; hospitalNombre: string }> = {};
+    for (const [cuilKey, agentMeta] of Object.entries(fullData.mspAgentsMap || {})) {
+      if (allowedCuils.has(cuilKey.replace(/\D/g, ""))) {
+        scopedAgentsMap[cuilKey] = agentMeta;
+      }
+    }
+
+    return {
+      success: true,
+      liquidation: serializeData(scopedLiquidation),
+      mspAgentsMap: scopedAgentsMap,
+    };
   } catch (e: any) {
     console.error("Error fetching liquidation report data:", e);
     return { error: e.message || "Error al obtener datos para el reporte." };

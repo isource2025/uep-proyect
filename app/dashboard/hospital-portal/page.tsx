@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { serializeData } from "@/lib/utils";
 import { cleanCuit } from "@/lib/hospital-mapping";
+import { filterLiquidationForHospital } from "@/lib/hospital-liquidation-scope";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import HospitalPortalClient from "./hospital-portal-client";
 import { Building2 } from "lucide-react";
@@ -149,21 +150,16 @@ export default async function HospitalPortalPage({
       : Promise.resolve([]),
   ]);
 
-  // Aislamiento por CUIT: el hospital solo ve las distribuciones de su propio personal y sus propios renglones
+  // Aislamiento estricto por CUIT: el hospital solo ve sus renglones, distribuciones y totales propios (sin snapshots globales)
   const hospitalCuilSet = new Set(
     empresaCuils.map((a) => (a.cuil ? a.cuil.toString() : "")).filter(Boolean)
   );
-  const matchesHospitalCuit = (raw: any) => {
-    const c = cleanCuit(raw);
-    return Boolean(hospitalCuit && c && c === hospitalCuit);
-  };
-  const hospitalLiquidations = hospitalLiquidationsRaw.map((liq: any) => ({
-    ...liq,
-    personalDistributions: (liq.personalDistributions || []).filter((p: any) =>
-      hospitalCuilSet.has(String(p.cuil))
-    ),
-    distributions: (liq.distributions || []).filter((d: any) => matchesHospitalCuit(d.agent?.hospital?.cuit)),
-  }));
+  const hospitalLiquidations = hospitalLiquidationsRaw.map((liq: any) =>
+    filterLiquidationForHospital(liq, hospitalCuit, {
+      hospitalCuilSet,
+      hospitalName,
+    })
+  );
 
   // Server Action to add an attachment
   const handleAddAttachment = async (formData: FormData) => {

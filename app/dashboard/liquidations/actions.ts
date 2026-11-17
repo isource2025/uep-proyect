@@ -1337,12 +1337,18 @@ export async function notifyHospital(
 ) {
   try {
     const session = await auth.api.getSession({ headers: await headers() });
-    const userRole = (session?.user as any)?.role;
+    const sessionUser = session?.user as any;
+    const userRole = sessionUser?.role;
     const isAdmin = isUserAdmin(userRole);
+    const parsedEmisorId = sessionUser?.id ? parseInt(String(sessionUser.id), 10) : NaN;
+    const emisorId = !isNaN(parsedEmisorId) ? parsedEmisorId : null;
+    const emisorNombre =
+      sessionUser?.name?.trim() || sessionUser?.email?.trim() || "Operador UEP";
 
     const liq = await prisma.liquidacion.findUnique({
       where: { id: liquidationId },
       include: {
+        period: true,
         rc: {
           include: {
             cliente: true,
@@ -1405,10 +1411,7 @@ export async function notifyHospital(
           .filter(Boolean)
       )
     );
-    const resolvedHospitalRecipients =
-      customOptions?.recipients && customOptions.recipients.length > 0
-        ? []
-        : await resolveHospitalRecipientsByCuits(detailCuits);
+    const resolvedHospitalRecipients = await resolveHospitalRecipientsByCuits(detailCuits);
 
     const hospitalEmails = resolvedHospitalRecipients.map((r) => r.email);
 
@@ -1429,13 +1432,73 @@ export async function notifyHospital(
       };
     }
 
-    // Update status to NOTIFICADO and save snapshot
-    await prisma.liquidacion.update({
-      where: { id: liquidationId },
-      data: {
-        status: nextStatus,
-        ...(reportePendienteUrl ? { reportePendienteUrl, reportePendienteFileName } : {}),
-      },
+    const liqCode = `LIQ-${String(liq.id).padStart(4, "0")}`;
+    const obraSocialName = (liq.rc?.cliente?.nombre || "Obra Social").trim();
+    const MONTH_NAMES = [
+      "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+    ];
+    const periodLabel =
+      liq.mesCarga?.trim() ||
+      (liq.period ? `${MONTH_NAMES[liq.period.mes - 1] || liq.period.mes} ${liq.period.anio}` : "Sin período");
+    const notifTipo = wasNotifiedBefore ? "RECTIFICACION" : "NUEVA_LIQUIDACION";
+    const notifTitulo = wasNotifiedBefore ? "Liquidación rectificada" : "Nueva liquidación disponible";
+    const notifMeta = wasNotifiedBefore
+      ? "Revisar comprobantes actualizados y revalidar distribución"
+      : "Disponible para cargar distribución de personal";
+    const notifMensaje = `${liqCode} · ${obraSocialName} (${periodLabel}) — ${notifMeta}`;
+    const notifHref = `/dashboard/hospital-portal?highlight=${liquidationId}`;
+
+    // Transacción atómica: actualizar estado + persistir evento(s) en tabla Notificacion
+    await prisma.$transaction(async (tx) => {
+      await tx.liquidacion.update({
+        where: { id: liquidationId },
+        data: {
+          status: nextStatus,
+          ...(reportePendienteUrl ? { reportePendienteUrl, reportePendienteFileName } : {}),
+        },
+      });
+
+      if (detailCuits.length > 0) {
+        for (const targetCuit of detailCuits) {
+          const emailsForCuit = resolvedHospitalRecipients
+            .filter((r) => cleanCuit(r.cuit) === targetCuit)
+            .map((r) => r.email);
+          const destinatariosCuit = emailsForCuit.length > 0 ? emailsForCuit : finalRecipients;
+
+          await tx.notificacion.create({
+            data: {
+              liquidationId,
+              tipo: notifTipo,
+              audiencia: "HOSPITAL",
+              targetCuit,
+              titulo: notifTitulo,
+              mensaje: notifMensaje,
+              href: notifHref,
+              emisorId,
+              emisorNombre,
+              emailEnviado: false,
+              emailDestinatarios: JSON.stringify(destinatariosCuit),
+            },
+          });
+        }
+      } else {
+        await tx.notificacion.create({
+          data: {
+            liquidationId,
+            tipo: notifTipo,
+            audiencia: "HOSPITAL",
+            targetCuit: null,
+            titulo: notifTitulo,
+            mensaje: notifMensaje,
+            href: notifHref,
+            emisorId,
+            emisorNombre,
+            emailEnviado: false,
+            emailDestinatarios: JSON.stringify(finalRecipients),
+          },
+        });
+      }
     });
 
     // Format local date
@@ -1471,15 +1534,21 @@ ${emailBody}
 =========================================
 `;
 
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    try {
+      const uploadsDir = path.join(process.cwd(), "public", "uploads");
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      const logFilePath = path.join(uploadsDir, "notifications-log.txt");
+      fs.appendFileSync(logFilePath, emailLog, "utf-8");
+    } catch (fsErr) {
+      console.warn("No se pudo escribir el log local de notificación:", fsErr);
     }
-    const logFilePath = path.join(uploadsDir, "notifications-log.txt");
-    fs.appendFileSync(logFilePath, emailLog, "utf-8");
 
     revalidatePath("/dashboard/liquidations");
     revalidatePath(`/dashboard/liquidations/${liquidationId}`);
+    revalidatePath("/dashboard/hospital-portal");
+    revalidatePath("/dashboard");
     return { success: true };
   } catch (e: any) {
     console.error("Error notifying hospital:", e);
@@ -1589,6 +1658,13 @@ export async function saveLiquidacionPersonalDistributions(
   hospitalId?: number
 ) {
   try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    const sessionUser = session?.user as any;
+    const parsedEmisorId = sessionUser?.id ? parseInt(String(sessionUser.id), 10) : NaN;
+    const emisorId = !isNaN(parsedEmisorId) ? parsedEmisorId : null;
+    const emisorNombre =
+      sessionUser?.name?.trim() || sessionUser?.email?.trim() || "Establecimiento Hospital";
+
     // Validation: An agent can receive EITHER Honorarios OR Sobreasignacion, but NOT both
     const invalidExclusivity = distributions.find(
       (d) => Number(d.honorarios || 0) > 0 && Number(d.sobreasignacion || 0) > 0
@@ -1751,7 +1827,17 @@ export async function saveLiquidacionPersonalDistributions(
 
       const currentLiq = await tx.liquidacion.findUnique({
         where: { id: liquidationId },
-        select: { status: true },
+        select: {
+          status: true,
+          mesCarga: true,
+          periodAnio: true,
+          periodMes: true,
+          rc: {
+            select: {
+              cliente: { select: { nombre: true } },
+            },
+          },
+        },
       });
 
       if (currentLiq && currentLiq.status !== "CERRADA") {
@@ -1769,6 +1855,43 @@ export async function saveLiquidacionPersonalDistributions(
             where: { id: liquidationId },
             data: { status: newStatus },
           });
+
+          if (newStatus === "DISTRIBUIDA") {
+            const MONTH_NAMES = [
+              "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+              "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+            ];
+            const liqCode = `LIQ-${String(liquidationId).padStart(4, "0")}`;
+            const obraSocial = currentLiq.rc?.cliente?.nombre?.trim() || "Obra Social";
+            const periodLabel =
+              currentLiq.mesCarga?.trim() ||
+              `${MONTH_NAMES[currentLiq.periodMes - 1] || currentLiq.periodMes} ${currentLiq.periodAnio}`;
+
+            const uniqueHospNames = Array.from(
+              new Set(allDetails.map((d) => (d.prestadorNombre || "").trim()).filter(Boolean))
+            );
+            const resumenEfectores =
+              uniqueHospNames.length === 1
+                ? uniqueHospNames[0]
+                : uniqueHospNames.length > 1
+                ? `${uniqueHospNames[0]} y ${uniqueHospNames.length - 1} efector(es) más`
+                : `${totalHospitals} efector(es)`;
+
+            await tx.notificacion.create({
+              data: {
+                liquidationId,
+                tipo: "DISTRIBUCION_COMPLETA",
+                audiencia: "UEP",
+                targetCuit: null,
+                titulo: "Distribución completa de liquidación",
+                mensaje: `${liqCode} · ${obraSocial} (${periodLabel}) — Todos los efectores (${totalHospitals}) completaron: ${resumenEfectores}`,
+                href: `/dashboard/liquidations?highlight=${liquidationId}`,
+                emisorId,
+                emisorNombre,
+                emailEnviado: false,
+              },
+            });
+          }
         }
       }
     });

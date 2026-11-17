@@ -32,8 +32,10 @@ model User {
   hospital      Proveedor? @relation(fields: [hospitalId], references: [id], map: "User_hospitalId_fkey")
   estado        Int?      @default(1) @map("Estado")
 
-  sessions      Session[]
-  accounts      Account[]
+  sessions               Session[]
+  accounts               Account[]
+  notificacionesEmitidas Notificacion[]        @relation("NotificacionEmisor")
+  notificacionesLeidas   NotificacionLectura[] @relation("NotificacionLector")
 
   @@map("imPersonal")
 }
@@ -221,6 +223,7 @@ model Liquidacion {
   distributions  Distribucion[]
   personalDistributions LiquidacionPersonal[]
   attachments    Adjunto[]
+  notificaciones Notificacion[]
 }
 
 model LiquidacionDetalle {
@@ -366,4 +369,40 @@ model LiquidacionPersonal {
 
   @@id([idLiquidacion, cuil])
   @@map("LiquidacionPersonal")
+}
+
+model Notificacion {
+  id                 String                @id @default(cuid()) @db.NVarChar(30)
+  liquidationId      Int
+  liquidation        Liquidacion           @relation(fields: [liquidationId], references: [id], onDelete: Cascade)
+  tipo               String                @db.VarChar(40)
+  audiencia          String                @db.VarChar(20)
+  targetCuit         String?               @db.VarChar(11)
+  titulo             String                @db.NVarChar(120)
+  mensaje            String                @db.NVarChar(500)
+  href               String                @db.NVarChar(200)
+  emisorId           Int?
+  emisor             User?                 @relation("NotificacionEmisor", fields: [emisorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  emisorNombre       String?               @db.NVarChar(120)
+  emailEnviado       Boolean               @default(false)
+  emailDestinatarios String?               @db.NVarChar(Max)
+  emailError         String?               @db.NVarChar(500)
+  createdAt          DateTime              @default(now())
+
+  lecturas           NotificacionLectura[]
+
+  @@index([audiencia, targetCuit, createdAt])
+  @@index([liquidationId, createdAt])
+}
+
+model NotificacionLectura {
+  id             String       @id @default(cuid()) @db.NVarChar(30)
+  notificacionId String       @db.NVarChar(30)
+  notificacion   Notificacion @relation(fields: [notificacionId], references: [id], onDelete: Cascade)
+  userId         Int
+  user           User         @relation("NotificacionLector", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  leidaAt        DateTime     @default(now())
+
+  @@unique([notificacionId, userId])
+  @@index([userId, leidaAt])
 }

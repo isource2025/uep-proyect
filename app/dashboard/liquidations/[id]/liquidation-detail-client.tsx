@@ -31,7 +31,9 @@ import {
   MessageSquare,
   Scale,
   Image as ImageIcon,
+  Bell,
 } from "lucide-react";
+import type { LiquidationNotificationHistoryItem } from "@/lib/notification-types";
 import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -51,6 +53,7 @@ import { cn } from "@/lib/utils";
 import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, updateLiquidationNormaLegal, uploadDebitsFile, deleteDebitsFile, deleteDebitAttachment, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, searchBatchAgentsForLiquidationAction, syncLiquidationComprasFromErp } from "../actions";
 import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
 import { NormaLegalModal } from "@/components/norma-legal-modal";
+import { NotificationAuditModal } from "@/components/notification-audit-modal";
 import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
 
 interface LiquidationDetailClientProps {
@@ -66,6 +69,7 @@ interface LiquidationDetailClientProps {
   agentsPeriodOrigin?: "current" | "previous" | "none";
   hospitalId?: number | null;
   hospitals?: any[];
+  notificationHistory?: LiquidationNotificationHistoryItem[];
 }
 
 export default function LiquidationDetailClient({
@@ -76,6 +80,7 @@ export default function LiquidationDetailClient({
   agentsPeriodOrigin = "none",
   hospitalId: initialHospitalId,
   hospitals = [],
+  notificationHistory = [],
 }: LiquidationDetailClientProps) {
   const router = useRouter();
   const isAdmin = isUserAdmin(currentUser?.role);
@@ -203,6 +208,7 @@ export default function LiquidationDetailClient({
   const [savingNormaLegal, setSavingNormaLegal] = useState(false);
   const [isNormaLegalModalOpen, setIsNormaLegalModalOpen] = useState(false);
   const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
+  const [isNotificationAuditModalOpen, setIsNotificationAuditModalOpen] = useState(false);
   const [globalGaPercent, setGlobalGaPercent] = useState("6");
   const [customGlobalGaPercent, setCustomGlobalGaPercent] = useState("");
 
@@ -1472,6 +1478,26 @@ export default function LiquidationDetailClient({
                 <FileSpreadsheet className="h-4 w-4 text-teal-500" />
               )}
               <span className="hidden sm:inline">Reporte Distribuido</span>
+            </Button>
+          )}
+
+          {/* BOTÓN AUDITORÍA DE NOTIFICACIONES (EXCLUSIVO UEP) */}
+          {!isHospitalUser && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsNotificationAuditModalOpen(true)}
+              disabled={goingBack}
+              className="border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
+              title="Ver auditoría de avisos enviados y confirmaciones de lectura"
+            >
+              <Bell className="h-4 w-4 text-violet-500" />
+              <span className="hidden sm:inline">Auditoría Avisos</span>
+              {notificationHistory.length > 0 && (
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-violet-500/20 px-1 text-[10px] font-bold text-violet-700 dark:text-violet-300">
+                  {notificationHistory.length}
+                </span>
+              )}
             </Button>
           )}
 
@@ -3448,6 +3474,17 @@ export default function LiquidationDetailClient({
         liquidationId={liq.id}
         liquidationCode={`LIQ-${String(liq.id).padStart(4, "0")}`}
       />
+
+      {!isHospitalUser && (
+        <NotificationAuditModal
+          isOpen={isNotificationAuditModalOpen}
+          onClose={() => setIsNotificationAuditModalOpen(false)}
+          liquidationId={liq.id}
+          liquidationCode={`LIQ-${String(liq.id).padStart(4, "0")}`}
+          clientName={liq.rc?.cliente?.nombre}
+          initialHistory={notificationHistory}
+        />
+      )}
 
       {/* MODAL LISTA DE COMPROBANTES DE DÉBITOS */}
       <Dialog open={isAttachmentsModalOpen} onOpenChange={setIsAttachmentsModalOpen}>

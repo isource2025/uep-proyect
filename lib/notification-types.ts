@@ -17,4 +17,32 @@ export interface InAppNotificationItem {
   href: string;
   createdAt: string;
   status: string;
+  read: boolean;
+  emisorNombre?: string | null;
+  emailEnviado?: boolean;
+}
+
+export interface NotificationReadReceiptItem {
+  id: string;
+  userId: number;
+  userName: string;
+  userEmail?: string | null;
+  leidaAt: string;
+}
+
+export interface LiquidationNotificationHistoryItem {
+  id: string;
+  liquidationId: number;
+  tipo: string;
+  audiencia: string;
+  targetCuit?: string | null;
+  targetHospitalName?: string | null;
+  titulo: string;
+  mensaje: string;
+  emisorNombre?: string | null;
+  emailEnviado: boolean;
+  emailDestinatarios: string[];
+  emailError?: string | null;
+  createdAt: string;
+  lecturas: NotificationReadReceiptItem[];
 }

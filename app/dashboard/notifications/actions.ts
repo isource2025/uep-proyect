@@ -5,50 +5,36 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { cleanCuit } from "@/lib/hospital-mapping";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
-import { isUserAdmin, parseUserRoleIds } from "@/lib/constants";
-import type { InAppNotificationItem } from "@/lib/notification-types";
+import { isUserAdmin, isUserHospital, parseUserRoleIds } from "@/lib/constants";
+import type {
+  InAppNotificationItem,
+  InAppNotificationType,
+  LiquidationNotificationHistoryItem,
+} from "@/lib/notification-types";
 
-const MONTH_NAMES = [
-  "Enero",
-  "Febrero",
-  "Marzo",
-  "Abril",
-  "Mayo",
-  "Junio",
-  "Julio",
-  "Agosto",
-  "Septiembre",
-  "Octubre",
-  "Noviembre",
-  "Diciembre",
-];
-
-function formatPeriodLabel(mesCarga?: string | null, period?: { mes: number; anio: number } | null): string {
-  if (mesCarga && mesCarga.trim()) return mesCarga.trim();
-  if (period) {
-    const monthName = MONTH_NAMES[period.mes - 1] || `Mes ${period.mes}`;
-    return `${monthName} ${period.anio}`;
-  }
-  return "Sin período";
+function mapDbNotificationType(rawTipo: string): InAppNotificationType {
+  const t = (rawTipo || "").toUpperCase();
+  if (t === "RECTIFICACION") return "RECTIFICACION";
+  if (t === "DISTRIBUCION_COMPLETA") return "DISTRIBUCION_COMPLETA";
+  if (t === "EN_PROCESO") return "EN_PROCESO";
+  return "NUEVA_LIQUIDACION";
 }
 
-function summarizeHospitalNames(details: { prestadorNombre: string | null; hospital: { nombre: string | null } | null }[]): string | undefined {
-  const uniqueNames = Array.from(
-    new Set(
-      details
-        .map((d) => (d.prestadorNombre || d.hospital?.nombre || "").trim())
-        .filter(Boolean)
-    )
-  );
-  if (uniqueNames.length === 0) return undefined;
-  if (uniqueNames.length === 1) return uniqueNames[0];
-  return `${uniqueNames[0]} y ${uniqueNames.length - 1} efector(es) más`;
+function splitMessageSubtitleAndMeta(mensaje: string): { subtitle: string; meta?: string } {
+  const clean = (mensaje || "").trim();
+  const sepIndex = clean.indexOf(" — ");
+  if (sepIndex !== -1) {
+    return {
+      subtitle: clean.slice(0, sepIndex).trim(),
+      meta: clean.slice(sepIndex + 3).trim() || undefined,
+    };
+  }
+  return { subtitle: clean };
 }
 
 /**
- * Obtiene las notificaciones in-app derivadas en tiempo real desde Liquidacion (sin tablas extra en BD).
- * - Hospitales: liquidaciones notificadas/rectificadas/en proceso con renglones de su CUIT.
- * - UEP (Admin/Liquidador): liquidaciones en estado DISTRIBUIDA (todos los hospitales completaron su carga).
+ * Obtiene las notificaciones in-app persistidas en SQL Server (`Notificacion` + `NotificacionLectura`)
+ * filtradas estrictamente según audiencia/CUIT del usuario autenticado.
  */
 export async function fetchInAppNotificationsAction(): Promise<InAppNotificationItem[]> {
   try {
@@ -57,6 +43,8 @@ export async function fetchInAppNotificationsAction(): Promise<InAppNotification
 
     const user = session.user as any;
     const userId = parseInt(String(user.id), 10);
+    if (isNaN(userId)) return [];
+
     const rawRoleStr = String(user.role || "");
     const userRoles = parseUserRoleIds(rawRoleStr);
     const isAdmin = isUserAdmin(rawRoleStr);
@@ -82,135 +70,321 @@ export async function fetchInAppNotificationsAction(): Promise<InAppNotification
       const hospitalCuit = cleanCuit(empresa?.cuit);
       if (!hospitalCuit) return [];
 
-      const matchingProveedores = await prisma.proveedor.findMany({
-        where: { cuit: Number(hospitalCuit) },
-        select: { id: true },
-      });
-      const proveedorIds = matchingProveedores.map((p) => p.id);
-
-      const liquidations = await prisma.liquidacion.findMany({
+      const rows = await prisma.notificacion.findMany({
         where: {
-          status: {
-            in: ["NOTIFICADO", "RECTIFICADA", "RECTIFICADA_PENDIENTE", "EN PROCESO", "EN_PROCESO"],
-          },
-          details: {
-            some: {
-              OR: [
-                { cuit: hospitalCuit },
-                ...(proveedorIds.length > 0
-                  ? [
-                      { hospitalId: { in: proveedorIds } },
-                      { compra: { hospitalId: { in: proveedorIds } } },
-                    ]
-                  : []),
-              ],
-            },
-          },
+          audiencia: "HOSPITAL",
+          targetCuit: hospitalCuit,
         },
-        orderBy: { updatedAt: "desc" },
-        take: 25,
-        select: {
-          id: true,
-          status: true,
-          mesCarga: true,
-          updatedAt: true,
-          period: { select: { mes: true, anio: true } },
-          rc: {
-            select: {
-              cliente: { select: { nombre: true } },
-            },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        include: {
+          liquidation: { select: { status: true } },
+          lecturas: {
+            where: { userId },
+            select: { id: true, leidaAt: true },
           },
         },
       });
 
-      return liquidations.map((liq) => {
-        const liqCode = `LIQ-${String(liq.id).padStart(4, "0")}`;
-        const obraSocial = liq.rc?.cliente?.nombre?.trim() || "Obra Social";
-        const periodLabel = formatPeriodLabel(liq.mesCarga, liq.period);
-        const normalizedStatus = (liq.status || "").toUpperCase();
-
-        const type = normalizedStatus.startsWith("RECTIFICAD")
-          ? "RECTIFICACION"
-          : normalizedStatus === "EN PROCESO" || normalizedStatus === "EN_PROCESO"
-          ? "EN_PROCESO"
-          : "NUEVA_LIQUIDACION";
-
-        const title =
-          type === "RECTIFICACION"
-            ? "Liquidación rectificada"
-            : type === "EN_PROCESO"
-            ? "Liquidación en proceso"
-            : "Nueva liquidación disponible";
-
+      return rows.map((n) => {
+        const { subtitle, meta } = splitMessageSubtitleAndMeta(n.mensaje);
         return {
-          id: `hosp-${liq.id}-${normalizedStatus}-${liq.updatedAt.getTime()}`,
-          liquidationId: liq.id,
+          id: n.id,
+          liquidationId: n.liquidationId,
           audience: "HOSPITAL",
-          type,
-          title,
-          subtitle: `${liqCode} · ${obraSocial} (${periodLabel})`,
-          meta:
-            type === "RECTIFICACION"
-              ? "Revisar montos actualizados y revalidar distribución"
-              : "Disponible para cargar distribución de personal",
-          href: `/dashboard/hospital-portal?highlight=${liq.id}`,
-          createdAt: liq.updatedAt.toISOString(),
-          status: liq.status,
+          type: mapDbNotificationType(n.tipo),
+          title: n.titulo,
+          subtitle,
+          meta,
+          href: n.href,
+          createdAt: n.createdAt.toISOString(),
+          status: n.liquidation?.status || "NOTIFICADO",
+          read: n.lecturas.length > 0,
+          emisorNombre: n.emisorNombre,
+          emailEnviado: n.emailEnviado,
         };
       });
     }
 
-    // Lado UEP (Admin o Liquidador): avisar únicamente cuando todos los hospitales completaron la distribución
+    // Lado UEP (Admin o Liquidador / Auditor)
     const isUepOperator = isAdmin || userRoles.includes("3") || userRoles.includes("5");
     if (!isUepOperator) return [];
 
-    const distributedLiquidations = await prisma.liquidacion.findMany({
+    const rows = await prisma.notificacion.findMany({
       where: {
-        status: { in: ["DISTRIBUIDA", "DISTRIBUIDO"] },
+        audiencia: "UEP",
       },
-      orderBy: { updatedAt: "desc" },
-      take: 25,
-      select: {
-        id: true,
-        status: true,
-        mesCarga: true,
-        updatedAt: true,
-        period: { select: { mes: true, anio: true } },
-        rc: {
-          select: {
-            cliente: { select: { nombre: true } },
-          },
-        },
-        details: {
-          select: {
-            prestadorNombre: true,
-            hospital: { select: { nombre: true } },
-          },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      include: {
+        liquidation: { select: { status: true } },
+        lecturas: {
+          where: { userId },
+          select: { id: true, leidaAt: true },
         },
       },
     });
 
-    return distributedLiquidations.map((liq) => {
-      const liqCode = `LIQ-${String(liq.id).padStart(4, "0")}`;
-      const obraSocial = liq.rc?.cliente?.nombre?.trim() || "Obra Social";
-      const periodLabel = formatPeriodLabel(liq.mesCarga, liq.period);
-      const hospitalsMeta = summarizeHospitalNames(liq.details);
-
+    return rows.map((n) => {
+      const { subtitle, meta } = splitMessageSubtitleAndMeta(n.mensaje);
       return {
-        id: `uep-${liq.id}-${liq.status}-${liq.updatedAt.getTime()}`,
-        liquidationId: liq.id,
+        id: n.id,
+        liquidationId: n.liquidationId,
         audience: "UEP",
-        type: "DISTRIBUCION_COMPLETA",
-        title: "Distribución completada",
-        subtitle: `${liqCode} · ${obraSocial} (${periodLabel})`,
-        meta: hospitalsMeta ? `Todos los efectores completaron: ${hospitalsMeta}` : "Todos los hospitales finalizaron su carga",
-        href: `/dashboard/liquidations?highlight=${liq.id}`,
-        createdAt: liq.updatedAt.toISOString(),
-        status: liq.status,
+        type: mapDbNotificationType(n.tipo),
+        title: n.titulo,
+        subtitle,
+        meta,
+        href: n.href,
+        createdAt: n.createdAt.toISOString(),
+        status: n.liquidation?.status || "DISTRIBUIDA",
+        read: n.lecturas.length > 0,
+        emisorNombre: n.emisorNombre,
+        emailEnviado: n.emailEnviado,
       };
     });
   } catch (e) {
-    console.error("Error fetching in-app notifications:", e);
+    console.error("Error fetching in-app notifications from DB:", e);
     return [];
+  }
+}
+
+/**
+ * Registra la lectura individual de una notificación para el usuario autenticado.
+ */
+export async function markNotificationAsReadAction(notificacionId: string): Promise<{ success: boolean }> {
+  try {
+    if (!notificacionId) return { success: false };
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) return { success: false };
+
+    const userId = parseInt(String((session.user as any).id), 10);
+    if (isNaN(userId)) return { success: false };
+
+    await prisma.notificacionLectura.upsert({
+      where: {
+        notificacionId_userId: {
+          notificacionId,
+          userId,
+        },
+      },
+      update: {},
+      create: {
+        notificacionId,
+        userId,
+      },
+    });
+
+    return { success: true };
+  } catch (e) {
+    console.error("Error marking notification as read:", e);
+    return { success: false };
+  }
+}
+
+/**
+ * Marca múltiples notificaciones como leídas en bloque dentro de una transacción atómica.
+ */
+export async function markAllNotificationsAsReadAction(notificacionIds: string[]): Promise<{ success: boolean }> {
+  try {
+    const cleanIds = Array.from(new Set((notificacionIds || []).filter((id) => typeof id === "string" && id.trim())));
+    if (cleanIds.length === 0) return { success: true };
+
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) return { success: false };
+
+    const userId = parseInt(String((session.user as any).id), 10);
+    if (isNaN(userId)) return { success: false };
+
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.notificacionLectura.findMany({
+        where: {
+          userId,
+          notificacionId: { in: cleanIds },
+        },
+        select: { notificacionId: true },
+      });
+
+      const existingSet = new Set(existing.map((e) => e.notificacionId));
+      const pendingIds = cleanIds.filter((id) => !existingSet.has(id));
+
+      for (const notificacionId of pendingIds) {
+        await tx.notificacionLectura.create({
+          data: {
+            notificacionId,
+            userId,
+          },
+        });
+      }
+    });
+
+    return { success: true };
+  } catch (e) {
+    console.error("Error marking all notifications as read:", e);
+    return { success: false };
+  }
+}
+
+/**
+ * Obtiene el historial y auditoría completa de notificaciones (emisión, casillas y lecturas)
+ * de una liquidación específica. Exclusivo para operadores UEP (no hospitales).
+ */
+export async function fetchLiquidationNotificationHistoryAction(
+  liquidationId: number
+): Promise<{
+  success?: boolean;
+  history?: LiquidationNotificationHistoryItem[];
+  error?: string;
+}> {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) {
+      return { error: "No autorizado." };
+    }
+
+    const user = session.user as any;
+    const userId = parseInt(String(user.id), 10);
+    const rawRoleStr = String(user.role || "");
+    const userRoles = parseUserRoleIds(rawRoleStr);
+    const isAdmin = isUserAdmin(rawRoleStr);
+    const resolvedEmpresaId = await resolveUserEmpresaId({
+      id: isNaN(userId) ? 0 : userId,
+      hospitalId: user.hospitalId,
+      cuit: user.cuit,
+    });
+    const isHospitalUser = !isAdmin && isUserHospital(rawRoleStr, resolvedEmpresaId ?? user?.hospitalId);
+
+    if (isHospitalUser) {
+      return { error: "Acceso denegado." };
+    }
+
+    const isUepOperator = isAdmin || userRoles.includes("3") || userRoles.includes("5");
+    if (!isUepOperator) {
+      return { error: "Sin permisos para consultar auditoría de notificaciones." };
+    }
+
+    const rawNotifs = await prisma.notificacion.findMany({
+      where: { liquidationId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        lecturas: {
+          orderBy: { leidaAt: "desc" },
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        },
+      },
+    });
+
+    // Resolver nombre del establecimiento sanitario por CUIT normalizado
+    const targetCuits = Array.from(
+      new Set(
+        rawNotifs
+          .filter((n) => n.audiencia !== "UEP" && n.targetCuit)
+          .map((n) => cleanCuit(n.targetCuit))
+          .filter(Boolean)
+      )
+    );
+
+    const cuitToHospitalName = new Map<string, string>();
+    if (targetCuits.length > 0) {
+      const numericCuits = targetCuits
+        .map((c) => Number(c))
+        .filter((n) => Number.isFinite(n) && n > 0);
+
+      const [detalles, empresas, proveedores] = await Promise.all([
+        prisma.liquidacionDetalle.findMany({
+          where: { liquidationId },
+          select: {
+            cuit: true,
+            prestadorNombre: true,
+            hospital: { select: { nombre: true, cuit: true } },
+          },
+        }),
+        numericCuits.length > 0
+          ? prisma.empresa.findMany({
+              where: { cuit: { in: numericCuits } },
+              select: { descripcion: true, cuit: true },
+            })
+          : Promise.resolve([]),
+        numericCuits.length > 0
+          ? prisma.proveedor.findMany({
+              where: { cuit: { in: numericCuits } },
+              select: { nombre: true, cuit: true },
+            })
+          : Promise.resolve([]),
+      ]);
+
+      for (const p of proveedores) {
+        const c = cleanCuit(p.cuit);
+        const name = p.nombre?.trim();
+        if (c && name && !cuitToHospitalName.has(c)) {
+          cuitToHospitalName.set(c, name);
+        }
+      }
+      for (const d of detalles) {
+        const c = cleanCuit(d.cuit || d.hospital?.cuit);
+        const name = d.prestadorNombre?.trim() || d.hospital?.nombre?.trim();
+        if (c && name) {
+          cuitToHospitalName.set(c, name);
+        }
+      }
+      for (const emp of empresas) {
+        const c = cleanCuit(emp.cuit);
+        const name = emp.descripcion?.trim();
+        if (c && name) {
+          cuitToHospitalName.set(c, name);
+        }
+      }
+    }
+
+    const history: LiquidationNotificationHistoryItem[] = rawNotifs.map((n) => {
+      let emailDestinatarios: string[] = [];
+      if (n.emailDestinatarios) {
+        try {
+          const parsed = JSON.parse(n.emailDestinatarios);
+          if (Array.isArray(parsed)) {
+            emailDestinatarios = parsed.filter((x) => typeof x === "string");
+          }
+        } catch {
+          emailDestinatarios = [n.emailDestinatarios];
+        }
+      }
+      const normalizedCuit = cleanCuit(n.targetCuit);
+      const targetHospitalName =
+        n.audiencia !== "UEP" && normalizedCuit
+          ? cuitToHospitalName.get(normalizedCuit) || null
+          : null;
+
+      return {
+        id: n.id,
+        liquidationId: n.liquidationId,
+        tipo: n.tipo,
+        audiencia: n.audiencia,
+        targetCuit: n.targetCuit,
+        targetHospitalName,
+        titulo: n.titulo,
+        mensaje: n.mensaje,
+        emisorNombre: n.emisorNombre,
+        emailEnviado: n.emailEnviado,
+        emailDestinatarios,
+        emailError: n.emailError,
+        createdAt: n.createdAt.toISOString(),
+        lecturas: n.lecturas.map((l) => ({
+          id: l.id,
+          userId: l.userId,
+          userName: l.user?.name || `Usuario #${l.userId}`,
+          userEmail: l.user?.email || null,
+          leidaAt: l.leidaAt.toISOString(),
+        })),
+      };
+    });
+
+    return { success: true, history };
+  } catch (e: any) {
+    console.error("Error fetching liquidation notification history:", e);
+    return { error: e?.message || "Error al consultar la auditoría de notificaciones." };
   }
 }

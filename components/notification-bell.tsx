@@ -19,16 +19,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { fetchInAppNotificationsAction } from "@/app/dashboard/notifications/actions";
+import {
+  fetchInAppNotificationsAction,
+  markAllNotificationsAsReadAction,
+  markNotificationAsReadAction,
+} from "@/app/dashboard/notifications/actions";
 import type { InAppNotificationItem } from "@/lib/notification-types";
 
 interface NotificationBellProps {
   userId: number;
   initialNotifications?: InAppNotificationItem[];
-}
-
-function getStorageKey(userId: number): string {
-  return `uep_notifications_read_v1_${userId}`;
 }
 
 function formatRelativeTime(isoDate: string): string {
@@ -52,64 +52,29 @@ function formatRelativeTime(isoDate: string): string {
 }
 
 export function NotificationBell({
-  userId,
+  userId: _userId,
   initialNotifications = [],
 }: NotificationBellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<InAppNotificationItem[]>(initialNotifications);
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [optimisticReadIds, setOptimisticReadIds] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
-
-  // Cargar lecturas persistidas localmente en el navegador del usuario
-  useEffect(() => {
-    if (!userId || typeof window === "undefined") return;
-    const loadRead = () => {
-      try {
-        const raw = window.localStorage.getItem(getStorageKey(userId));
-        if (!raw) {
-          setReadIds(new Set());
-          return;
-        }
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          setReadIds(new Set(parsed.filter((x) => typeof x === "string")));
-        }
-      } catch {
-        setReadIds(new Set());
-      }
-    };
-
-    loadRead();
-
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === getStorageKey(userId)) loadRead();
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [userId]);
-
-  const persistReadIds = useCallback(
-    (nextSet: Set<string>) => {
-      setReadIds(nextSet);
-      if (!userId || typeof window === "undefined") return;
-      try {
-        // Limitar historial guardado a 250 claves más recientes
-        const compact = Array.from(nextSet).slice(-250);
-        window.localStorage.setItem(getStorageKey(userId), JSON.stringify(compact));
-      } catch {
-        // Ignorar errores de cuota de almacenamiento
-      }
-    },
-    [userId]
-  );
 
   const refreshNotifications = useCallback(async () => {
     setRefreshing(true);
     try {
       const fresh = await fetchInAppNotificationsAction();
       setNotifications(fresh);
+      setOptimisticReadIds((prev) => {
+        if (prev.size === 0) return prev;
+        const next = new Set<string>();
+        for (const item of fresh) {
+          if (!item.read && prev.has(item.id)) next.add(item.id);
+        }
+        return next;
+      });
     } catch {
       // Silencioso en sondeo de fondo
     } finally {
@@ -132,22 +97,44 @@ export function NotificationBell({
     };
   }, [refreshNotifications]);
 
-  const unreadCount = useMemo(
-    () => notifications.filter((n) => !readIds.has(n.id)).length,
-    [notifications, readIds]
+  const isNotificationUnread = useCallback(
+    (item: InAppNotificationItem) => !item.read && !optimisticReadIds.has(item.id),
+    [optimisticReadIds]
   );
 
-  const handleMarkAllRead = () => {
-    if (notifications.length === 0) return;
-    const next = new Set(readIds);
-    for (const item of notifications) next.add(item.id);
-    persistReadIds(next);
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => isNotificationUnread(n)).length,
+    [notifications, isNotificationUnread]
+  );
+
+  const handleMarkAllRead = async () => {
+    const unreadIds = notifications.filter((n) => isNotificationUnread(n)).map((n) => n.id);
+    if (unreadIds.length === 0) return;
+
+    // Feedback optimista inmediato mientras se persiste en BD
+    setOptimisticReadIds((prev) => {
+      const next = new Set(prev);
+      for (const id of unreadIds) next.add(id);
+      return next;
+    });
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+
+    await markAllNotificationsAsReadAction(unreadIds);
   };
 
   const handleClickNotification = (item: InAppNotificationItem) => {
-    const next = new Set(readIds);
-    next.add(item.id);
-    persistReadIds(next);
+    if (isNotificationUnread(item)) {
+      setOptimisticReadIds((prev) => {
+        const next = new Set(prev);
+        next.add(item.id);
+        return next;
+      });
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === item.id ? { ...n, read: true } : n))
+      );
+      void markNotificationAsReadAction(item.id);
+    }
+
     setOpen(false);
 
     const targetPath = item.href.split("?")[0];
@@ -273,7 +260,7 @@ export function NotificationBell({
             </div>
           ) : (
             notifications.map((item) => {
-              const isUnread = !readIds.has(item.id);
+              const isUnread = isNotificationUnread(item);
               return (
                 <button
                   key={item.id}

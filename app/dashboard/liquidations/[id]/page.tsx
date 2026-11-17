@@ -8,6 +8,7 @@ import { isUserAdmin, isUserHospital } from "@/lib/constants";
 import { cleanCuit } from "@/lib/hospital-mapping";
 import { filterLiquidationForHospital } from "@/lib/hospital-liquidation-scope";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
+import { fetchLiquidationNotificationHistoryAction } from "@/app/dashboard/notifications/actions";
 import LiquidationDetailClient from "./liquidation-detail-client";
 
 interface PageProps {
@@ -229,6 +230,12 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     localidad: "CAPITAL",
   }));
 
+  // Historial y auditoría de notificaciones (exclusivo para operadores UEP)
+  const historyRes = !isHospitalUser
+    ? await fetchLiquidationNotificationHistoryAction(liqId)
+    : null;
+  const notificationHistory = historyRes?.history || [];
+
   return (
     <LiquidationDetailClient
       liquidation={serializeData(liquidation)}
@@ -238,6 +245,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
       agentsPeriodOrigin={agentsPeriodOrigin}
       hospitalId={targetEmpresaId ?? null}
       hospitals={serializeData(allHospitals)}
+      notificationHistory={serializeData(notificationHistory)}
     />
   );
 }

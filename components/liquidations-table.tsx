@@ -40,11 +40,13 @@ import {
   MessageSquare,
   Building2,
   MoreVertical,
+  Bell,
 } from "lucide-react";
 import { getLiquidationStatusConfig, getLiquidationStatusBadge } from "@/lib/constants";
 import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
 import { cleanCuit } from "@/lib/hospital-mapping";
 import { NormaLegalModal } from "@/components/norma-legal-modal";
+import { NotificationAuditModal } from "@/components/notification-audit-modal";
 import { updateLiquidationNormaLegal } from "@/app/dashboard/liquidations/actions";
 
 export interface LiquidationsTableProps {
@@ -120,6 +122,11 @@ export function LiquidationsTable({
   } | null>(null);
   const [downloadingReportId, setDownloadingReportId] = useState<number | null>(null);
   const [normaLegalTargetLiq, setNormaLegalTargetLiq] = useState<any | null>(null);
+  const [auditTargetLiq, setAuditTargetLiq] = useState<{
+    id: number;
+    code: string;
+    clientName?: string;
+  } | null>(null);
 
   // Descarga reporte en modo PENDIENTE (siempre disponible para cualquier liquidación)
   const handleDownloadPendingExcel = async (liq: any) => {
@@ -840,6 +847,23 @@ export function LiquidationsTable({
                                     </DropdownMenuItem>
                                   )}
 
+                                  {/* Opción Auditoría de Notificaciones (Exclusivo UEP) */}
+                                  {!isHospitalUser && (
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        setAuditTargetLiq({
+                                          id: liq.id,
+                                          code: `LIQ-${String(liq.id).padStart(4, "0")}`,
+                                          clientName: liq.rc?.cliente?.nombre,
+                                        })
+                                      }
+                                      className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 focus:bg-violet-500/10 w-full"
+                                    >
+                                      <Bell className="h-3.5 w-3.5 text-violet-500 shrink-0" />
+                                      <span>Auditoría de Notificaciones</span>
+                                    </DropdownMenuItem>
+                                  )}
+
                                   {/* Opción Ver Comprobantes de Débitos Adjuntos */}
                                   {liq.attachments && liq.attachments.length > 0 && (
                                     <>
@@ -1109,6 +1133,16 @@ export function LiquidationsTable({
         liquidationId={normaLegalTargetLiq?.id}
         liquidationCode={normaLegalTargetLiq ? `LIQ-${String(normaLegalTargetLiq.id).padStart(4, "0")}` : ""}
       />
+
+      {!isHospitalUser && (
+        <NotificationAuditModal
+          isOpen={!!auditTargetLiq}
+          onClose={() => setAuditTargetLiq(null)}
+          liquidationId={auditTargetLiq?.id ?? null}
+          liquidationCode={auditTargetLiq?.code}
+          clientName={auditTargetLiq?.clientName}
+        />
+      )}
     </Card>
   );
 }

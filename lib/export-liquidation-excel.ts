@@ -95,9 +95,19 @@ export function buildLiquidationWorkbook(
   customNormaLegal?: string,
   reportMode: "PENDIENTE" | "DISTRIBUIDA" | "AUTO" = "AUTO"
 ): { workbook: ExcelJS.Workbook; fileName: string } {
+  const hospitalScopeName = typeof liq.hospitalScopeName === "string" && liq.hospitalScopeName.trim()
+    ? liq.hospitalScopeName.trim()
+    : "";
+  const isHospitalScoped = Boolean(hospitalScopeName || liq.hospitalScopeCuit);
+  const showOperatorInReport = !isHospitalScoped;
+  const operador = (liq.createdByName && String(liq.createdByName).trim()) || "Sin asignar";
+
   const wb = new ExcelJS.Workbook();
   wb.creator = "UEP - Unidad Ejecutora Provincial";
-  wb.lastModifiedBy = liq.createdByName || "UEP Operador";
+  wb.lastModifiedBy =
+    showOperatorInReport && liq.createdByName && String(liq.createdByName).trim()
+      ? String(liq.createdByName).trim()
+      : "UEP - Unidad Ejecutora Provincial";
   wb.created = new Date();
   wb.modified = new Date();
 
@@ -114,8 +124,21 @@ export function buildLiquidationWorkbook(
   const liqCode = `LIQ-${String(liq.id).padStart(4, "0")}`;
   const statusLabel = getLiquidationStatusConfig(effectiveStatus).label;
   const rcNumber = liq.rc ? `${String(liq.rc.puntoVenta).padStart(4, "0")}-${String(liq.rc.numero).padStart(8, "0")}` : "-";
+  const fcVentasList: string[] = Array.from(
+    new Set(
+      (liq.rc?.appliedAsRc || [])
+        .map((app: any) => {
+          const fc = app?.fc;
+          if (!fc) return null;
+          const pto = String(fc.puntoVenta ?? "0").padStart(4, "0");
+          const nro = String(fc.numero ?? fc.id ?? "0").padStart(8, "0");
+          return `FC-${pto}-${nro}`;
+        })
+        .filter((v: string | null): v is string => Boolean(v))
+    )
+  );
+  const fcVentasText = fcVentasList.length > 0 ? fcVentasList.join(", ") : "Sin asignar";
   const mesCarga = liq.mesCarga || (liq.period ? `${getMonthName(liq.period.mes)} ${liq.period.anio}` : "-");
-  const operador = liq.createdByName || "UEP Operador";
   const fechaGeneracion = new Date().toLocaleString("es-AR", {
     dateStyle: "short",
     timeStyle: "short",
@@ -129,22 +152,19 @@ export function buildLiquidationWorkbook(
   const details = liq.details || [];
   const personalDistributions = isExplicitPending ? [] : (liq.personalDistributions || []);
   const distributions = isExplicitPending ? [] : (liq.distributions || []);
-  const hospitalScopeName = typeof liq.hospitalScopeName === "string" && liq.hospitalScopeName.trim()
-    ? liq.hospitalScopeName.trim()
-    : "";
-  const isHospitalScoped = Boolean(hospitalScopeName || liq.hospitalScopeCuit);
 
   // =========================================================================
-  // 1. HOJA 1: LIQUIDACIÓN DE PRESTACIONES
+  // 1. HOJA 1: LIQUIDACIÓN DE COBRANZA
   // =========================================================================
-  const ws1 = wb.addWorksheet("Liquidación de Prestaciones", {
+  const ws1 = wb.addWorksheet("Liquidación de Cobranza", {
     pageSetup: {
       orientation: "landscape",
       paperSize: 9, // A4
       fitToPage: true,
       fitToWidth: 1,
       fitToHeight: 0,
-      margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 },
+      horizontalCentered: true,
+      margins: { left: 0.25, right: 0.25, top: 0.3, bottom: 0.3, header: 0.15, footer: 0.15 },
       showGridLines: true,
     },
     views: [{ showGridLines: true }],
@@ -154,8 +174,8 @@ export function buildLiquidationWorkbook(
   ws1.mergeCells("A1:M1");
   const title1 = ws1.getCell("A1");
   title1.value = isHospitalScoped
-    ? `LIQUIDACIÓN DE PRESTACIONES - ${hospitalScopeName || "ESTABLECIMIENTO SANITARIO"}`
-    : "LIQUIDACIÓN DE PRESTACIONES - UEP MSP";
+    ? `LIQUIDACIÓN DE COBRANZA - ${hospitalScopeName || "ESTABLECIMIENTO SANITARIO"}`
+    : "LIQUIDACIÓN DE COBRANZA - UEP MSP";
   title1.font = { name: "Arial", size: 13, bold: true, color: { argb: "FFFFFFFF" } };
   title1.fill = titleFill;
   title1.alignment = { horizontal: "center", vertical: "middle" };
@@ -180,51 +200,81 @@ export function buildLiquidationWorkbook(
   clientCell.alignment = { horizontal: "left", vertical: "middle" };
   ws1.getRow(4).height = 22;
 
-  // Fila CUIT, Período, Recibo
+  // Fila CUIT, Período, Recibo (combinando celdas hacia la derecha para evitar cortes sin ensanchar la tabla)
   ws1.getCell("A5").value = "CUIT O.S.:";
   ws1.getCell("A5").font = { name: "Arial", size: 9, bold: true };
+  ws1.mergeCells("B5:C5");
   ws1.getCell("B5").value = clientCuit;
+  ws1.mergeCells("D5:E5");
   ws1.getCell("D5").value = "Mes Carga / Período:";
   ws1.getCell("D5").font = { name: "Arial", size: 9, bold: true };
-  ws1.getCell("E5").value = mesCarga;
-  ws1.getCell("G5").value = "Recibo UEP N°:";
-  ws1.getCell("G5").font = { name: "Arial", size: 9, bold: true };
-  ws1.getCell("H5").value = rcNumber;
+  ws1.mergeCells("F5:H5");
+  ws1.getCell("F5").value = mesCarga;
+  ws1.mergeCells("I5:J5");
+  ws1.getCell("I5").value = "Recibo UEP N°:";
+  ws1.getCell("I5").font = { name: "Arial", size: 9, bold: true };
+  ws1.mergeCells("K5:M5");
+  ws1.getCell("K5").value = rcNumber;
 
   // Fila Liquidación, Expediente, Norma Legal
   ws1.getCell("A6").value = "Liquidación N°:";
   ws1.getCell("A6").font = { name: "Arial", size: 9, bold: true };
+  ws1.mergeCells("B6:C6");
   ws1.getCell("B6").value = liqCode;
+  ws1.mergeCells("D6:E6");
   ws1.getCell("D6").value = "N° Expediente:";
   ws1.getCell("D6").font = { name: "Arial", size: 9, bold: true };
-  ws1.getCell("E6").value = liq.expediente || "Sin asignar";
-  ws1.getCell("G6").value = "N° NORMA LEGAL:";
-  ws1.getCell("G6").font = { name: "Arial", size: 9, bold: true, color: { argb: "FF0F172A" } };
-  ws1.getCell("H6").value = normaLegalText;
-  ws1.getCell("H6").font = { name: "Arial", size: 9, bold: true, color: normaLegalText === "Sin asignar" ? { argb: "FF64748B" } : { argb: "FF047857" } };
+  ws1.mergeCells("F6:H6");
+  ws1.getCell("F6").value = liq.expediente || "Sin asignar";
+  ws1.mergeCells("I6:J6");
+  ws1.getCell("I6").value = "N° NORMA LEGAL:";
+  ws1.getCell("I6").font = { name: "Arial", size: 9, bold: true, color: { argb: "FF0F172A" } };
+  ws1.mergeCells("K6:M6");
+  ws1.getCell("K6").value = normaLegalText;
+  ws1.getCell("K6").font = { name: "Arial", size: 9, bold: true, color: normaLegalText === "Sin asignar" ? { argb: "FF64748B" } : { argb: "FF047857" } };
 
-  // Fila Estado, Operador, Fecha
+  // Fila Estado, Operador (solo reportes Sede UEP) y Fecha Emisión
   ws1.getCell("A7").value = "Estado:";
   ws1.getCell("A7").font = { name: "Arial", size: 9, bold: true };
+  ws1.mergeCells("B7:C7");
   ws1.getCell("B7").value = statusLabel;
-  ws1.getCell("D7").value = "Operador / Liquidador:";
-  ws1.getCell("D7").font = { name: "Arial", size: 9, bold: true };
-  ws1.getCell("E7").value = operador;
-  ws1.getCell("G7").value = "Fecha Emisión:";
-  ws1.getCell("G7").font = { name: "Arial", size: 9, bold: true };
-  ws1.getCell("H7").value = fechaGeneracion;
-
-  // Observaciones si existen
-  let nextRowIdx = 8;
-  if (liq.observaciones) {
-    ws1.getCell(`A${nextRowIdx}`).value = "Observaciones:";
-    ws1.getCell(`A${nextRowIdx}`).font = { name: "Arial", size: 9, bold: true };
-    ws1.mergeCells(`B${nextRowIdx}:M${nextRowIdx}`);
-    ws1.getCell(`B${nextRowIdx}`).value = liq.observaciones;
-    ws1.getCell(`B${nextRowIdx}`).font = { name: "Arial", size: 9, italic: true };
-    nextRowIdx++;
+  if (showOperatorInReport) {
+    ws1.mergeCells("D7:E7");
+    ws1.getCell("D7").value = "Operador / Liquidador:";
+    ws1.getCell("D7").font = { name: "Arial", size: 9, bold: true };
+    ws1.mergeCells("F7:H7");
+    ws1.getCell("F7").value = operador;
+    ws1.mergeCells("I7:J7");
+    ws1.getCell("I7").value = "Fecha Emisión:";
+    ws1.getCell("I7").font = { name: "Arial", size: 9, bold: true };
+    ws1.mergeCells("K7:M7");
+    ws1.getCell("K7").value = fechaGeneracion;
+  } else {
+    ws1.mergeCells("D7:E7");
+    ws1.getCell("D7").value = "Fecha Emisión:";
+    ws1.getCell("D7").font = { name: "Arial", size: 9, bold: true };
+    ws1.mergeCells("F7:H7");
+    ws1.getCell("F7").value = fechaGeneracion;
   }
-  nextRowIdx++;
+
+  // Fila Facturas de Venta (FC Ventas) asociadas al Recibo
+  ws1.getCell("A8").value = "Facturas de Venta (FC):";
+  ws1.getCell("A8").font = { name: "Arial", size: 9, bold: true };
+  ws1.getCell("A8").alignment = { horizontal: "left", vertical: "middle" };
+  ws1.mergeCells("B8:M8");
+  const fcCell1 = ws1.getCell("B8");
+  fcCell1.value = fcVentasText;
+  fcCell1.font = {
+    name: "Arial",
+    size: 9,
+    bold: fcVentasList.length > 0,
+    color: fcVentasList.length > 0 ? { argb: "FF1D4ED8" } : { argb: "FF64748B" },
+  };
+  fcCell1.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+  ws1.getRow(8).height = Math.max(20, Math.ceil(fcVentasText.length / 110) * 16);
+
+  // Las observaciones internas son de uso exclusivo dentro del sistema y nunca se incluyen en reportes
+  let nextRowIdx = 10;
 
   // Sección Totales
   ws1.mergeCells(`A${nextRowIdx}:M${nextRowIdx}`);
@@ -242,7 +292,7 @@ export function buildLiquidationWorkbook(
     ["Total Facturado:", formatMoney(liq.totalFacturado), "Bruto a Pagar:", formatMoney(liq.brutoAPagar)],
     ["Total Créditos:", formatMoney(liq.creditos), "Gastos Administrativos (GA):", formatMoney(liq.ga)],
     ["Total Débitos:", formatMoney(liq.debitos), "Adelantos:", formatMoney(liq.ajusteRecupero)],
-    ["Ajustes O.S.:", formatMoney(liq.ajustesOs), "NETO FINAL A PAGAR:", formatMoney(liq.netoAPagar)],
+    ["Ajustes O.S.:", formatMoney(liq.ajustesOs), "NETO FINAL A DISTRIBUIR:", formatMoney(liq.netoAPagar)],
     ["Pendientes de Cobro:", formatMoney(liq.pendientesCobro), "Total Honorarios:", formatMoney(liq.totalHonorarios)],
     ["Pagos Parciales Anteriores:", formatMoney(liq.pagosParcialesAnteriores), "Total Sobreasignación:", formatMoney(liq.totalSobreasignaciones)],
     ["", 0, "Total Gastos Transferibles:", formatMoney(liq.totalGastos)],
@@ -254,23 +304,28 @@ export function buildLiquidationWorkbook(
     if (m[0]) {
       r.getCell(1).value = m[0];
       r.getCell(1).font = { name: "Arial", size: 9 };
+      ws1.mergeCells(`B${nextRowIdx}:C${nextRowIdx}`);
       r.getCell(2).value = m[1];
       r.getCell(2).numFmt = accountingNumFmt;
       r.getCell(2).font = { name: "Arial", size: 9, bold: true };
+      r.getCell(2).alignment = { horizontal: "right", vertical: "middle" };
     }
     if (m[2]) {
+      ws1.mergeCells(`D${nextRowIdx}:E${nextRowIdx}`);
       r.getCell(4).value = m[2];
-      r.getCell(4).font = { name: "Arial", size: 9, bold: m[2] === "NETO FINAL A PAGAR:" || m[2] === "TOTAL DISTRIBUIDO:" };
-      r.getCell(5).value = m[3];
-      r.getCell(5).numFmt = accountingNumFmt;
-      r.getCell(5).font = {
+      r.getCell(4).font = { name: "Arial", size: 9, bold: m[2] === "NETO FINAL A DISTRIBUIR:" || m[2] === "TOTAL DISTRIBUIDO:" };
+      ws1.mergeCells(`F${nextRowIdx}:G${nextRowIdx}`);
+      r.getCell(6).value = m[3];
+      r.getCell(6).numFmt = accountingNumFmt;
+      r.getCell(6).alignment = { horizontal: "right", vertical: "middle" };
+      r.getCell(6).font = {
         name: "Arial",
         size: 9,
         bold: true,
-        color: m[2] === "NETO FINAL A PAGAR:" ? { argb: "FF047857" } : undefined,
+        color: m[2] === "NETO FINAL A DISTRIBUIR:" ? { argb: "FF047857" } : undefined,
       };
-      if (m[2] === "NETO FINAL A PAGAR:") {
-        r.getCell(5).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCFCE7" } };
+      if (m[2] === "NETO FINAL A DISTRIBUIR:") {
+        r.getCell(6).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDCFCE7" } };
       }
     }
     nextRowIdx++;
@@ -303,7 +358,7 @@ export function buildLiquidationWorkbook(
     "Bruto a Pagar ($)",
     "G.A. ($)",
     "Adelantos ($)",
-    "Neto a Pagar ($)",
+    "Neto a Distribuir ($)",
   ];
 
   const headerRow1 = ws1.getRow(nextRowIdx);
@@ -409,34 +464,35 @@ export function buildLiquidationWorkbook(
   }
   totRow1.getCell(13).font = { name: "Arial", size: 9, bold: true, color: { argb: "FF047857" } };
 
-  // Anchos de columna Hoja 1
+  // Anchos de columna Hoja 1 (encabezados en 1 sola línea sin cortar ($), ajustado a 1 hoja A4 horizontal)
   ws1.columns = [
-    { key: "hosp", width: 44 }, // Hospital
-    { key: "cuit", width: 16 }, // CUIT
-    { key: "fc", width: 20 }, // Factura
-    { key: "fact", width: 17 }, // Total Facturado
-    { key: "cred", width: 15 }, // Créditos
-    { key: "deb", width: 15 }, // Débitos
-    { key: "ajos", width: 15 }, // Ajustes O.S.
-    { key: "pend", width: 16 }, // Pendientes Cobro
-    { key: "pagp", width: 16 }, // Pagos Parciales
-    { key: "bruto", width: 17 }, // Bruto a Pagar
-    { key: "ga", width: 15 }, // GA
-    { key: "recup", width: 15 }, // Adelantos
-    { key: "neto", width: 18 }, // Neto a Pagar
+    { key: "hosp", width: 38 }, // Hospital
+    { key: "cuit", width: 15 }, // CUIT
+    { key: "fc", width: 19 }, // Factura
+    { key: "fact", width: 21 }, // Total Facturado ($)
+    { key: "cred", width: 15 }, // Créditos ($)
+    { key: "deb", width: 15 }, // Débitos ($)
+    { key: "ajos", width: 18 }, // Ajustes O.S. ($)
+    { key: "pend", width: 21 }, // Pendiente Cobro ($)
+    { key: "pagp", width: 21 }, // Pagos Parciales ($)
+    { key: "bruto", width: 19 }, // Bruto a Pagar ($)
+    { key: "ga", width: 14 }, // G.A. ($)
+    { key: "recup", width: 16 }, // Adelantos ($)
+    { key: "neto", width: 23 }, // Neto a Distribuir ($)
   ];
 
   // =========================================================================
   // 2. HOJA 2: RESUMEN DISTRIBUCIÓN DE COBRANZA
   // =========================================================================
-  const ws2 = wb.addWorksheet("Resumen Distribución de Cobranza", {
+  const ws2 = wb.addWorksheet("Resumen Distribución Cobranza", {
     pageSetup: {
       orientation: "landscape",
       paperSize: 9,
       fitToPage: true,
       fitToWidth: 1,
       fitToHeight: 0,
-      margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 },
+      horizontalCentered: true,
+      margins: { left: 0.25, right: 0.25, top: 0.3, bottom: 0.3, header: 0.15, footer: 0.15 },
       showGridLines: true,
     },
     views: [{ showGridLines: true }],
@@ -478,9 +534,11 @@ export function buildLiquidationWorkbook(
   ws2.getCell("B5").value = liqCode;
   ws2.getCell("C5").value = "Mes Carga / Período:";
   ws2.getCell("C5").font = { name: "Arial", size: 9, bold: true };
+  ws2.mergeCells("D5:E5");
   ws2.getCell("D5").value = mesCarga;
   ws2.getCell("F5").value = "Recibo UEP N°:";
   ws2.getCell("F5").font = { name: "Arial", size: 9, bold: true };
+  ws2.mergeCells("G5:H5");
   ws2.getCell("G5").value = rcNumber;
 
   // Fila Estado, Expediente, Norma Legal
@@ -489,11 +547,46 @@ export function buildLiquidationWorkbook(
   ws2.getCell("B6").value = statusLabel;
   ws2.getCell("C6").value = "N° Expediente:";
   ws2.getCell("C6").font = { name: "Arial", size: 9, bold: true };
+  ws2.mergeCells("D6:E6");
   ws2.getCell("D6").value = liq.expediente || "Sin asignar";
   ws2.getCell("F6").value = "N° NORMA LEGAL:";
   ws2.getCell("F6").font = { name: "Arial", size: 9, bold: true, color: { argb: "FF0F172A" } };
+  ws2.mergeCells("G6:H6");
   ws2.getCell("G6").value = normaLegalText;
   ws2.getCell("G6").font = { name: "Arial", size: 9, bold: true, color: normaLegalText === "Sin asignar" ? { argb: "FF64748B" } : { argb: "FF047857" } };
+
+  // Fila Operador (solo reportes Sede UEP) y Fecha Emisión
+  if (showOperatorInReport) {
+    ws2.getCell("A7").value = "Operador / Liquidador:";
+    ws2.getCell("A7").font = { name: "Arial", size: 9, bold: true };
+    ws2.mergeCells("B7:E7");
+    ws2.getCell("B7").value = operador;
+    ws2.getCell("F7").value = "Fecha Emisión:";
+    ws2.getCell("F7").font = { name: "Arial", size: 9, bold: true };
+    ws2.mergeCells("G7:H7");
+    ws2.getCell("G7").value = fechaGeneracion;
+  } else {
+    ws2.getCell("A7").value = "Fecha Emisión:";
+    ws2.getCell("A7").font = { name: "Arial", size: 9, bold: true };
+    ws2.mergeCells("B7:D7");
+    ws2.getCell("B7").value = fechaGeneracion;
+  }
+
+  // Fila Facturas de Venta (FC Ventas) asociadas al Recibo
+  ws2.getCell("A8").value = "Facturas de Venta (FC):";
+  ws2.getCell("A8").font = { name: "Arial", size: 9, bold: true };
+  ws2.getCell("A8").alignment = { horizontal: "left", vertical: "middle" };
+  ws2.mergeCells("B8:H8");
+  const fcCell2 = ws2.getCell("B8");
+  fcCell2.value = fcVentasText;
+  fcCell2.font = {
+    name: "Arial",
+    size: 9,
+    bold: fcVentasList.length > 0,
+    color: fcVentasList.length > 0 ? { argb: "FF1D4ED8" } : { argb: "FF64748B" },
+  };
+  fcCell2.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+  ws2.getRow(8).height = Math.max(20, Math.ceil(fcVentasText.length / 85) * 16);
 
   // Agrupar distribución por hospital
   const hospitalMap = new Map<string, {
@@ -556,13 +649,13 @@ export function buildLiquidationWorkbook(
   }
 
   // Tabla Distribución
-  let nextRow2 = 8;
+  let nextRow2 = 10;
   const headers2 = [
     "Hospital / Establecimiento",
-    "Neto a Pagar ($)",
-    "Honorarios Médicos ($)",
+    "Neto a Distribuir ($)",
     "Sobreasignación Personal ($)",
-    "Gastos Funcionamiento ($)",
+    "Honorarios Médicos ($)",
+    "Gastos Disponible ($)",
     "Total Distribuido ($)",
     "Diferencia / Restante ($)",
     "Estado Distribución",
@@ -606,8 +699,8 @@ export function buildLiquidationWorkbook(
     r.values = [
       h.name,
       formatMoney(h.netoAPagar),
-      formatMoney(h.honorarios),
       formatMoney(h.sobreasignacion),
+      formatMoney(h.honorarios),
       formatMoney(gastosCalc),
       formatMoney(totalDist),
       formatMoney(diff),
@@ -642,8 +735,8 @@ export function buildLiquidationWorkbook(
   totRow2.values = [
     "TOTALES GENERALES",
     formatMoney(sumNeto),
-    formatMoney(sumHon),
     formatMoney(sumSob),
+    formatMoney(sumHon),
     formatMoney(sumGas),
     formatMoney(sumDist),
     formatMoney(sumNeto - sumDist),
@@ -665,16 +758,16 @@ export function buildLiquidationWorkbook(
   }
   totRow2.getCell(8).alignment = { vertical: "middle", horizontal: "center" };
 
-  // Anchos de columna Hoja 2
+  // Anchos de columna Hoja 2 (encabezados en 1 sola línea sin cortar ($), ajustado a 1 hoja A4 horizontal)
   ws2.columns = [
-    { key: "hosp", width: 44 }, // Hospital
-    { key: "neto", width: 19 }, // Neto
-    { key: "hon", width: 19 }, // Honorarios
-    { key: "sob", width: 21 }, // Sobreasignacion
-    { key: "gas", width: 21 }, // Gastos
-    { key: "totd", width: 19 }, // Total Distribuido
-    { key: "diff", width: 19 }, // Diferencia
-    { key: "est", width: 18 }, // Estado
+    { key: "hosp", width: 38 }, // Hospital / Establecimiento
+    { key: "neto", width: 24 }, // Neto a Distribuir ($)
+    { key: "sob", width: 30 }, // Sobreasignación Personal ($)
+    { key: "hon", width: 25 }, // Honorarios Médicos ($)
+    { key: "gas", width: 24 }, // Gastos Disponible ($)
+    { key: "totd", width: 24 }, // Total Distribuido ($)
+    { key: "diff", width: 27 }, // Diferencia / Restante ($)
+    { key: "est", width: 22 }, // Estado Distribución
   ];
 
   // =========================================================================
@@ -801,93 +894,91 @@ export function buildLiquidationWorkbook(
   }
 
   // =========================================================================
-  // 4. HOJA 4: POR EXPTE (Tesorería / TGP)
+  // 4. HOJA 4: POR EXPTE (Tesorería / TGP - exclusivo reportes Sede UEP)
   // =========================================================================
-  const totalSueldos = formatMoney((liq.totalHonorarios || 0) + (liq.totalSobreasignaciones || 0));
-  const wsExpte = wb.addWorksheet("Por Expte.", {
-    pageSetup: {
-      orientation: "landscape",
-      paperSize: 9,
-      fitToPage: true,
-      fitToWidth: 1,
-      fitToHeight: 0,
-      showGridLines: true,
-    },
-    views: [{ showGridLines: true }],
-  });
+  if (!isHospitalScoped) {
+    const totalSueldos = formatMoney((liq.totalHonorarios || 0) + (liq.totalSobreasignaciones || 0));
+    const wsExpte = wb.addWorksheet("Por Expte.", {
+      pageSetup: {
+        orientation: "landscape",
+        paperSize: 9,
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        showGridLines: true,
+      },
+      views: [{ showGridLines: true }],
+    });
 
-  wsExpte.mergeCells("A1:G1");
-  const titleExpte = wsExpte.getCell("A1");
-  titleExpte.value = isHospitalScoped
-    ? `RESUMEN POR EXPEDIENTE - ${hospitalScopeName || "ESTABLECIMIENTO SANITARIO"}`
-    : "REPORTE RESUMEN POR EXPEDIENTE ADMINISTRATIVO - UEP MSP";
-  titleExpte.font = { name: "Arial", size: 12, bold: true, color: { argb: "FFFFFFFF" } };
-  titleExpte.fill = titleFill;
-  titleExpte.alignment = { horizontal: "center", vertical: "middle" };
-  wsExpte.getRow(1).height = 26;
+    wsExpte.mergeCells("A1:G1");
+    const titleExpte = wsExpte.getCell("A1");
+    titleExpte.value = "REPORTE RESUMEN POR EXPEDIENTE ADMINISTRATIVO - UEP MSP";
+    titleExpte.font = { name: "Arial", size: 12, bold: true, color: { argb: "FFFFFFFF" } };
+    titleExpte.fill = titleFill;
+    titleExpte.alignment = { horizontal: "center", vertical: "middle" };
+    wsExpte.getRow(1).height = 26;
 
-  const headersExpte = ["SIGLAS OS", "LIQUIDACIÓN N°", "expte", "N° NORMA LEGAL", "Hon. Médicos", "Sobreasignación", "SUELDOS"];
-  const hExpRow = wsExpte.getRow(3);
-  hExpRow.values = headersExpte;
-  hExpRow.height = 22;
-  styleRow(hExpRow, 1, 7, {
-    font: { name: "Arial", size: 9, bold: true },
-    fill: headerFill,
-    border: thinBorder,
-    alignment: { vertical: "middle", horizontal: "center" },
-  });
+    const headersExpte = ["SIGLAS OS", "LIQUIDACIÓN N°", "expte", "N° NORMA LEGAL", "Hon. Médicos", "Sobreasignación", "SUELDOS"];
+    const hExpRow = wsExpte.getRow(3);
+    hExpRow.values = headersExpte;
+    hExpRow.height = 22;
+    styleRow(hExpRow, 1, 7, {
+      font: { name: "Arial", size: 9, bold: true },
+      fill: headerFill,
+      border: thinBorder,
+      alignment: { vertical: "middle", horizontal: "center" },
+    });
 
-  const rowDataExp = wsExpte.getRow(4);
-  rowDataExp.values = [
-    clientName,
-    isHospitalScoped && hospitalScopeName
-      ? `Liq. N° ${liq.id} - ${hospitalScopeName} - ${clientName} - ${mesCarga}`
-      : `Liq. N° ${liq.id} - ${clientName} - ${mesCarga}`,
-    liq.expediente || "Pendiente de Asignación",
-    normaLegalText,
-    formatMoney(liq.totalHonorarios || 0),
-    formatMoney(liq.totalSobreasignaciones || 0),
-    totalSueldos,
-  ];
-  rowDataExp.height = 20;
-  styleRow(rowDataExp, 1, 7, {
-    font: { name: "Arial", size: 9 },
-    border: thinBorder,
-    alignment: { vertical: "middle" },
-  });
-  rowDataExp.getCell(5).numFmt = accountingNumFmt;
-  rowDataExp.getCell(6).numFmt = accountingNumFmt;
-  rowDataExp.getCell(7).numFmt = accountingNumFmt;
+    const rowDataExp = wsExpte.getRow(4);
+    rowDataExp.values = [
+      clientName,
+      `Liq. N° ${liq.id} - ${clientName} - ${mesCarga}`,
+      liq.expediente || "Pendiente de Asignación",
+      normaLegalText,
+      formatMoney(liq.totalHonorarios || 0),
+      formatMoney(liq.totalSobreasignaciones || 0),
+      totalSueldos,
+    ];
+    rowDataExp.height = 20;
+    styleRow(rowDataExp, 1, 7, {
+      font: { name: "Arial", size: 9 },
+      border: thinBorder,
+      alignment: { vertical: "middle" },
+    });
+    rowDataExp.getCell(5).numFmt = accountingNumFmt;
+    rowDataExp.getCell(6).numFmt = accountingNumFmt;
+    rowDataExp.getCell(7).numFmt = accountingNumFmt;
 
-  const rowTotExp = wsExpte.getRow(6);
-  rowTotExp.values = [
-    "TOTAL GENERAL",
-    "",
-    "",
-    "",
-    formatMoney(liq.totalHonorarios || 0),
-    formatMoney(liq.totalSobreasignaciones || 0),
-    totalSueldos,
-  ];
-  rowTotExp.height = 22;
-  styleRow(rowTotExp, 1, 7, {
-    font: { name: "Arial", size: 9, bold: true },
-    border: doubleBottomBorder,
-    alignment: { vertical: "middle" },
-  });
-  rowTotExp.getCell(5).numFmt = accountingNumFmt;
-  rowTotExp.getCell(6).numFmt = accountingNumFmt;
-  rowTotExp.getCell(7).numFmt = accountingNumFmt;
+    const rowTotExp = wsExpte.getRow(6);
+    rowTotExp.values = [
+      "TOTAL GENERAL",
+      "",
+      "",
+      "",
+      formatMoney(liq.totalHonorarios || 0),
+      formatMoney(liq.totalSobreasignaciones || 0),
+      totalSueldos,
+    ];
+    rowTotExp.height = 22;
+    styleRow(rowTotExp, 1, 7, {
+      font: { name: "Arial", size: 9, bold: true },
+      border: doubleBottomBorder,
+      alignment: { vertical: "middle" },
+    });
+    rowTotExp.getCell(5).numFmt = accountingNumFmt;
+    rowTotExp.getCell(6).numFmt = accountingNumFmt;
+    rowTotExp.getCell(7).numFmt = accountingNumFmt;
 
-  wsExpte.columns = [
-    { key: "os", width: 28 },
-    { key: "liq", width: 44 },
-    { key: "exp", width: 24 },
-    { key: "norma", width: 20 },
-    { key: "hon", width: 20 },
-    { key: "sob", width: 20 },
-    { key: "suel", width: 20 },
-  ];
+    wsExpte.columns = [
+      { key: "os", width: 28 },
+      { key: "liq", width: 44 },
+      { key: "exp", width: 24 },
+      { key: "norma", width: 20 },
+      { key: "hon", width: 20 },
+      { key: "sob", width: 20 },
+      { key: "suel", width: 20 },
+    ];
+  }
 
   const sanitizedClient = clientName
     .toLowerCase()

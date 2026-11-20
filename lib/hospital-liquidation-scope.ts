@@ -116,6 +116,9 @@ export function filterLiquidationForHospital<T extends Record<string, any>>(
     reportePendienteFileName: null,
     reporteDistribuidoUrl: null,
     reporteDistribuidoFileName: null,
+    // Nunca exponer operador liquidador ni observaciones internas de UEP a usuarios de hospitales
+    createdByName: null,
+    observaciones: null,
     hospitalScopeName: resolvedHospitalName,
     hospitalScopeCuit: targetCuit,
   };

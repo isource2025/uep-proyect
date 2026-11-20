@@ -1560,6 +1560,7 @@ export async function notifyHospital(
         where: { id: liquidationId },
         data: {
           status: nextStatus,
+          ...(!liq.createdByName && emisorNombre ? { createdByName: emisorNombre } : {}),
           ...(reportePendienteUrl ? { reportePendienteUrl, reportePendienteFileName } : {}),
         },
       });

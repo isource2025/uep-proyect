@@ -326,7 +326,7 @@ Unidad Ejecutora Provincial`
               <div className="p-2.5 rounded-lg bg-card/80 border border-border space-y-0.5 shadow-2xs">
                 <span className="text-3xs text-muted-foreground font-bold uppercase tracking-wider flex items-center gap-1">
                   <DollarSign className="h-3 w-3 text-emerald-500" />
-                  Neto a Pagar
+                  Neto a Distribuir
                 </span>
                 <p className="font-mono font-extrabold text-emerald-600 dark:text-emerald-400 text-xs truncate">
                   {formatCurrency(liquidation.totalNeto)}

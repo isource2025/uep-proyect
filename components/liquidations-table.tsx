@@ -314,7 +314,7 @@ export function LiquidationsTable({
                     <TableHead className="font-semibold text-xs w-[135px]">Facturas de Venta</TableHead>
                     <TableHead className="font-semibold text-xs w-[120px]">Recibo UEP</TableHead>
                     <TableHead className="font-semibold text-xs text-right w-[130px]">Neto Inicial</TableHead>
-                    <TableHead className="font-semibold text-xs text-right w-[130px]">Neto a Pagar</TableHead>
+                    <TableHead className="font-semibold text-xs text-right w-[145px]">Neto a Distribuir</TableHead>
                   </>
                 )}
                 <TableHead className="font-semibold text-xs text-center w-[110px]">Estado</TableHead>

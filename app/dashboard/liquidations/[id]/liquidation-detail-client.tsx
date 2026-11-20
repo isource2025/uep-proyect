@@ -1995,7 +1995,7 @@ export default function LiquidationDetailClient({
           <CardContent className="p-4 flex flex-col justify-between space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                Neto a Pagar / Balance
+                Neto a Distribuir / Balance
               </span>
               <span
                 className={cn(
@@ -2214,7 +2214,7 @@ export default function LiquidationDetailClient({
                       <TableHead className="font-semibold text-3xs uppercase text-right">BRUTO A PAGAR</TableHead>
                       <TableHead className="font-semibold text-3xs uppercase text-right">GA (% / $)</TableHead>
                       <TableHead className="font-semibold text-3xs uppercase text-right">ADELANTOS</TableHead>
-                      <TableHead className="font-semibold text-3xs uppercase text-right">NETO A PAGAR</TableHead>
+                      <TableHead className="font-semibold text-3xs uppercase text-right">NETO A DISTRIBUIR</TableHead>
                       {!isHospitalUser && <TableHead className="w-10 text-center"></TableHead>}
                     </TableRow>
                   </TableHeader>

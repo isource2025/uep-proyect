@@ -148,9 +148,6 @@ export function NotifyHospitalModal({
       setSubject(`Nueva Liquidación Disponible - Período: ${periodStr} - ${liqIdStr}`);
     }
 
-    // 3. Build default professional message body (sin montos por política de seguridad y privacidad)
-    const hospitalsListed = hospitalNames.length > 0 ? hospitalNames.join(", ") : "Establecimientos Asignados";
-
     if (isRectification) {
       setMessage(
 `Estimado Director / Administrador de Establecimiento de Salud,
@@ -160,7 +157,6 @@ Nos comunicamos desde la Unidad Ejecutora Provincial (UEP) para informarle que s
 • Obra Social: ${clientStr}
 • Período: ${periodStr}
 • Liquidación N°: ${liqIdStr}
-• Establecimiento(s): ${hospitalsListed}
 
 Por favor, ingrese a la brevedad al Portal de Hospitales (UEP) para consultar los comprobantes rectificados y revalidar la distribución de fondos entre Honorarios Médicos, Sobreasignaciones y Gastos.
 
@@ -177,7 +173,6 @@ Nos comunicamos desde la Unidad Ejecutora Provincial (UEP) para informarle que s
 • Obra Social: ${clientStr}
 • Período: ${periodStr}
 • Liquidación N°: ${liqIdStr}
-• Establecimiento(s): ${hospitalsListed}
 
 Por favor, ingrese al Portal de Hospitales (UEP) antes de la fecha límite establecida para consultar los comprobantes y realizar la distribución de fondos correspondiente a Honorarios Médicos, Sobreasignaciones y Gastos.
 

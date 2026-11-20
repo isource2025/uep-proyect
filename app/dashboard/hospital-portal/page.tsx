@@ -8,6 +8,7 @@ import { cleanCuit } from "@/lib/hospital-mapping";
 import { filterLiquidationForHospital } from "@/lib/hospital-liquidation-scope";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import HospitalPortalClient from "./hospital-portal-client";
+import { ClientRedirect } from "@/components/client-redirect";
 import { Building2 } from "lucide-react";
 
 export const revalidate = 0;
@@ -39,9 +40,21 @@ export default async function HospitalPortalPage({
   // EMPRESA del usuario: imPersonalEmpresas, o imPersonal.hospitalId (IDPROVEEDOR) -> EMPRESA validada por CUIT
   const rawHospitalId: number | undefined = await resolveUserEmpresaId(user);
 
-  // If admin user without a specific hospitalId, redirect to full dashboard
+  // If admin user without a specific hospitalId, redirect cleanly (preserving highlight to UEP liquidations if present)
   if (isAdmin && (!rawHospitalId || isNaN(rawHospitalId))) {
-    redirect("/dashboard");
+    const targetUrl = initialHighlightId
+      ? `/dashboard/liquidations?highlight=${initialHighlightId}`
+      : "/dashboard";
+    return (
+      <ClientRedirect
+        to={targetUrl}
+        label={
+          initialHighlightId
+            ? "Redirigiendo a la liquidación en el panel UEP..."
+            : "Redirigiendo al Dashboard General..."
+        }
+      />
+    );
   }
 
   // 2. Fetch the hospital/empresa info

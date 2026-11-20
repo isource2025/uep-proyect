@@ -212,7 +212,23 @@ export function NotificationAuditModal({
                       <span className="inline-flex items-start sm:items-center gap-1 min-w-0 [overflow-wrap:anywhere]">
                         <Mail className="h-3 w-3 shrink-0 mt-0.5 sm:mt-0" />
                         <span>
-                          Casillas ({ev.emailEnviado ? "Email enviado" : "Pendiente envío real"}):{" "}
+                          Casillas (
+                          <strong
+                            className={
+                              ev.emailEnviado
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : ev.emailError
+                                ? "text-rose-600 dark:text-rose-400"
+                                : "text-muted-foreground"
+                            }
+                          >
+                            {ev.emailEnviado
+                              ? "Email enviado"
+                              : ev.emailError
+                              ? "Error de envío"
+                              : "Sin envío de email"}
+                          </strong>
+                          ):{" "}
                           <strong className="text-foreground font-mono text-[10px]">
                             {ev.emailDestinatarios.join(", ")}
                           </strong>
@@ -220,6 +236,13 @@ export function NotificationAuditModal({
                       </span>
                     )}
                   </div>
+
+                  {ev.emailError && (
+                    <div className="rounded-lg border border-rose-500/25 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-600 dark:text-rose-400 flex items-start gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span className="break-words">Detalle SMTP: {ev.emailError}</span>
+                    </div>
+                  )}
 
                   <div className="rounded-lg bg-background/70 border border-border/60 p-2.5">
                     <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground mb-1.5">

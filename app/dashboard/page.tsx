@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Building2, Users, FileText, Landmark, ArrowUpRight, DollarSign, CalendarDays } from "lucide-react";
 import Link from "next/link";
 import { getActivePeriodInfo } from "@/lib/periods";
+import { ClientRedirect } from "@/components/client-redirect";
 
 export const revalidate = 0; // Force dynamic rendering so database updates show immediately
 
@@ -25,7 +26,12 @@ export default async function DashboardPage() {
   const isHospitalOnly = !isAdmin && !!user?.hospitalId;
 
   if (isHospitalOnly) {
-    redirect("/dashboard/hospital-portal");
+    return (
+      <ClientRedirect
+        to="/dashboard/hospital-portal"
+        label="Redirigiendo al Portal del Hospital..."
+      />
+    );
   }
   // Fetch summary stats, active period, recent cbtes and aggregations in parallel to minimize latency
   const [hospitalCount, mspAgentCount, legacyAgentCount, fcCount, rcCount, activePeriod, recentCbtes, totalInvoiced] = await Promise.all([

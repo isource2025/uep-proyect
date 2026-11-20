@@ -1025,11 +1025,15 @@ export default function LiquidationDetailClient({
         return;
       }
       const newStatus = isRect ? "RECTIFICADA" : "NOTIFICADO";
-      setSuccessMsg(
-        isRect
-          ? "Liquidación rectificada y notificación enviada a los hospitales con éxito."
-          : "Hospitales notificados y correo simulado enviado con éxito."
-      );
+      if (res.warning) {
+        setErrorMsg(res.warning);
+      } else {
+        setSuccessMsg(
+          isRect
+            ? "Liquidación rectificada y correo electrónico enviado a los hospitales con éxito."
+            : "Hospitales notificados y correo electrónico enviado con éxito."
+        );
+      }
       setLiq((prev: any) => ({ ...prev, status: newStatus }));
 
       initialDetailsRef.current = editableDetails.map((item) => ({

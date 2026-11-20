@@ -56,6 +56,17 @@ export default function LiquidationsClientPage({
   const [warningMsg, setWarningMsg] = useState("");
   const [highlightedLiquidationId, setHighlightedLiquidationId] = useState<number | null>(initialHighlightId);
   const [pendingHighlightId, setPendingHighlightId] = useState<number | null>(null);
+  const [selectedNotifyLiq, setSelectedNotifyLiq] = useState<any | null>(null);
+  const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
+
+  // Pagination states for generated liquidations list
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Pagination states for pending RCs list
+  const [currentPendingPage, setCurrentPendingPage] = useState(1);
+  const [pendingItemsPerPage, setPendingItemsPerPage] = useState(5);
+
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liquidationsRef = useRef<any[]>(initialData.liquidations);
 
@@ -140,9 +151,6 @@ export default function LiquidationsClientPage({
     };
   }, [focusOrSearchLiquidation]);
 
-  const [selectedNotifyLiq, setSelectedNotifyLiq] = useState<any | null>(null);
-  const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
-
   const handleNotifyHospital = async (id: number) => {
     const targetLiq = data.liquidations.find((l) => l.id === id);
     if (!targetLiq) return;
@@ -183,11 +191,15 @@ export default function LiquidationsClientPage({
         setErrorMsg(res.error);
         return;
       }
-      setSuccessMsg(
-        isRect
-          ? "Liquidación rectificada y notificación enviada a los hospitales con éxito."
-          : "Hospitales notificados y correo simulado enviado con éxito."
-      );
+      if (res.warning) {
+        setWarningMsg(res.warning);
+      } else {
+        setSuccessMsg(
+          isRect
+            ? "Liquidación rectificada y correo electrónico enviado a los hospitales con éxito."
+            : "Hospitales notificados y correo electrónico enviado con éxito."
+        );
+      }
       setData((prev) => ({
         ...prev,
         liquidations: prev.liquidations.map((l) =>
@@ -198,18 +210,8 @@ export default function LiquidationsClientPage({
       setErrorMsg("Error al notificar a los establecimientos.");
     } finally {
       setNotifyingIds((prev) => prev.filter((x) => x !== id));
-      setSelectedNotifyLiq(null);
     }
   };
-
-
-  // Pagination states for generated liquidations list
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-
-  // Pagination states for pending RCs list
-  const [currentPendingPage, setCurrentPendingPage] = useState(1);
-  const [pendingItemsPerPage, setPendingItemsPerPage] = useState(5);
 
   // Fetch paginated lists from database on page/limits/search state changes
   useEffect(() => {

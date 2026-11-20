@@ -18,6 +18,7 @@ import {
 import { serializeData } from "@/lib/utils";
 import { isUserAdmin, isUserHospital } from "@/lib/constants";
 import { generateLiquidationExcelBuffer } from "@/lib/export-liquidation-excel";
+import { sendLiquidationNotificationEmail } from "@/lib/email";
 import {
   resolveHospitalPurchasesForFcs,
   buildLiquidacionDetailInputFromCompra,
@@ -1330,13 +1331,21 @@ export async function getHospitalNotificationRecipients(liquidationId: number): 
   }
 }
 
-// 5. Notify hospital by updating liquidation status to NOTIFICADO (or RECTIFICADA) and writing mock email logs
+// 5. Notify hospital by updating liquidation status to NOTIFICADO (or RECTIFICADA), persisting Notificacion and sending real SMTP email
 export async function notifyHospital(
   liquidationId: number,
   customOptions?: NotifyHospitalOptions
 ) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
+    const reqHeaders = await headers();
+    const forwardedHost = reqHeaders.get("x-forwarded-host") || reqHeaders.get("host") || "";
+    const forwardedProto =
+      reqHeaders.get("x-forwarded-proto") ||
+      (forwardedHost.includes("localhost") || forwardedHost.includes("127.0.0.1") ? "http" : "https");
+    const requestOrigin =
+      reqHeaders.get("origin") || (forwardedHost ? `${forwardedProto}://${forwardedHost}` : undefined);
+
+    const session = await auth.api.getSession({ headers: reqHeaders });
     const sessionUser = session?.user as any;
     const userRole = sessionUser?.role;
     const isAdmin = isUserAdmin(userRole);
@@ -1449,6 +1458,37 @@ export async function notifyHospital(
     const notifMensaje = `${liqCode} · ${obraSocialName} (${periodLabel}) — ${notifMeta}`;
     const notifHref = `/dashboard/hospital-portal?highlight=${liquidationId}`;
 
+    const emailSubject = customOptions?.subject?.trim() || (
+      wasNotifiedBefore
+        ? `[RECTIFICACIÓN] Liquidación Rectificada Disponible - Período: ${periodLabel} - ${liqCode}`
+        : `Nueva Liquidación Disponible - Período: ${periodLabel} - ${liqCode}`
+    );
+
+    const emailBody = customOptions?.message?.trim() || (
+      wasNotifiedBefore
+        ? `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha emitido una RECTIFICACIÓN sobre la liquidación de fondos de Obra Social para su hospital correspondiente al período ${periodLabel}. Por favor, ingrese al Portal de Hospitales (UEP) para consultar los comprobantes actualizados y revalidar su distribución.`
+        : `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha generado y procesado una nueva liquidación de fondos de Obra Social para su hospital correspondiente al período ${periodLabel}. Por favor, ingrese al Portal de Hospitales (UEP) antes de la fecha límite para realizar la distribución de fondos.`
+    );
+
+    // Identificar correos manuales agregados en el modal que no pertenecen a ningún efector resuelto por CUIT
+    const finalRecipientsNormalized = Array.from(
+      new Set(finalRecipients.map((e) => e.trim()).filter(Boolean))
+    );
+    const finalRecipientsLowerSet = new Set(finalRecipientsNormalized.map((e) => e.toLowerCase()));
+    const knownHospitalEmailLowerSet = new Set(
+      resolvedHospitalRecipients.map((r) => r.email.trim().toLowerCase())
+    );
+    const manualExtraEmails = finalRecipientsNormalized.filter(
+      (e) => !knownHospitalEmailLowerSet.has(e.toLowerCase())
+    );
+
+    const createdNotifJobs: {
+      id: string;
+      targetCuit: string | null;
+      hospitalName?: string;
+      recipients: string[];
+    }[] = [];
+
     // Transacción atómica: actualizar estado + persistir evento(s) en tabla Notificacion
     await prisma.$transaction(async (tx) => {
       await tx.liquidacion.update({
@@ -1461,12 +1501,33 @@ export async function notifyHospital(
 
       if (detailCuits.length > 0) {
         for (const targetCuit of detailCuits) {
-          const emailsForCuit = resolvedHospitalRecipients
-            .filter((r) => cleanCuit(r.cuit) === targetCuit)
-            .map((r) => r.email);
-          const destinatariosCuit = emailsForCuit.length > 0 ? emailsForCuit : finalRecipients;
+          const matchingResolved = resolvedHospitalRecipients.filter(
+            (r) => cleanCuit(r.cuit) === targetCuit
+          );
+          const emailsForCuit = matchingResolved
+            .map((r) => r.email.trim())
+            .filter((e) => finalRecipientsLowerSet.has(e.toLowerCase()));
 
-          await tx.notificacion.create({
+          const destinatariosCuit = Array.from(
+            new Set([
+              ...emailsForCuit,
+              ...manualExtraEmails,
+              ...(emailsForCuit.length === 0 && manualExtraEmails.length === 0 && detailCuits.length === 1
+                ? finalRecipientsNormalized
+                : []),
+            ])
+          );
+
+          const detailForCuit = details.find(
+            (d) => (cleanCuit(d.cuit) || cleanCuit(d.hospital?.cuit)) === targetCuit
+          );
+          const hospName =
+            matchingResolved[0]?.hospitalName?.trim() ||
+            detailForCuit?.prestadorNombre?.trim() ||
+            detailForCuit?.hospital?.nombre?.trim() ||
+            undefined;
+
+          const created = await tx.notificacion.create({
             data: {
               liquidationId,
               tipo: notifTipo,
@@ -1478,12 +1539,21 @@ export async function notifyHospital(
               emisorId,
               emisorNombre,
               emailEnviado: false,
-              emailDestinatarios: JSON.stringify(destinatariosCuit),
+              emailDestinatarios:
+                destinatariosCuit.length > 0 ? JSON.stringify(destinatariosCuit) : null,
             },
+            select: { id: true },
+          });
+
+          createdNotifJobs.push({
+            id: created.id,
+            targetCuit,
+            hospitalName: hospName,
+            recipients: destinatariosCuit,
           });
         }
       } else {
-        await tx.notificacion.create({
+        const created = await tx.notificacion.create({
           data: {
             liquidationId,
             tipo: notifTipo,
@@ -1495,60 +1565,92 @@ export async function notifyHospital(
             emisorId,
             emisorNombre,
             emailEnviado: false,
-            emailDestinatarios: JSON.stringify(finalRecipients),
+            emailDestinatarios: JSON.stringify(finalRecipientsNormalized),
           },
+          select: { id: true },
+        });
+
+        createdNotifJobs.push({
+          id: created.id,
+          targetCuit: null,
+          hospitalName: hospitalNames.length === 1 ? hospitalNames[0] : undefined,
+          recipients: finalRecipientsNormalized,
         });
       }
     });
 
-    // Format local date
-    const formattedDate = new Date().toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires" });
+    // Despacho real de correos electrónicos (uno por hospital/grupo para resguardar privacidad entre efectores)
+    const emailResults: { id: string; sent: boolean; error: string | null }[] = [];
+    let sentCount = 0;
+    let failedCount = 0;
 
-    const emailHeaderTitle = wasNotifiedBefore
-      ? "📧 NOTIFICACIÓN DE LIQUIDACIÓN RECTIFICADA DE OBRA SOCIAL"
-      : "📧 NOTIFICACIÓN DE LIQUIDACIÓN DE OBRA SOCIAL";
-
-    const emailSubject = customOptions?.subject?.trim() || (
-      wasNotifiedBefore
-        ? `[RECTIFICACIÓN] Liquidación Rectificada Disponible - Período: ${liq.mesCarga || "N/A"} - LIQ-${String(liq.id).padStart(4, "0")}`
-        : `Nueva Liquidación Disponible - Período: ${liq.mesCarga || "N/A"} - LIQ-${String(liq.id).padStart(4, "0")}`
-    );
-
-    const emailBody = customOptions?.message?.trim() || (
-      wasNotifiedBefore
-        ? `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha emitido una RECTIFICACIÓN sobre la liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}. Por favor, ingrese al Portal de Hospitales (UEP) para consultar los comprobantes actualizados y revalidar su distribución.`
-        : `Nos comunicamos de la Unidad Ejecutora Provincial (UEP) para informarle que se ha generado y procesado una nueva liquidación de fondos de Obra Social para su hospital correspondiente al período ${liq.mesCarga || "N/A"}. Por favor, ingrese al Portal de Hospitales (UEP) antes de la fecha límite para realizar la distribución de fondos.`
-    );
-
-    const emailLog = `
-=========================================
-${emailHeaderTitle}
-=========================================
-Fecha de Envío: ${formattedDate}
-De: liquidaciones@uep.gov.ar (Mesa de Liquidaciones UEP)
-Para: ${finalRecipients.join(", ")}
-Destinatarios: ${hospitalNames.join(", ")}
-Asunto: ${emailSubject}
-
-${emailBody}
-=========================================
-`;
-
-    try {
-      const uploadsDir = path.join(process.cwd(), "public", "uploads");
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
+    for (const job of createdNotifJobs) {
+      if (job.recipients.length === 0) {
+        emailResults.push({
+          id: job.id,
+          sent: false,
+          error: "Sin casilla de correo seleccionada para este establecimiento.",
+        });
+        continue;
       }
-      const logFilePath = path.join(uploadsDir, "notifications-log.txt");
-      fs.appendFileSync(logFilePath, emailLog, "utf-8");
-    } catch (fsErr) {
-      console.warn("No se pudo escribir el log local de notificación:", fsErr);
+
+      const sendRes = await sendLiquidationNotificationEmail({
+        to: job.recipients,
+        liquidationId,
+        liquidationCode: liqCode,
+        obraSocial: obraSocialName,
+        periodLabel,
+        hospitalName: job.hospitalName,
+        isRectification: wasNotifiedBefore,
+        subject: emailSubject,
+        bodyMessage: emailBody,
+        portalBaseUrl: requestOrigin,
+      });
+
+      if (sendRes.success) {
+        sentCount++;
+        emailResults.push({ id: job.id, sent: true, error: null });
+      } else {
+        failedCount++;
+        emailResults.push({
+          id: job.id,
+          sent: false,
+          error: (sendRes.error || "Error desconocido al enviar correo.").slice(0, 480),
+        });
+      }
+    }
+
+    // Persistir resultado real de cada envío de correo en auditoría (transacción atómica)
+    if (emailResults.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        for (const r of emailResults) {
+          await tx.notificacion.update({
+            where: { id: r.id },
+            data: {
+              emailEnviado: r.sent,
+              emailError: r.error,
+            },
+          });
+        }
+      });
     }
 
     revalidatePath("/dashboard/liquidations");
     revalidatePath(`/dashboard/liquidations/${liquidationId}`);
     revalidatePath("/dashboard/hospital-portal");
     revalidatePath("/dashboard");
+
+    if (failedCount > 0) {
+      const firstErr = emailResults.find((r) => !r.sent && r.error)?.error || "Error SMTP";
+      return {
+        success: true,
+        warning:
+          sentCount > 0
+            ? `Liquidación notificada en el portal (${sentCount} correo(s) enviado(s), ${failedCount} con error: ${firstErr}). Revise la Auditoría de Notificaciones.`
+            : `Liquidación notificada en el portal, pero falló el envío de correo electrónico (${firstErr}). Revise la Auditoría de Notificaciones.`,
+      };
+    }
+
     return { success: true };
   } catch (e: any) {
     console.error("Error notifying hospital:", e);

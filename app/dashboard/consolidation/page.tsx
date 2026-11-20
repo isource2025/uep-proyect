@@ -7,6 +7,7 @@ import { ConsolidationClient } from "./consolidation-client";
 import { getAvailablePeriods } from "@/lib/periods";
 import { isUserAdmin, isUserHospital, parseUserRoleIds } from "@/lib/constants";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
+import { ClientRedirect } from "@/components/client-redirect";
 
 export const revalidate = 0;
 
@@ -27,7 +28,12 @@ export default async function ConsolidationPage() {
   }
 
   if (isHospitalUser) {
-    redirect("/dashboard/hospital-portal");
+    return (
+      <ClientRedirect
+        to="/dashboard/hospital-portal"
+        label="Redirigiendo al Portal del Hospital..."
+      />
+    );
   }
 
   // Fetch available periods derived from SISPER / Liquidations

@@ -65,10 +65,13 @@ export default async function HospitalsPage({
     }))
     .filter((p) => p.cuit.length === 11);
 
+  const proveedorCuitSet = new Set(proveedores.map((p) => p.cuit));
   const activeHospitals = hospitals.filter((h) => h.activo);
   const activeCount = activeHospitals.length;
   const inactiveCount = hospitals.length - activeCount;
-  const withoutCuitCount = activeHospitals.filter((h) => !h.cuit).length;
+  const unlinkedCuitCount = activeHospitals.filter(
+    (h) => !h.cuit || !proveedorCuitSet.has(h.cuit)
+  ).length;
   const withoutEmailCount = activeHospitals.filter((h) => !h.email).length;
 
   return (
@@ -126,10 +129,10 @@ export default async function HospitalsPage({
           <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3 min-w-0">
             <div className="space-y-1 min-w-0 flex-1">
               <span className="text-2xs sm:text-3xs uppercase font-bold text-muted-foreground tracking-wider leading-tight block break-words">
-                Sin CUIT (Activos)
+                Sin Vincular ERP (Activos)
               </span>
               <p className="text-2xl sm:text-3xl font-black text-rose-600 dark:text-rose-400 font-mono truncate">
-                {withoutCuitCount}
+                {unlinkedCuitCount}
               </p>
             </div>
             <div className="p-2.5 sm:p-3 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">

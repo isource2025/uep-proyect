@@ -22,6 +22,7 @@ import {
   Mail,
   MapPin,
   RotateCcw,
+  ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -67,6 +68,16 @@ export function HospitalsTableClient({
     const inactive = hospitals.length - active;
     return { active, inactive, all: hospitals.length };
   }, [hospitals]);
+
+  const proveedorByCuit = useMemo(() => {
+    const map = new Map<string, ProveedorSuggestion>();
+    for (const p of proveedores) {
+      if (p.cuit && !map.has(p.cuit)) {
+        map.set(p.cuit, p);
+      }
+    }
+    return map;
+  }, [proveedores]);
 
   const statusScopedHospitals = useMemo(() => {
     if (statusFilter === "active") return hospitals.filter((h) => h.activo);
@@ -238,14 +249,42 @@ export function HospitalsTableClient({
                         </div>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1.5 font-mono">
-                          <ShieldCheck
-                            className={`h-3.5 w-3.5 shrink-0 ${
-                              hospital.cuit ? "text-emerald-500" : "text-muted-foreground/40"
-                            }`}
-                          />
-                          <span>{hospital.cuit || "-"}</span>
-                        </div>
+                        {(() => {
+                          const matchedProv = hospital.cuit
+                            ? proveedorByCuit.get(hospital.cuit)
+                            : undefined;
+                          if (hospital.cuit && matchedProv) {
+                            return (
+                              <div
+                                className="flex items-center gap-1.5 font-mono"
+                                title={`Vinculado con PROVEEDORES #${matchedProv.id} (${matchedProv.nombre})`}
+                              >
+                                <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                                <span className="text-foreground">{hospital.cuit}</span>
+                              </div>
+                            );
+                          }
+                          if (hospital.cuit && !matchedProv) {
+                            return (
+                              <div
+                                className="flex flex-wrap items-center gap-1.5 font-mono"
+                                title="Este CUIT no coincide con ningún registro en PROVEEDORES (ERP)"
+                              >
+                                <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+                                <span className="text-rose-600 dark:text-rose-400">{hospital.cuit}</span>
+                                <span className="font-sans text-[10px] font-semibold px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 whitespace-nowrap">
+                                  Sin prov. ERP
+                                </span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="flex items-center gap-1.5 font-mono">
+                              <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
+                              <span>-</span>
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-xs">
                         {hospital.email ? (

@@ -22,6 +22,8 @@ import {
   Mail,
   MapPin,
   ShieldCheck,
+  ShieldAlert,
+  Search,
   Check,
   Sparkles,
 } from "lucide-react";
@@ -72,6 +74,8 @@ export function HospitalModal({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [cuitAutoSource, setCuitAutoSource] = useState<ProveedorSuggestion | null>(null);
   const [cuitManuallyEdited, setCuitManuallyEdited] = useState(false);
+  const [provSearchQuery, setProvSearchQuery] = useState("");
+  const [showProvPicker, setShowProvPicker] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -133,6 +137,8 @@ export function HospitalModal({
       }
       setError("");
       setFieldErrors({});
+      setProvSearchQuery("");
+      setShowProvPicker(false);
     }
   }, [open, isEdit, hospital]);
 
@@ -159,6 +165,21 @@ export function HospitalModal({
       })
       .slice(0, 4);
   }, [proveedores, formData.name, cuitDigits, matchedProveedorByCurrentCuit]);
+
+  const searchedProveedores = useMemo(() => {
+    const q = normalizeMatchText(provSearchQuery);
+    if (!q) return [];
+    const qDigits = provSearchQuery.replace(/[^\d]/g, "");
+    const terms = q.split(" ").filter(Boolean);
+
+    return proveedores
+      .filter((p) => {
+        if (qDigits.length >= 3 && p.cuit.includes(qDigits)) return true;
+        const normProv = normalizeMatchText(p.nombre);
+        return terms.every((t) => normProv.includes(t));
+      })
+      .slice(0, 6);
+  }, [proveedores, provSearchQuery]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -198,6 +219,8 @@ export function HospitalModal({
     setFormData((prev) => ({ ...prev, cuit: prov.cuit }));
     setCuitAutoSource(prov);
     setCuitManuallyEdited(true);
+    setProvSearchQuery("");
+    setShowProvPicker(false);
     if (fieldErrors.cuit) {
       setFieldErrors((prev) => {
         const next = { ...prev };
@@ -230,6 +253,9 @@ export function HospitalModal({
       errors.cuit = "El CUIT es obligatorio.";
     } else if (digitsCuit.length !== 11) {
       errors.cuit = "El CUIT debe tener exactamente 11 dígitos.";
+    } else if (!proveedores.some((p) => p.cuit === digitsCuit)) {
+      errors.cuit =
+        "Este CUIT no figura en PROVEEDORES (ERP). Debe coincidir exactamente con un proveedor existente.";
     }
 
     if (!trimmedEmail) {
@@ -382,14 +408,23 @@ export function HospitalModal({
             </div>
 
             <div className="space-y-1.5 min-w-0">
-              <Label
-                htmlFor={`cuit-${hospital?.id ?? "new"}`}
-                className="text-foreground text-xs font-semibold flex flex-wrap items-center gap-1.5"
-              >
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                <span>CUIT</span>
-                <span className="text-red-500">*</span>
-              </Label>
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <Label
+                  htmlFor={`cuit-${hospital?.id ?? "new"}`}
+                  className="text-foreground text-xs font-semibold flex flex-wrap items-center gap-1.5"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                  <span>CUIT (debe existir en PROVEEDORES)</span>
+                  <span className="text-red-500">*</span>
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => setShowProvPicker((prev) => !prev)}
+                  className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer shrink-0"
+                >
+                  {showProvPicker ? "Ocultar buscador" : "Buscar en ERP"}
+                </button>
+              </div>
               <Input
                 id={`cuit-${hospital?.id ?? "new"}`}
                 name="cuit"
@@ -399,18 +434,30 @@ export function HospitalModal({
                 placeholder="Ej. 30709270113"
                 disabled={loading}
                 className={`w-full bg-background text-xs sm:text-sm h-10 font-mono ${
-                  fieldErrors.cuit ? "border-red-500/70 focus-visible:ring-red-500" : "border-border"
+                  fieldErrors.cuit || (cuitDigits.length === 11 && !matchedProveedorByCurrentCuit)
+                    ? "border-red-500/70 focus-visible:ring-red-500"
+                    : matchedProveedorByCurrentCuit
+                    ? "border-emerald-500/60 focus-visible:ring-emerald-500"
+                    : "border-border"
                 }`}
               />
               {fieldErrors.cuit && (
                 <p className="text-[11px] text-red-500 font-medium break-words whitespace-normal">{fieldErrors.cuit}</p>
+              )}
+              {!fieldErrors.cuit && cuitDigits.length === 11 && !matchedProveedorByCurrentCuit && (
+                <p className="text-[11px] text-red-500 flex items-start gap-1.5 leading-snug break-words whitespace-normal min-w-0">
+                  <ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="min-w-0 flex-1">
+                    No coincide con ningún registro en PROVEEDORES (ERP). Verificá el CUIT o buscalo en el ERP.
+                  </span>
+                </p>
               )}
               {matchedProveedorByCurrentCuit && (
                 <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-start gap-1.5 leading-snug break-words whitespace-normal min-w-0">
                   <Sparkles className="h-3 w-3 shrink-0 mt-0.5" />
                   <span className="min-w-0 flex-1">
                     {cuitAutoSource
-                      ? `Autocompletado desde PROVEEDORES #${matchedProveedorByCurrentCuit.id} (${matchedProveedorByCurrentCuit.nombre}) · modificable`
+                      ? `Vinculado con PROVEEDORES #${matchedProveedorByCurrentCuit.id} (${matchedProveedorByCurrentCuit.nombre})`
                       : `Coincide con PROVEEDORES #${matchedProveedorByCurrentCuit.id} (${matchedProveedorByCurrentCuit.nombre})`}
                   </span>
                 </p>
@@ -418,27 +465,70 @@ export function HospitalModal({
             </div>
           </div>
 
-          {suggestedProveedores.length > 0 && (
-            <div className="rounded-lg border border-border/80 bg-muted/30 p-3 space-y-2 min-w-0">
-              <span className="text-3xs text-muted-foreground block leading-snug break-words whitespace-normal">
-                Sugerencias de CUIT en PROVEEDORES (clic para completar):
-              </span>
-              <div className="flex flex-wrap gap-1.5 min-w-0">
-                {suggestedProveedores.map((prov) => (
-                  <button
-                    key={prov.id}
-                    type="button"
-                    onClick={() => applySuggestedProveedor(prov)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-background hover:bg-emerald-500/15 hover:border-emerald-500/40 text-3xs text-foreground transition-colors cursor-pointer max-w-full min-w-0"
-                    title={`Aplicar CUIT ${prov.cuit} (${prov.nombre})`}
-                  >
-                    <span className="truncate min-w-0 font-medium">{prov.nombre}</span>
-                    <span className="font-mono text-emerald-600 dark:text-emerald-400 shrink-0">
-                      {prov.cuit}
-                    </span>
-                  </button>
-                ))}
-              </div>
+          {(showProvPicker || (!matchedProveedorByCurrentCuit && suggestedProveedores.length > 0)) && (
+            <div className="rounded-lg border border-border/80 bg-muted/30 p-3 space-y-2.5 min-w-0">
+              {showProvPicker && (
+                <div className="space-y-2 min-w-0">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      value={provSearchQuery}
+                      onChange={(e) => setProvSearchQuery(e.target.value)}
+                      placeholder="Buscar proveedor en PROVEEDORES por nombre o CUIT..."
+                      className="w-full h-9 pl-8 text-xs bg-background border-border"
+                    />
+                  </div>
+                  {provSearchQuery.trim().length > 0 && (
+                    searchedProveedores.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5 min-w-0">
+                        {searchedProveedores.map((prov) => (
+                          <button
+                            key={`search-${prov.id}`}
+                            type="button"
+                            onClick={() => applySuggestedProveedor(prov)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-background hover:bg-emerald-500/15 hover:border-emerald-500/40 text-3xs text-foreground transition-colors cursor-pointer max-w-full min-w-0"
+                            title={`Aplicar CUIT ${prov.cuit} (${prov.nombre})`}
+                          >
+                            <span className="truncate min-w-0 font-medium">{prov.nombre}</span>
+                            <span className="font-mono text-emerald-600 dark:text-emerald-400 shrink-0">
+                              {prov.cuit}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">
+                        Sin coincidencias en PROVEEDORES con CUIT para &ldquo;{provSearchQuery.trim()}&rdquo;.
+                      </p>
+                    )
+                  )}
+                </div>
+              )}
+
+              {suggestedProveedores.length > 0 && !matchedProveedorByCurrentCuit && (
+                <div className="space-y-1.5 min-w-0">
+                  <span className="text-3xs text-muted-foreground block leading-snug break-words whitespace-normal">
+                    Sugerencias de CUIT en PROVEEDORES (clic para completar):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5 min-w-0">
+                    {suggestedProveedores.map((prov) => (
+                      <button
+                        key={prov.id}
+                        type="button"
+                        onClick={() => applySuggestedProveedor(prov)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-background hover:bg-emerald-500/15 hover:border-emerald-500/40 text-3xs text-foreground transition-colors cursor-pointer max-w-full min-w-0"
+                        title={`Aplicar CUIT ${prov.cuit} (${prov.nombre})`}
+                      >
+                        <span className="truncate min-w-0 font-medium">{prov.nombre}</span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400 shrink-0">
+                          {prov.cuit}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -5,7 +5,32 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { isUserAdmin } from "@/lib/constants";
+import { cleanCuit, formatCuit } from "@/lib/hospital-mapping";
 import { UEP_EMPRESA_ID } from "@/lib/hospital-resolver";
+
+async function findProveedorByNormalizedCuit(digitsCuit: string) {
+  if (!digitsCuit || digitsCuit.length !== 11) return null;
+  const numericCuit = Number(digitsCuit);
+  if (!Number.isSafeInteger(numericCuit)) return null;
+
+  const directMatch = await prisma.proveedor.findFirst({
+    where: { cuit: numericCuit },
+    select: { id: true, nombre: true, cuit: true },
+    orderBy: { id: "asc" },
+  });
+
+  if (directMatch && cleanCuit(directMatch.cuit) === digitsCuit) {
+    return directMatch;
+  }
+
+  const allProveedores = await prisma.proveedor.findMany({
+    where: { cuit: { not: null } },
+    select: { id: true, nombre: true, cuit: true },
+    orderBy: { id: "asc" },
+  });
+
+  return allProveedores.find((p) => cleanCuit(p.cuit) === digitsCuit) || null;
+}
 
 function validateHospitalFormData(formData: FormData) {
   const rawName = (formData.get("name") as string) || "";
@@ -49,6 +74,7 @@ function validateHospitalFormData(formData: FormData) {
       descripcion: name,
       localidad,
       cuit: Number(digitsCuit),
+      digitsCuit,
       email,
     },
   };
@@ -66,7 +92,15 @@ export async function createHospitalAction(formData: FormData) {
       return { error: parsed.error || "Datos inválidos." };
     }
 
-    const { descripcion, localidad, cuit, email } = parsed.data;
+    const { descripcion, localidad, cuit, digitsCuit, email } = parsed.data;
+
+    // Regla obligatoria: el CUIT debe existir previamente en PROVEEDORES (ERP)
+    const matchingProveedor = await findProveedorByNormalizedCuit(digitsCuit);
+    if (!matchingProveedor) {
+      return {
+        error: `El CUIT ${formatCuit(digitsCuit)} no figura en PROVEEDORES (ERP). El efector debe existir previamente en PROVEEDORES con exactamente el mismo CUIT para poder registrarlo.`,
+      };
+    }
 
     await prisma.$transaction(async (tx) => {
       const maxId = await tx.empresa.aggregate({
@@ -113,7 +147,15 @@ export async function updateHospitalAction(formData: FormData) {
       return { error: parsed.error || "Datos inválidos." };
     }
 
-    const { descripcion, localidad, cuit, email } = parsed.data;
+    const { descripcion, localidad, cuit, digitsCuit, email } = parsed.data;
+
+    // Regla obligatoria: el CUIT debe coincidir con un registro existente en PROVEEDORES (ERP)
+    const matchingProveedor = await findProveedorByNormalizedCuit(digitsCuit);
+    if (!matchingProveedor) {
+      return {
+        error: `El CUIT ${formatCuit(digitsCuit)} no figura en PROVEEDORES (ERP). Debe coincidir exactamente con un proveedor cargado en el ERP para guardar los cambios.`,
+      };
+    }
 
     const existing = await prisma.empresa.findUnique({
       where: { id: hospitalId },

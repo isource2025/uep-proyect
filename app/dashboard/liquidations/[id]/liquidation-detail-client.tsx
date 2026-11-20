@@ -330,7 +330,7 @@ export default function LiquidationDetailClient({
       (agents || []).find((a: any) => String(a.idAgente || a.id || a.cuil) === String(p.idAgente || p.cuil)) ||
       (extraSavedAgents || []).find((a: any) => String(a.idAgente || a.id || a.cuil) === String(p.idAgente || p.cuil));
 
-    let hospName = agMeta?.hospitalNombre || "";
+    let hospName = p.hospitalNombre || agMeta?.hospitalNombre || "";
     if (!hospName && agMeta?.hospitalId && liq.details) {
       const matchDet = liq.details.find(
         (d: any) =>
@@ -350,6 +350,7 @@ export default function LiquidationDetailClient({
 
     return {
       agentId: p.idAgente || p.cuil,
+      idEmpresa: Number(p.idEmpresa || 0),
       legajo: agMeta?.legajo || "",
       nombre: agMeta?.nombre || `Agente #${p.idAgente || p.cuil}`,
       cuil: agMeta?.cuil || p.cuil || "",
@@ -391,10 +392,8 @@ export default function LiquidationDetailClient({
 
     setIsSearchingServer(true);
     try {
-      const serverResults = await searchAgentsForLiquidationAction(
-        q,
-        isHospitalUser ? (targetHospitalId ? Number(targetHospitalId) : undefined) : undefined
-      );
+      // Búsqueda abierta en todo el padrón SISPER (los empleados pueden trabajar en múltiples establecimientos)
+      const serverResults = await searchAgentsForLiquidationAction(q);
       if (serverResults && serverResults.length > 0) {
         setModalAgents((prev) => {
           const map = new Map();
@@ -421,10 +420,8 @@ export default function LiquidationDetailClient({
     setIsSearchingServer(true);
     let currentPool = [...modalAgents];
     try {
-      const serverResults = await searchBatchAgentsForLiquidationAction(
-        rawTerms,
-        isHospitalUser ? (targetHospitalId ? Number(targetHospitalId) : undefined) : undefined
-      );
+      // Búsqueda por lote abierta en todo el padrón SISPER
+      const serverResults = await searchBatchAgentsForLiquidationAction(rawTerms);
       if (serverResults && serverResults.length > 0) {
         const map = new Map();
         for (const a of currentPool) map.set(String(a.idAgente || a.id || a.cuil), a);
@@ -2625,36 +2622,40 @@ export default function LiquidationDetailClient({
 
       {/* SECTION 3 - DISTRIBUCIÓN INDIVIDUAL DE MÉDICOS Y PERSONAL (SISPER) */}
       {(isHospitalUser || agentDistRows.length > 0) && (
-        <Card className="border-border bg-card shadow-sm">
-          <CardHeader className="p-4 pb-3 border-b border-border/80 flex flex-col gap-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
+        <Card className="border-border bg-card shadow-sm w-full max-w-full overflow-hidden">
+          <CardHeader className="p-3.5 sm:p-4 pb-3 border-b border-border/80 flex flex-col gap-3">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+              <div className="min-w-0">
                 <CardTitle className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                  <Users className="h-4 w-4 text-teal-500" />
-                  Distribución Individual por Médico / Personal de Salud (SISPER)
+                  <Users className="h-4 w-4 text-teal-500 shrink-0" />
+                  <span className="break-words">
+                    Distribución Individual por Personal de Salud (SISPER)
+                  </span>
                 </CardTitle>
-                <CardDescription className="text-3xs text-muted-foreground mt-0.5">
+                <CardDescription className="text-3xs text-muted-foreground mt-0.5 break-words">
                   {isHospitalUser
-                    ? `Añada los profesionales del período (${liq.periodMes || ""}/${liq.periodAnio || ""}) y asigne sus honorarios o sobreasignaciones individuales.`
+                    ? `Añada los agentes del período (${liq.periodMes || ""}/${liq.periodAnio || ""}) y asigne sus honorarios o sobreasignaciones individuales.`
                     : "Distribuciones de honorarios y sobreasignaciones consolidadas cargadas por los establecimientos de salud."}
                 </CardDescription>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full xl:w-auto xl:flex-1 xl:max-w-xl xl:justify-end min-w-0">
                 {agentDistRows.length > 0 && (
                   <SearchBar
-                    placeholder="Buscar en asignados..."
+                    placeholder="Buscar agente por nombre, CUIL o legajo..."
                     value={agentSearchQuery}
                     onChange={setAgentSearchQuery}
-                    size="sm"
-                    className="w-full sm:w-56"
+                    onClear={() => setAgentSearchQuery("")}
+                    size="default"
+                    className="w-full sm:flex-1 min-w-0"
                   />
                 )}
                 {isHospitalUser && (
                   <Button
+                    type="button"
                     onClick={handleSaveAgentsDistribution}
                     disabled={savingAgents || balanceRestante < 0}
-                    className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-8 text-xs shrink-0 cursor-pointer"
+                    className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-9 px-4 text-xs shrink-0 cursor-pointer"
                   >
                     {savingAgents ? (
                       <>
@@ -2675,80 +2676,64 @@ export default function LiquidationDetailClient({
             {/* SELECCIÓN Y AGREGADO DE AGENTES MEDIANTE MODAL (SOLO HOSPITAL) */}
             {isHospitalUser && (
               <>
-                {modalAgents.length === 0 ? (
-                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-amber-600 dark:text-amber-400 text-xs">
-                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                    <div>
-                      <span className="font-bold">Sin profesionales disponibles para este período:</span> No se encontraron registros de personal cargados en el padrón SISPER para el <strong>mes en curso</strong> ni para el <strong>mes anterior</strong> en este establecimiento.
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-muted/40 rounded-lg border border-border">
-                    <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
-                      <span className="inline-flex h-2 w-2 rounded-full bg-teal-500" />
-                      <span>
-                        Profesionales disponibles:{" "}
-                        <strong className="text-foreground">
-                          {modalAgents.filter((ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))).length}
-                        </strong>{" "}
-                        (de {modalAgents.length} en el padrón)
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-muted/40 rounded-lg border border-border">
+                  <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2 min-w-0">
+                    <span className="inline-flex h-2 w-2 rounded-full bg-teal-500 shrink-0" />
+                    <span className="break-words">
+                      Padrón general SISPER habilitado — buscá cualquier agente por apellido, nombre, CUIL o legajo.
+                    </span>
+                    {agentsPeriodOrigin === "current" && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                        Padrón activo
                       </span>
-                      {agentsPeriodOrigin === "current" && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                          Padrón: Mes en curso
-                        </span>
-                      )}
-                      {agentsPeriodOrigin === "previous" && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                          Padrón: Mes anterior (suplente)
-                        </span>
-                      )}
-                    </div>
-
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        setSelectedAgentIdsInModal([]);
-                        setModalSearchInput("");
-                        setSubmittedSearchQuery("");
-                        setHasSearched(false);
-                        setIsAddModalOpen(true);
-                      }}
-                      disabled={
-                        savingAgents ||
-                        modalAgents.filter((ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))).length === 0
-                      }
-                      className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-8 text-xs shrink-0 cursor-pointer"
-                    >
-                      <UserPlus className="h-3.5 w-3.5" />
-                      Añadir Profesionales (Buscar en Modal)
-                    </Button>
+                    )}
+                    {agentsPeriodOrigin === "previous" && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                        Padrón: Mes anterior (suplente)
+                      </span>
+                    )}
                   </div>
-                )}
+
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setSelectedAgentIdsInModal([]);
+                      setModalSearchInput("");
+                      setSubmittedSearchQuery("");
+                      setHasSearched(false);
+                      setIsAddModalOpen(true);
+                    }}
+                    disabled={savingAgents}
+                    className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-9 px-3.5 text-xs shrink-0 cursor-pointer"
+                  >
+                    <UserPlus className="h-3.5 w-3.5 shrink-0" />
+                    <span>Añadir Agentes</span>
+                  </Button>
+                </div>
 
                 {/* MODAL DE BÚSQUEDA Y SELECCIÓN DE AGENTES */}
                 <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-                  <DialogContent className="border-border bg-card text-card-foreground sm:max-w-3xl md:max-w-4xl w-[94vw] max-h-[88vh] flex flex-col p-0 overflow-hidden shadow-2xl rounded-2xl">
-                    <DialogHeader className="p-5 pb-4 border-b border-border bg-muted/15 flex flex-row items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                  <DialogContent className="border-border bg-card text-card-foreground w-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] sm:max-w-3xl md:max-w-4xl max-h-[88dvh] flex flex-col gap-0 p-0 overflow-hidden shadow-2xl rounded-2xl">
+                    <DialogHeader className="p-4 sm:p-5 pb-3.5 border-b border-border bg-muted/15 pr-10 text-left shrink-0">
+                      <div className="flex items-start sm:items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
                           <UserPlus className="h-5 w-5" />
                         </div>
-                        <div>
-                          <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
-                            Seleccionar Profesionales para la Liquidación
+                        <div className="min-w-0">
+                          <DialogTitle className="text-sm sm:text-lg font-bold text-foreground break-words">
+                            Seleccionar Agentes para la Liquidación
                           </DialogTitle>
-                          <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                            Escriba el nombre, CUIL, legajo o efector y presione <strong>Buscar</strong> para desplegar y seleccionar agentes.
+                          <DialogDescription className="text-xs text-muted-foreground mt-0.5 break-words">
+                            Escriba el nombre, CUIL o legajo y presione <strong>Buscar</strong> para desplegar y seleccionar agentes.
                           </DialogDescription>
                         </div>
                       </div>
                     </DialogHeader>
 
                     {/* Search Form & Toolbar */}
-                    <div className="p-4 sm:p-5 border-b border-border bg-muted/20 space-y-3.5">
+                    <div className="p-3.5 sm:p-5 border-b border-border bg-muted/20 space-y-3 shrink-0">
                       {/* Mode Selector Tabs */}
-                      <div className="flex items-center gap-1.5 p-1 bg-muted/70 rounded-xl w-fit border border-border/70">
+                      <div className="grid grid-cols-1 sm:inline-flex items-stretch sm:items-center gap-1.5 p-1 bg-muted/70 rounded-xl w-full sm:w-fit border border-border/70">
                         <button
                           type="button"
                           onClick={() => {
@@ -2786,16 +2771,16 @@ export default function LiquidationDetailClient({
                       {searchTab === "single" ? (
                         <form
                           onSubmit={handleSingleSearchSubmit}
-                          className="flex items-center gap-2.5 w-full"
+                          className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full"
                         >
-                          <div className="relative flex-1">
+                          <div className="relative flex-1 w-full">
                             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                               type="text"
-                              placeholder="Buscar por apellido, nombre, CUIL, legajo o efector..."
+                              placeholder="Buscar por apellido, nombre, CUIL o legajo..."
                               value={modalSearchInput}
                               onChange={(e) => setModalSearchInput(e.target.value)}
-                              className="pl-9 pr-8 bg-card border-border text-foreground text-xs sm:text-sm h-10 w-full rounded-xl focus-visible:ring-1 focus-visible:ring-teal-500 shadow-xs"
+                              className="pl-10 pr-9 bg-card border-border text-foreground text-sm h-11 w-full rounded-xl focus-visible:ring-1 focus-visible:ring-teal-500 shadow-xs"
                             />
                             {modalSearchInput && (
                               <button
@@ -2815,7 +2800,7 @@ export default function LiquidationDetailClient({
                           <Button
                             type="submit"
                             disabled={!modalSearchInput.trim() || isSearchingServer}
-                            className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-10 px-4 text-xs shrink-0 cursor-pointer rounded-xl shadow-xs"
+                            className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-11 px-5 text-xs shrink-0 cursor-pointer rounded-xl shadow-xs"
                           >
                             {isSearchingServer ? (
                               <RefreshCw className="h-4 w-4 animate-spin" />
@@ -3046,7 +3031,7 @@ export default function LiquidationDetailClient({
                                                 CUIL: <strong className="text-foreground">{ag.cuil}</strong>
                                               </span>
                                             )}
-                                            {ag.hospitalNombre && (
+                                            {!isHospitalUser && ag.hospitalNombre && (
                                               <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
                                                 {ag.hospitalNombre}
                                               </span>
@@ -3213,12 +3198,7 @@ export default function LiquidationDetailClient({
                                               CUIL: <strong className="text-foreground">{ag.cuil}</strong>
                                             </span>
                                           )}
-                                          {ag.cargo && ag.cargo !== "PROFESIONAL" && !ag.cargo.toLowerCase().includes("cuil") && (
-                                            <span className="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs font-semibold">
-                                              {ag.cargo}
-                                            </span>
-                                          )}
-                                          {ag.hospitalNombre && (
+                                          {!isHospitalUser && ag.hospitalNombre && (
                                             <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
                                               {ag.hospitalNombre}
                                             </span>
@@ -3250,27 +3230,27 @@ export default function LiquidationDetailClient({
                     </div>
 
                     {/* Dialog Footer */}
-                    <DialogFooter className="p-4 sm:p-5 border-t border-border bg-muted/10 flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
+                    <DialogFooter className="mx-0 mb-0 p-3.5 sm:p-5 border-t border-border bg-muted/10 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 shrink-0">
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => setIsAddModalOpen(false)}
-                        className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                        className="w-full sm:w-auto text-xs text-muted-foreground hover:text-foreground cursor-pointer"
                       >
                         Cancelar
                       </Button>
-                      <div className="flex items-center gap-2.5">
-                        <Button
-                          type="button"
-                          onClick={handleConfirmAddAgentsFromModal}
-                          disabled={selectedAgentIdsInModal.length === 0}
-                          className="bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold text-xs h-9 px-4 cursor-pointer gap-1.5 shadow-sm"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
+                      <Button
+                        type="button"
+                        onClick={handleConfirmAddAgentsFromModal}
+                        disabled={selectedAgentIdsInModal.length === 0}
+                        className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold text-xs h-9 px-4 cursor-pointer gap-1.5 shadow-sm"
+                      >
+                        <Plus className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">
                           Añadir {selectedAgentIdsInModal.length > 0 ? `(${selectedAgentIdsInModal.length})` : ""} a la Liquidación
-                        </Button>
-                      </div>
+                        </span>
+                      </Button>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
@@ -3279,15 +3259,129 @@ export default function LiquidationDetailClient({
           </CardHeader>
 
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
+            {/* VISTA MÓVIL (TARJETAS RESPONSIVAS SIN DESBORDES) */}
+            <div className="block md:hidden divide-y divide-border">
+              {filteredAgentRows.length === 0 ? (
+                <div className="px-4 py-8 text-center text-muted-foreground text-xs break-words">
+                  {agentSearchQuery.trim()
+                    ? "No se encontraron agentes que coincidan con la búsqueda."
+                    : isHospitalUser
+                    ? "La lista de distribución está vacía. Seleccione arriba los agentes del período para añadirlos uno por uno."
+                    : "Aún no se han registrado distribuciones de agentes por parte de los establecimientos de salud para esta liquidación."}
+                </div>
+              ) : (
+                filteredAgentRows.map((agent: any) => {
+                  const totalAgente =
+                    Number(agent.honorarios || 0) +
+                    Number(agent.sobreasignaciones || 0);
+
+                  return (
+                    <div
+                      key={`mobile-${agent.agentId}-${agent.idEmpresa || agent.legajo}`}
+                      className="p-3.5 space-y-3 bg-card"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-foreground text-xs sm:text-sm break-words leading-snug">
+                            {agent.nombre || `Agente #${agent.agentId}`}
+                          </p>
+                          {!isHospitalUser && agent.hospitalNombre && (
+                            <p className="text-[11px] text-muted-foreground font-medium mt-0.5 break-words">
+                              {agent.hospitalNombre}
+                            </p>
+                          )}
+                        </div>
+
+                        {isHospitalUser && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={savingAgents}
+                            onClick={() => handleRemoveAgent(agent.agentId)}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 cursor-pointer shrink-0"
+                            title="Quitar de la lista de distribución"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+                            Honorarios ($)
+                          </label>
+                          {isHospitalUser ? (
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              disabled={savingAgents}
+                              value={getInputDisplayValue(agent.honorarios)}
+                              onChange={(e) =>
+                                handleAgentInputChange(agent.agentId, "honorarios", e.target.value)
+                              }
+                              placeholder="0.00"
+                              className="w-full text-right h-9 text-xs bg-background border-border font-semibold text-teal-600 dark:text-teal-400 focus-visible:ring-teal-500 disabled:opacity-75 px-2.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                          ) : (
+                            <div className="h-9 px-2.5 rounded-md border border-border bg-muted/30 flex items-center justify-end font-mono text-xs font-semibold text-teal-600 dark:text-teal-400">
+                              {formatCurrency(agent.honorarios)}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                            Sobreasignación ($)
+                          </label>
+                          {isHospitalUser ? (
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              disabled={savingAgents}
+                              value={getInputDisplayValue(agent.sobreasignaciones)}
+                              onChange={(e) =>
+                                handleAgentInputChange(agent.agentId, "sobreasignaciones", e.target.value)
+                              }
+                              placeholder="0.00"
+                              className="w-full text-right h-9 text-xs bg-background border-border font-semibold text-indigo-600 dark:text-indigo-400 focus-visible:ring-indigo-500 disabled:opacity-75 px-2.5 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                          ) : (
+                            <div className="h-9 px-2.5 rounded-md border border-border bg-muted/30 flex items-center justify-end font-mono text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                              {formatCurrency(agent.sobreasignaciones)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/60 text-xs">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Total Agente
+                        </span>
+                        <span className="font-mono font-bold text-foreground">
+                          {formatCurrency(totalAgente)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* VISTA TABLET / DESKTOP (TABLA COMPLETA) */}
+            <div className="hidden md:block overflow-x-auto">
               <Table>
                 <TableHeader className="bg-muted/50 text-muted-foreground">
                   <TableRow className="hover:bg-transparent border-border">
-                    <TableHead className="font-semibold text-3xs uppercase py-2">PRESTADOR</TableHead>
-                    <TableHead className="font-semibold text-3xs uppercase">PUESTO LABORAL</TableHead>
-                    <TableHead className="font-semibold text-3xs uppercase text-right">HONORARIOS ($)</TableHead>
-                    <TableHead className="font-semibold text-3xs uppercase text-right">SOBREASIGNACIÓN ($)</TableHead>
-                    <TableHead className="font-semibold text-3xs uppercase text-right">TOTAL AGENTE</TableHead>
+                    <TableHead className="font-semibold text-3xs uppercase py-2">
+                      {isHospitalUser ? "AGENTE" : "AGENTE / ESTABLECIMIENTO"}
+                    </TableHead>
+                    <TableHead className="font-semibold text-3xs uppercase text-right min-w-[130px]">HONORARIOS ($)</TableHead>
+                    <TableHead className="font-semibold text-3xs uppercase text-right min-w-[130px]">SOBREASIGNACIÓN ($)</TableHead>
+                    <TableHead className="font-semibold text-3xs uppercase text-right whitespace-nowrap">TOTAL AGENTE</TableHead>
                     {isHospitalUser && (
                       <TableHead className="font-semibold text-3xs uppercase text-center w-12">QUITAR</TableHead>
                     )}
@@ -3296,12 +3390,12 @@ export default function LiquidationDetailClient({
                 <TableBody>
                   {filteredAgentRows.length === 0 ? (
                     <TableRow className="border-border">
-                      <TableCell colSpan={isHospitalUser ? 6 : 5} className="text-center text-muted-foreground text-xs py-8">
+                      <TableCell colSpan={isHospitalUser ? 5 : 4} className="text-center text-muted-foreground text-xs py-8">
                         {agentSearchQuery.trim()
                           ? "No se encontraron agentes que coincidan con la búsqueda."
                           : isHospitalUser
-                          ? "La lista de distribución está vacía. Seleccione arriba los profesionales del período para añadirlos uno por uno."
-                          : "Aún no se han registrado distribuciones de profesionales por parte de los establecimientos de salud para esta liquidación."}
+                          ? "La lista de distribución está vacía. Seleccione arriba los agentes del período para añadirlos uno por uno."
+                          : "Aún no se han registrado distribuciones de agentes por parte de los establecimientos de salud para esta liquidación."}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -3312,23 +3406,18 @@ export default function LiquidationDetailClient({
 
                       return (
                         <TableRow
-                          key={`${agent.agentId}-${agent.legajo}`}
+                          key={`${agent.agentId}-${agent.idEmpresa || agent.legajo}`}
                           className="hover:bg-muted/40 border-border text-foreground text-xs"
                         >
                           <TableCell className="text-3xs whitespace-normal break-words py-2.5">
                             <div className="font-bold text-foreground text-xs">
-                              {agent.hospitalNombre || agent.nombre}
+                              {agent.nombre || `Agente #${agent.agentId}`}
                             </div>
-                            {agent.hospitalNombre && agent.nombre && (
+                            {!isHospitalUser && agent.hospitalNombre && (
                               <div className="text-3xs text-muted-foreground font-medium mt-0.5">
-                                {agent.nombre}
+                                {agent.hospitalNombre}
                               </div>
                             )}
-                          </TableCell>
-                          <TableCell className="text-3xs text-muted-foreground whitespace-nowrap">
-                            <span className="inline-block px-1.5 py-0.5 rounded bg-muted font-medium text-3xs">
-                              {agent.cargo}
-                            </span>
                           </TableCell>
 
                           {/* HONORARIOS INDIVIDUALES */}
@@ -3406,7 +3495,7 @@ export default function LiquidationDetailClient({
       )}
 
       {/* FOOTER ACTIONS BAR */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 border border-border rounded-xl bg-muted/20">
+      <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border border-border rounded-xl bg-muted/20">
         <Button
           variant="outline"
           onClick={() => {
@@ -3418,7 +3507,7 @@ export default function LiquidationDetailClient({
             }
           }}
           disabled={goingBack || saving || savingAgents}
-          className="border-border cursor-pointer text-xs h-9"
+          className="w-full sm:w-auto border-border cursor-pointer text-xs h-9"
         >
           {goingBack ? (
             <>
@@ -3432,12 +3521,33 @@ export default function LiquidationDetailClient({
           )}
         </Button>
 
+        {isHospitalUser && (
+          <Button
+            type="button"
+            onClick={handleSaveAgentsDistribution}
+            disabled={savingAgents || balanceRestante < 0 || goingBack}
+            className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 px-6 h-9 cursor-pointer text-xs"
+          >
+            {savingAgents ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Guardando Personal...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" />
+                Guardar Personal
+              </>
+            )}
+          </Button>
+        )}
+
         {!isLockedForLiquidationEdits && (
-          <div className="flex gap-2">
+          <div className="flex w-full sm:w-auto gap-2">
             <Button
               onClick={handleSaveDetails}
               disabled={saving || goingBack}
-              className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1.5 px-6 h-9 cursor-pointer text-xs"
+              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1.5 px-6 h-9 cursor-pointer text-xs"
             >
               {saving ? (
                 <>

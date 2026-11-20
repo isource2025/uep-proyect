@@ -327,6 +327,7 @@ model Empresa {
   telefono        String?   @map("TEEmpresa") @db.VarChar(45)
   email           String?   @map("EMail") @db.VarChar(40)
   codigoSisper    Int?      @map("CodigoSisper")
+  activo          Boolean   @default(true) @map("Activo")
 
   personalMsp     ImPersonalMsp[]
   personalEmpresas ImPersonalEmpresas[]
@@ -362,12 +363,13 @@ model LiquidacionPersonal {
   idLiquidacion   Int         @map("IdLiquidacion")
   idAgente        BigInt      @map("IdAgente")
   cuil            BigInt      @map("Cuil")
+  idEmpresa       Int         @default(0) @map("IdEmpresa")
   honorarios      Decimal?    @map("Honorarios") @db.Decimal(15, 2)
   sobreasignacion Decimal?    @map("Sobreasignacion") @db.Decimal(15, 2)
 
   liquidacion     Liquidacion @relation(fields: [idLiquidacion], references: [id], onDelete: Cascade)
 
-  @@id([idLiquidacion, cuil])
+  @@id([idLiquidacion, cuil, idEmpresa])
   @@map("LiquidacionPersonal")
 }
 

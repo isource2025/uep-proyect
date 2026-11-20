@@ -163,16 +163,47 @@ export default async function HospitalPortalPage({
       : Promise.resolve([]),
   ]);
 
-  // Aislamiento estricto por CUIT: el hospital solo ve sus renglones, distribuciones y totales propios (sin snapshots globales)
+  // Aislamiento estricto por CUIT / IdEmpresa: el hospital solo ve sus renglones, distribuciones y totales propios (sin snapshots globales)
   const hospitalCuilSet = new Set(
     empresaCuils.map((a) => (a.cuil ? a.cuil.toString() : "")).filter(Boolean)
   );
-  const hospitalLiquidations = hospitalLiquidationsRaw.map((liq: any) =>
-    filterLiquidationForHospital(liq, hospitalCuit, {
-      hospitalCuilSet,
-      hospitalName,
-    })
+  const empresaIdsInDists = Array.from(
+    new Set(
+      hospitalLiquidationsRaw.flatMap((liq: any) =>
+        (liq.personalDistributions || [])
+          .map((p: any) => Number(p.idEmpresa || 0))
+          .filter((id: number) => id > 0)
+      )
+    )
   );
+  const distEmpresas =
+    empresaIdsInDists.length > 0
+      ? await prisma.empresa.findMany({
+          where: { id: { in: empresaIdsInDists } },
+          select: { id: true, cuit: true, descripcion: true },
+        })
+      : [];
+  const distEmpresaById = new Map(distEmpresas.map((e) => [e.id, e]));
+
+  const hospitalLiquidations = hospitalLiquidationsRaw.map((liq: any) => {
+    const enrichedPersonal = (liq.personalDistributions || []).map((p: any) => {
+      const emp = p.idEmpresa ? distEmpresaById.get(Number(p.idEmpresa)) : undefined;
+      return {
+        ...p,
+        hospitalCuit: emp?.cuit ? cleanCuit(emp.cuit) : undefined,
+        hospitalNombre: emp?.descripcion?.trim() || undefined,
+      };
+    });
+    return filterLiquidationForHospital(
+      { ...liq, personalDistributions: enrichedPersonal },
+      hospitalCuit,
+      {
+        hospitalCuilSet,
+        hospitalName,
+        hospitalEmpresaId: hospitalId,
+      }
+    );
+  });
 
   // Server Action to add an attachment
   const handleAddAttachment = async (formData: FormData) => {

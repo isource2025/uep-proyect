@@ -3,6 +3,7 @@ import { cleanCuit } from "@/lib/hospital-mapping";
 export interface FilterHospitalLiquidationOptions {
   hospitalCuilSet?: Set<string>;
   hospitalName?: string;
+  hospitalEmpresaId?: number;
 }
 
 /**
@@ -19,7 +20,7 @@ export function filterLiquidationForHospital<T extends Record<string, any>>(
   hospitalScopeCuit: string;
 } {
   const targetCuit = cleanCuit(hospitalCuit);
-  const { hospitalCuilSet, hospitalName } = options;
+  const { hospitalCuilSet, hospitalName, hospitalEmpresaId } = options;
 
   const matchesTargetCuit = (raw: any): boolean => {
     const c = cleanCuit(raw);
@@ -31,6 +32,12 @@ export function filterLiquidationForHospital<T extends Record<string, any>>(
   );
 
   const filteredPersonalDistributions = (liq.personalDistributions || []).filter((p: any) => {
+    const pEmpresaId = Number(p.idEmpresa || 0);
+    if (pEmpresaId > 0) {
+      if (hospitalEmpresaId && pEmpresaId === hospitalEmpresaId) return true;
+      return matchesTargetCuit(p.hospitalCuit);
+    }
+    // Registros legados sin IdEmpresa: cruce por hospitalCuit o nómina del efector
     if (matchesTargetCuit(p.hospitalCuit)) return true;
     if (hospitalCuilSet && hospitalCuilSet.size > 0) {
       const cleanAgentCuil = String(p.cuil || p.idAgente || "").replace(/\D/g, "");

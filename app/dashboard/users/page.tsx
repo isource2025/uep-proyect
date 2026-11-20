@@ -62,7 +62,7 @@ export default async function UsersPage({
   // Fetch intermediate relation imPersonalEmpresas
   const [empresas, personalEmpresas] = await Promise.all([
     prisma.empresa.findMany({
-      select: { id: true, descripcion: true, cuit: true },
+      select: { id: true, descripcion: true, cuit: true, activo: true },
       orderBy: { descripcion: "asc" },
     }),
     prisma.imPersonalEmpresas.findMany({
@@ -97,7 +97,7 @@ export default async function UsersPage({
     userEmpresaMap.get(u.id) ?? (u.hospital?.cuit ? empresaByCuit.get(cleanCuit(u.hospital.cuit)) : undefined);
 
   const hospitals = empresas
-    .filter((e) => e.id !== UEP_EMPRESA_ID)
+    .filter((e) => e.id !== UEP_EMPRESA_ID && e.activo)
     .map((e) => ({
       id: e.id,
       nombre: e.descripcion?.trim() || `Hospital ${e.id}`,

@@ -34,6 +34,7 @@ export interface HospitalRecord {
   localidad: string | null;
   cuit: string | null;
   email: string | null;
+  activo: boolean;
 }
 
 export interface ProveedorSuggestion {

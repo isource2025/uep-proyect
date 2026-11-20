@@ -35,7 +35,7 @@ export default async function DashboardPage() {
   }
   // Fetch summary stats, active period, recent cbtes and aggregations in parallel to minimize latency
   const [hospitalCount, mspAgentCount, legacyAgentCount, fcCount, rcCount, activePeriod, recentCbtes, totalInvoiced] = await Promise.all([
-    prisma.empresa.count(),
+    prisma.empresa.count({ where: { id: { not: 1 }, activo: true } }),
     prisma.imPersonalMsp.count(),
     prisma.agente.count(),
     prisma.cbte.count({ where: { type: "FC" } }),

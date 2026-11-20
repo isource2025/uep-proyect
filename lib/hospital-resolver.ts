@@ -82,8 +82,8 @@ export async function resolveEmpresaFromProveedorId(
 
   const allEmpresas = await prisma.empresa.findMany({
     where: { cuit: { not: null } },
-    select: { id: true, cuit: true, descripcion: true },
-    orderBy: { id: "asc" },
+    select: { id: true, cuit: true, descripcion: true, activo: true },
+    orderBy: [{ activo: "desc" }, { id: "asc" }],
   });
 
   const matchedEmp = allEmpresas.find(
@@ -310,6 +310,7 @@ export async function resolveHospitalRecipientsByCuits(
   const allEmpresasWithCuit = await prisma.empresa.findMany({
     where: {
       id: { not: UEP_EMPRESA_ID },
+      activo: true,
       cuit: { not: null },
     },
     select: { id: true, descripcion: true, cuit: true, email: true },

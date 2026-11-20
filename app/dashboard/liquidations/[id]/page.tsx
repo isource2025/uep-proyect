@@ -198,6 +198,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     const targetEmpresaCuit = cleanCuit(targetEmpresa?.cuit);
     liquidation = filterLiquidationForHospital(liquidationRaw, targetEmpresaCuit, {
       hospitalName: targetEmpresa?.descripcion?.trim() || undefined,
+      hospitalEmpresaId: targetEmpresaId,
     });
   }
 

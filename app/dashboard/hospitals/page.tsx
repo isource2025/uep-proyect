@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent } from "@/components/ui/card";
-import { Building2, AlertCircle, ShieldAlert } from "lucide-react";
+import { Building2, AlertCircle, ShieldAlert, Ban } from "lucide-react";
 import { isUserAdmin } from "@/lib/constants";
 import { cleanCuit } from "@/lib/hospital-mapping";
 import { UEP_EMPRESA_ID } from "@/lib/hospital-resolver";
@@ -33,6 +33,7 @@ export default async function HospitalsPage({
         localidad: true,
         cuit: true,
         email: true,
+        activo: true,
       },
       orderBy: { descripcion: "asc" },
     }),
@@ -53,6 +54,7 @@ export default async function HospitalsPage({
     localidad: h.localidad?.trim() || null,
     cuit: cleanCuit(h.cuit) || null,
     email: h.email?.trim() || null,
+    activo: h.activo,
   }));
 
   const proveedores: ProveedorSuggestion[] = rawProveedores
@@ -63,9 +65,11 @@ export default async function HospitalsPage({
     }))
     .filter((p) => p.cuit.length === 11);
 
-  const totalCount = hospitals.length;
-  const withoutCuitCount = hospitals.filter((h) => !h.cuit).length;
-  const withoutEmailCount = hospitals.filter((h) => !h.email).length;
+  const activeHospitals = hospitals.filter((h) => h.activo);
+  const activeCount = activeHospitals.length;
+  const inactiveCount = hospitals.length - activeCount;
+  const withoutCuitCount = activeHospitals.filter((h) => !h.cuit).length;
+  const withoutEmailCount = activeHospitals.filter((h) => !h.email).length;
 
   return (
     <div className="space-y-6 text-foreground">
@@ -76,7 +80,7 @@ export default async function HospitalsPage({
             Gestión de Hospitales
           </h1>
           <p className="text-sm text-muted-foreground">
-            Efectores públicos (EMPRESAS): datos institucionales y correos corporativos para notificaciones de liquidaciones.
+            Efectores públicos (EMPRESAS): datos institucionales, estado operativo y correos corporativos para notificaciones de liquidaciones.
           </p>
         </div>
 
@@ -85,18 +89,18 @@ export default async function HospitalsPage({
       </div>
 
       {/* Summary Stat Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <Card className="border-border bg-card shadow-sm">
           <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3 min-w-0">
             <div className="space-y-1 min-w-0 flex-1">
               <span className="text-2xs sm:text-3xs uppercase font-bold text-muted-foreground tracking-wider leading-tight block break-words">
-                Total Efectores
+                Efectores Activos
               </span>
-              <p className="text-2xl sm:text-3xl font-black text-foreground font-mono truncate">
-                {totalCount}
+              <p className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono truncate">
+                {activeCount}
               </p>
             </div>
-            <div className="p-2.5 sm:p-3 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
               <Building2 className="h-5 w-5 sm:h-6 sm:w-6" />
             </div>
           </CardContent>
@@ -106,7 +110,23 @@ export default async function HospitalsPage({
           <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3 min-w-0">
             <div className="space-y-1 min-w-0 flex-1">
               <span className="text-2xs sm:text-3xs uppercase font-bold text-muted-foreground tracking-wider leading-tight block break-words">
-                Sin CUIT Asignado
+                Inactivos / Baja
+              </span>
+              <p className="text-2xl sm:text-3xl font-black text-muted-foreground font-mono truncate">
+                {inactiveCount}
+              </p>
+            </div>
+            <div className="p-2.5 sm:p-3 rounded-xl bg-muted text-muted-foreground shrink-0">
+              <Ban className="h-5 w-5 sm:h-6 sm:w-6" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-card shadow-sm">
+          <CardContent className="p-4 sm:p-5 flex items-center justify-between gap-3 min-w-0">
+            <div className="space-y-1 min-w-0 flex-1">
+              <span className="text-2xs sm:text-3xs uppercase font-bold text-muted-foreground tracking-wider leading-tight block break-words">
+                Sin CUIT (Activos)
               </span>
               <p className="text-2xl sm:text-3xl font-black text-rose-600 dark:text-rose-400 font-mono truncate">
                 {withoutCuitCount}

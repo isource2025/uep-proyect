@@ -81,6 +81,7 @@ export async function createHospitalAction(formData: FormData) {
           localidad,
           cuit,
           email,
+          activo: true,
         },
       });
     });
@@ -136,9 +137,48 @@ export async function updateHospitalAction(formData: FormData) {
 
     revalidatePath("/dashboard/hospitals");
     revalidatePath("/dashboard/users");
+    revalidatePath("/dashboard");
     return { success: true };
   } catch (e: any) {
     console.error("Error updating hospital in EMPRESAS:", e);
     return { error: e.message || "Error al actualizar el establecimiento en EMPRESAS." };
+  }
+}
+
+export async function toggleHospitalStatusAction(hospitalId: number, nextActive: boolean) {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user || !isUserAdmin((session.user as any).role)) {
+      return {
+        error: "Acceso denegado. Solo los administradores pueden cambiar el estado de establecimientos.",
+      };
+    }
+
+    if (!Number.isFinite(hospitalId) || hospitalId <= 0 || hospitalId === UEP_EMPRESA_ID) {
+      return { error: "Establecimiento inválido para cambio de estado." };
+    }
+
+    const existing = await prisma.empresa.findUnique({
+      where: { id: hospitalId },
+      select: { id: true, descripcion: true, activo: true },
+    });
+    if (!existing) {
+      return { error: "El establecimiento seleccionado no existe en EMPRESAS." };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.empresa.update({
+        where: { id: hospitalId },
+        data: { activo: Boolean(nextActive) },
+      });
+    });
+
+    revalidatePath("/dashboard/hospitals");
+    revalidatePath("/dashboard/users");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (e: any) {
+    console.error("Error toggling hospital status in EMPRESAS:", e);
+    return { error: e.message || "Error al actualizar el estado del establecimiento." };
   }
 }

@@ -690,7 +690,7 @@ export function buildLiquidationWorkbook(
     const dni = agentInfo.idAgente || (p.idAgente ? String(p.idAgente) : cuilStr.slice(2, 10));
     const cuilFormatted = formatCuit(cuilStr || p.cuil || "");
     const nombre = agentInfo.apellidoyNombre || `Agente CUIL ${cuilFormatted}`;
-    const hospital = agentInfo.hospitalNombre || `Hospital #${p.hospitalId || "?"}`;
+    const hospital = p.hospitalNombre || agentInfo.hospitalNombre || `Hospital #${p.hospitalId || "?"}`;
 
     const hon = formatMoney(p.honorarios || 0);
     const sob = formatMoney(p.sobreasignacion || 0);

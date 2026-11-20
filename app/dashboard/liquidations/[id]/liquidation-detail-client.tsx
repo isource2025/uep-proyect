@@ -24,7 +24,6 @@ import {
   Check,
   X,
   FileSpreadsheet,
-  ClipboardPaste,
   AlertTriangle,
   Percent,
   User,
@@ -50,10 +49,15 @@ import {
 } from "@/components/ui/dialog";
 import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isUserHospital } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, updateLiquidationNormaLegal, uploadDebitsFile, deleteDebitsFile, deleteDebitAttachment, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, searchBatchAgentsForLiquidationAction, syncLiquidationComprasFromErp } from "../actions";
+import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, updateLiquidationNormaLegal, uploadDebitsFile, deleteDebitsFile, deleteDebitAttachment, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, syncLiquidationComprasFromErp } from "../actions";
 import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
 import { NormaLegalModal } from "@/components/norma-legal-modal";
 import { NotificationAuditModal } from "@/components/notification-audit-modal";
+import {
+  BulkDistributionModal,
+  type BulkAppliedAgentRow,
+  type BulkImportMergeMode,
+} from "@/components/bulk-distribution-modal";
 import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
 
 interface LiquidationDetailClientProps {
@@ -173,14 +177,11 @@ export default function LiquidationDetailClient({
     }
   };
 
-  // Modal state for adding agents (Single vs Batch from Excel)
+  // Modal state for adding agents individually + bulk import modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [searchTab, setSearchTab] = useState<"single" | "batch">("single");
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [modalSearchInput, setModalSearchInput] = useState("");
-  const [modalBatchInput, setModalBatchInput] = useState("");
   const [submittedSearchQuery, setSubmittedSearchQuery] = useState("");
-  const [submittedBatchTerms, setSubmittedBatchTerms] = useState<string[]>([]);
-  const [unmatchedBatchTerms, setUnmatchedBatchTerms] = useState<string[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedAgentIdsInModal, setSelectedAgentIdsInModal] = useState<any[]>([]);
   const [modalAgents, setModalAgents] = useState<any[]>(agents);
@@ -409,91 +410,6 @@ export default function LiquidationDetailClient({
     }
   };
 
-  const handleExecuteBatchSearch = async () => {
-    const rawTerms = modalBatchInput
-      .split(/[\r\n,;\t]+/)
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
-
-    if (rawTerms.length === 0) return;
-
-    setIsSearchingServer(true);
-    let currentPool = [...modalAgents];
-    try {
-      // Búsqueda por lote abierta en todo el padrón SISPER
-      const serverResults = await searchBatchAgentsForLiquidationAction(rawTerms);
-      if (serverResults && serverResults.length > 0) {
-        const map = new Map();
-        for (const a of currentPool) map.set(String(a.idAgente || a.id || a.cuil), a);
-        for (const a of serverResults) map.set(String(a.idAgente || a.id || a.cuil), a);
-        currentPool = Array.from(map.values());
-        setModalAgents(currentPool);
-      }
-    } catch (err) {
-      console.error("Error searching batch agents:", err);
-    } finally {
-      setIsSearchingServer(false);
-    }
-
-    const availableInModal = currentPool.filter(
-      (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
-    );
-
-    const matchedTerms = new Set<string>();
-    const foundAgentIds: number[] = [];
-
-    for (const ag of availableInModal) {
-      const agId = ag.idAgente || ag.id;
-      const agName = (ag.nombre || "").toLowerCase();
-      const agCuilDigits = (ag.cuil || "").replace(/[^\d]/g, "");
-      const agLegajo = (ag.legajo || "").toLowerCase().trim();
-      const agLegajoDigits = (ag.legajo || "").replace(/[^\d]/g, "");
-      const agIdStr = String(ag.idAgente || ag.id || "");
-
-      let isMatched = false;
-      for (const term of rawTerms) {
-        const cleanText = term.toLowerCase().trim();
-        const cleanDigits = term.replace(/[^\d]/g, "");
-
-        const matchDigits =
-          cleanDigits.length >= 6 &&
-          ((agCuilDigits && (agCuilDigits === cleanDigits || agCuilDigits.includes(cleanDigits))) ||
-            (agLegajoDigits && agLegajoDigits === cleanDigits) ||
-            (agIdStr && agIdStr === cleanDigits));
-
-        const matchText =
-          cleanText.length >= 3 &&
-          (agName.includes(cleanText) ||
-            cleanText.includes(agName) ||
-            agLegajo.includes(cleanText) ||
-            (cleanText.includes(" ") &&
-              cleanText
-                .split(" ")
-                .filter((w) => w.length > 2)
-                .every((w) => agName.includes(w))));
-
-        if (matchDigits || matchText) {
-          isMatched = true;
-          matchedTerms.add(term);
-        }
-      }
-
-      if (isMatched) {
-        foundAgentIds.push(agId);
-      }
-    }
-
-    const unmatched = rawTerms.filter((t) => !matchedTerms.has(t));
-    setSubmittedBatchTerms(rawTerms);
-    setUnmatchedBatchTerms(unmatched);
-    setHasSearched(true);
-
-    // Auto-select all matched agents from the batch
-    if (foundAgentIds.length > 0) {
-      setSelectedAgentIdsInModal((prev) => Array.from(new Set([...prev, ...foundAgentIds])));
-    }
-  };
-
   const handleConfirmAddAgentsFromModal = () => {
     if (selectedAgentIdsInModal.length === 0) {
       setIsAddModalOpen(false);
@@ -539,10 +455,7 @@ export default function LiquidationDetailClient({
     setAgentDistRows((prev) => [...prev, ...newRows]);
     setSelectedAgentIdsInModal([]);
     setModalSearchInput("");
-    setModalBatchInput("");
     setSubmittedSearchQuery("");
-    setSubmittedBatchTerms([]);
-    setUnmatchedBatchTerms([]);
     setHasSearched(false);
     setIsAddModalOpen(false);
     setSuccessMsg(`Se añadieron ${newRows.length} profesional(es) a la grilla de distribución.`);
@@ -552,6 +465,60 @@ export default function LiquidationDetailClient({
     setAgentDistRows((prev) => prev.filter((r) => String(r.agentId) !== String(agentId)));
     setErrorMsg(null);
     setSuccessMsg(null);
+  };
+
+  const handleApplyBulkDistribution = (
+    rows: BulkAppliedAgentRow[],
+    mode: BulkImportMergeMode
+  ) => {
+    const round2Local = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+    const normalizeKey = (val: any) => String(val || "").replace(/\D/g, "") || String(val || "");
+
+    const mappedIncoming = rows.map((r) => ({
+      agentId: r.agentId,
+      idEmpresa: targetHospitalId || 0,
+      legajo: r.legajo || "",
+      nombre: r.nombre,
+      cuil: r.cuil || "",
+      cargo: r.cargo || "PROFESIONAL",
+      hospitalNombre: r.hospitalNombre || currentUser?.name || "",
+      honorarios: Math.max(0, round2Local(Number(r.honorarios || 0))),
+      sobreasignaciones: Math.max(0, round2Local(Number(r.sobreasignaciones || 0))),
+    }));
+
+    if (mode === "REPLACE") {
+      setAgentDistRows(mappedIncoming);
+    } else {
+      setAgentDistRows((prev) => {
+        const next = [...prev];
+        for (const inc of mappedIncoming) {
+          const incKey = normalizeKey(inc.cuil || inc.agentId);
+          const existingIdx = next.findIndex(
+            (r) => normalizeKey(r.cuil || r.agentId) === incKey
+          );
+          if (existingIdx >= 0) {
+            const cur = next[existingIdx];
+            next[existingIdx] = {
+              ...cur,
+              honorarios: round2Local(Number(cur.honorarios || 0) + inc.honorarios),
+              sobreasignaciones: round2Local(
+                Number(cur.sobreasignaciones || 0) + inc.sobreasignaciones
+              ),
+            };
+          } else {
+            next.push(inc);
+          }
+        }
+        return next;
+      });
+    }
+
+    setErrorMsg(null);
+    setSuccessMsg(
+      `Se aplicaron ${rows.length} agente(s) por carga masiva (${
+        mode === "REPLACE" ? "planilla reemplazada" : "sumados / actualizados"
+      }). Presioná "Guardar Personal" para confirmar los cambios.`
+    );
   };
 
   const handleGaPercentChange = (id: string, pctVal: string) => {
@@ -2638,39 +2605,6 @@ export default function LiquidationDetailClient({
                     : "Distribuciones de honorarios y sobreasignaciones consolidadas cargadas por los establecimientos de salud."}
                 </CardDescription>
               </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full xl:w-auto xl:flex-1 xl:max-w-xl xl:justify-end min-w-0">
-                {agentDistRows.length > 0 && (
-                  <SearchBar
-                    placeholder="Buscar agente por nombre, CUIL o legajo..."
-                    value={agentSearchQuery}
-                    onChange={setAgentSearchQuery}
-                    onClear={() => setAgentSearchQuery("")}
-                    size="default"
-                    className="w-full sm:flex-1 min-w-0"
-                  />
-                )}
-                {isHospitalUser && (
-                  <Button
-                    type="button"
-                    onClick={handleSaveAgentsDistribution}
-                    disabled={savingAgents || balanceRestante < 0}
-                    className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-9 px-4 text-xs shrink-0 cursor-pointer"
-                  >
-                    {savingAgents ? (
-                      <>
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        Guardando...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-3.5 w-3.5" />
-                        Guardar Personal
-                      </>
-                    )}
-                  </Button>
-                )}
-              </div>
             </div>
 
             {/* SELECCIÓN Y AGREGADO DE AGENTES MEDIANTE MODAL (SOLO HOSPITAL) */}
@@ -2694,22 +2628,46 @@ export default function LiquidationDetailClient({
                     )}
                   </div>
 
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setSelectedAgentIdsInModal([]);
-                      setModalSearchInput("");
-                      setSubmittedSearchQuery("");
-                      setHasSearched(false);
-                      setIsAddModalOpen(true);
-                    }}
-                    disabled={savingAgents}
-                    className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-9 px-3.5 text-xs shrink-0 cursor-pointer"
-                  >
-                    <UserPlus className="h-3.5 w-3.5 shrink-0" />
-                    <span>Añadir Agentes</span>
-                  </Button>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full sm:w-auto">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsBulkModalOpen(true)}
+                      disabled={savingAgents}
+                      className="w-full sm:w-auto border-teal-500/40 bg-teal-500/5 hover:bg-teal-500/15 text-teal-700 dark:text-teal-300 font-bold gap-1.5 h-9 px-3.5 text-xs shrink-0 cursor-pointer"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
+                      <span>Carga Masiva</span>
+                    </Button>
+
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAgentIdsInModal([]);
+                        setModalSearchInput("");
+                        setSubmittedSearchQuery("");
+                        setHasSearched(false);
+                        setIsAddModalOpen(true);
+                      }}
+                      disabled={savingAgents}
+                      className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-9 px-3.5 text-xs shrink-0 cursor-pointer"
+                    >
+                      <UserPlus className="h-3.5 w-3.5 shrink-0" />
+                      <span>Añadir Agentes</span>
+                    </Button>
+                  </div>
                 </div>
+
+                {/* MODAL HÍBRIDO DE CARGA MASIVA (PEGAR DESDE EXCEL O SUBIR PLANTILLA) */}
+                <BulkDistributionModal
+                  open={isBulkModalOpen}
+                  onOpenChange={setIsBulkModalOpen}
+                  netoLimit={currentHospitalNeto}
+                  existingTotalAssigned={totalAsignadoPersonal}
+                  existingAgentsCount={agentDistRows.length}
+                  preferredEmpresaId={targetHospitalId}
+                  onApply={handleApplyBulkDistribution}
+                />
 
                 {/* MODAL DE BÚSQUEDA Y SELECCIÓN DE AGENTES */}
                 <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
@@ -2732,192 +2690,72 @@ export default function LiquidationDetailClient({
 
                     {/* Search Form & Toolbar */}
                     <div className="p-3.5 sm:p-5 border-b border-border bg-muted/20 space-y-3 shrink-0">
-                      {/* Mode Selector Tabs */}
-                      <div className="grid grid-cols-1 sm:inline-flex items-stretch sm:items-center gap-1.5 p-1 bg-muted/70 rounded-xl w-full sm:w-fit border border-border/70">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSearchTab("single");
-                            setHasSearched(false);
-                          }}
-                          className={cn(
-                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none",
-                            searchTab === "single"
-                              ? "bg-card text-foreground shadow-xs border border-border"
-                              : "text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          <Search className="h-3.5 w-3.5" />
-                          Búsqueda Individual
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSearchTab("batch");
-                            setHasSearched(false);
-                          }}
-                          className={cn(
-                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none",
-                            searchTab === "batch"
-                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shadow-xs border border-emerald-500/30"
-                              : "text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          <FileSpreadsheet className="h-3.5 w-3.5" />
-                          Pegar Columna de Excel (Lote)
-                        </button>
-                      </div>
-
-                      {searchTab === "single" ? (
-                        <form
-                          onSubmit={handleSingleSearchSubmit}
-                          className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full"
-                        >
-                          <div className="relative flex-1 w-full">
-                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              type="text"
-                              placeholder="Buscar por apellido, nombre, CUIL o legajo..."
-                              value={modalSearchInput}
-                              onChange={(e) => setModalSearchInput(e.target.value)}
-                              className="pl-10 pr-9 bg-card border-border text-foreground text-sm h-11 w-full rounded-xl focus-visible:ring-1 focus-visible:ring-teal-500 shadow-xs"
-                            />
-                            {modalSearchInput && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setModalSearchInput("");
-                                  setSubmittedSearchQuery("");
-                                  setHasSearched(false);
-                                }}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            )}
-                          </div>
-
-                          <Button
-                            type="submit"
-                            disabled={!modalSearchInput.trim() || isSearchingServer}
-                            className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-11 px-5 text-xs shrink-0 cursor-pointer rounded-xl shadow-xs"
-                          >
-                            {isSearchingServer ? (
-                              <RefreshCw className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Search className="h-4 w-4" />
-                            )}
-                            Buscar
-                          </Button>
-                        </form>
-                      ) : (
-                        <div className="space-y-2.5">
-                          <div className="relative">
-                            <textarea
-                              rows={3}
-                              placeholder="Pegue aquí la columna copiada de Excel con los CUILs, legajos o apellidos (uno por fila)..."
-                              value={modalBatchInput}
-                              onChange={(e) => setModalBatchInput(e.target.value)}
-                              className="w-full p-3 pr-8 bg-card border border-border rounded-xl text-xs sm:text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-y shadow-xs"
-                            />
-                            {modalBatchInput && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setModalBatchInput("");
-                                  setSubmittedBatchTerms([]);
-                                  setUnmatchedBatchTerms([]);
-                                  setHasSearched(false);
-                                }}
-                                className="absolute right-3 top-3 text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-[11px] text-muted-foreground">
-                              💡 Copie la columna de CUILs o nombres desde su Excel y péguela aquí directamente.
-                            </p>
-                            <Button
+                      <form
+                        onSubmit={handleSingleSearchSubmit}
+                        className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full"
+                      >
+                        <div className="relative flex-1 w-full">
+                          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            type="text"
+                            placeholder="Buscar por apellido, nombre, CUIL o legajo..."
+                            value={modalSearchInput}
+                            onChange={(e) => setModalSearchInput(e.target.value)}
+                            className="pl-10 pr-9 bg-card border-border text-foreground text-sm h-11 w-full rounded-xl focus-visible:ring-1 focus-visible:ring-teal-500 shadow-xs"
+                          />
+                          {modalSearchInput && (
+                            <button
                               type="button"
-                              onClick={handleExecuteBatchSearch}
-                              disabled={!modalBatchInput.trim() || isSearchingServer}
-                              className="bg-emerald-600 hover:bg-emerald-500 text-zinc-950 font-bold gap-1.5 h-9 px-4 text-xs shrink-0 cursor-pointer rounded-xl shadow-xs"
+                              onClick={() => {
+                                setModalSearchInput("");
+                                setSubmittedSearchQuery("");
+                                setHasSearched(false);
+                              }}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer p-0.5"
                             >
-                              {isSearchingServer ? (
-                                <RefreshCw className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <FileSpreadsheet className="h-4 w-4" />
-                              )}
-                              Buscar Coincidencias en Excel
-                            </Button>
-                          </div>
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
-                      )}
+
+                        <Button
+                          type="submit"
+                          disabled={!modalSearchInput.trim() || isSearchingServer}
+                          className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-11 px-5 text-xs shrink-0 cursor-pointer rounded-xl shadow-xs"
+                        >
+                          {isSearchingServer ? (
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Search className="h-4 w-4" />
+                          )}
+                          Buscar
+                        </Button>
+                      </form>
 
                       {(() => {
                         const availableInModal = modalAgents.filter(
                           (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
                         );
 
+                        const hasQuery = hasSearched && submittedSearchQuery.length > 0;
                         let filteredInModal: any[] = [];
-                        let hasQuery = false;
 
-                        if (searchTab === "single") {
-                          hasQuery = hasSearched && submittedSearchQuery.length > 0;
-                          if (hasQuery) {
-                            const q = submittedSearchQuery.toLowerCase().trim();
-                            filteredInModal = availableInModal.filter((ag: any) => {
-                              const nombre = (ag.nombre || "").toLowerCase();
-                              const cuil = (ag.cuil || "").toLowerCase();
-                              const legajo = (ag.legajo || "").toLowerCase();
-                              const cargo = (ag.cargo || "").toLowerCase();
-                              const hospital = (ag.hospitalNombre || "").toLowerCase();
-                              return (
-                                nombre.includes(q) ||
-                                cuil.includes(q) ||
-                                legajo.includes(q) ||
-                                cargo.includes(q) ||
-                                hospital.includes(q)
-                              );
-                            });
-                          }
-                        } else {
-                          hasQuery = hasSearched && submittedBatchTerms.length > 0;
-                          if (hasQuery) {
-                            filteredInModal = availableInModal.filter((ag: any) => {
-                              const agName = (ag.nombre || "").toLowerCase();
-                              const agCuilDigits = (ag.cuil || "").replace(/[^\d]/g, "");
-                              const agLegajo = (ag.legajo || "").toLowerCase().trim();
-                              const agLegajoDigits = (ag.legajo || "").replace(/[^\d]/g, "");
-                              const agIdStr = String(ag.idAgente || ag.id || "");
-
-                              return submittedBatchTerms.some((term) => {
-                                const cleanText = term.toLowerCase().trim();
-                                const cleanDigits = term.replace(/[^\d]/g, "");
-
-                                const matchDigits =
-                                  cleanDigits.length >= 6 &&
-                                  ((agCuilDigits && (agCuilDigits === cleanDigits || agCuilDigits.includes(cleanDigits))) ||
-                                    (agLegajoDigits && agLegajoDigits === cleanDigits) ||
-                                    (agIdStr && agIdStr === cleanDigits));
-
-                                const matchText =
-                                  cleanText.length >= 3 &&
-                                  (agName.includes(cleanText) ||
-                                    cleanText.includes(agName) ||
-                                    agLegajo.includes(cleanText) ||
-                                    (cleanText.includes(" ") &&
-                                      cleanText
-                                        .split(" ")
-                                        .filter((w) => w.length > 2)
-                                        .every((w) => agName.includes(w))));
-
-                                return matchDigits || matchText;
-                              });
-                            });
-                          }
+                        if (hasQuery) {
+                          const q = submittedSearchQuery.toLowerCase().trim();
+                          filteredInModal = availableInModal.filter((ag: any) => {
+                            const nombre = (ag.nombre || "").toLowerCase();
+                            const cuil = (ag.cuil || "").toLowerCase();
+                            const legajo = (ag.legajo || "").toLowerCase();
+                            const cargo = (ag.cargo || "").toLowerCase();
+                            const hospital = (ag.hospitalNombre || "").toLowerCase();
+                            return (
+                              nombre.includes(q) ||
+                              cuil.includes(q) ||
+                              legajo.includes(q) ||
+                              cargo.includes(q) ||
+                              hospital.includes(q)
+                            );
+                          });
                         }
 
                         const visibleIds = filteredInModal.map((ag: any) => ag.idAgente || ag.id);
@@ -2935,9 +2773,7 @@ export default function LiquidationDetailClient({
                                 <span className="text-muted-foreground text-xs">
                                   {hasQuery
                                     ? `${filteredInModal.length} resultado(s) encontrados`
-                                    : searchTab === "single"
-                                    ? "Ingrese un término y haga clic en Buscar"
-                                    : "Pegue los datos y haga clic en Buscar Coincidencias"}
+                                    : "Ingrese un término y haga clic en Buscar"}
                                 </span>
                               )}
                               {hasQuery && selectedAgentIdsInModal.length > 0 && (
@@ -2984,10 +2820,7 @@ export default function LiquidationDetailClient({
                           (ag: any) => !agentDistRows.some((r) => r.agentId === (ag.idAgente || ag.id))
                         );
 
-                        const hasQuery =
-                          searchTab === "single"
-                            ? hasSearched && submittedSearchQuery.length > 0
-                            : hasSearched && submittedBatchTerms.length > 0;
+                        const hasQuery = hasSearched && submittedSearchQuery.length > 0;
 
                         // If user has not performed a search yet
                         if (!hasQuery) {
@@ -3055,110 +2888,43 @@ export default function LiquidationDetailClient({
                           return (
                             <div className="py-14 text-center flex flex-col items-center justify-center gap-3 text-muted-foreground">
                               <div className="h-12 w-12 rounded-2xl bg-muted/60 flex items-center justify-center text-muted-foreground/80">
-                                {searchTab === "single" ? (
-                                  <Search className="h-6 w-6" />
-                                ) : (
-                                  <FileSpreadsheet className="h-6 w-6 text-emerald-500" />
-                                )}
+                                <Search className="h-6 w-6" />
                               </div>
                               <div className="max-w-xs space-y-1">
                                 <p className="font-semibold text-foreground text-sm">
-                                  {searchTab === "single"
-                                    ? "Buscador de Profesionales"
-                                    : "Pegar Lote de Excel"}
+                                  Buscador de Agentes
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  {searchTab === "single"
-                                    ? "Ingrese un término de búsqueda y haga clic en Buscar para encontrar profesionales."
-                                    : "Copie y pegue una lista de CUILs o nombres y haga clic en Buscar Coincidencias en Excel."}
+                                  Ingrese un apellido, nombre, CUIL o legajo y haga clic en Buscar.
                                 </p>
                               </div>
                             </div>
                           );
                         }
 
-                        let filteredInModal: any[] = [];
-
-                        if (searchTab === "single") {
-                          const q = submittedSearchQuery.toLowerCase().trim();
-                          filteredInModal = availableInModal.filter((ag: any) => {
-                            const nombre = (ag.nombre || "").toLowerCase();
-                            const cuil = (ag.cuil || "").toLowerCase();
-                            const legajo = (ag.legajo || "").toLowerCase();
-                            const cargo = (ag.cargo || "").toLowerCase();
-                            const hospital = (ag.hospitalNombre || "").toLowerCase();
-                            return (
-                              nombre.includes(q) ||
-                              cuil.includes(q) ||
-                              legajo.includes(q) ||
-                              cargo.includes(q) ||
-                              hospital.includes(q)
-                            );
-                          });
-                        } else {
-                          filteredInModal = availableInModal.filter((ag: any) => {
-                            const agName = (ag.nombre || "").toLowerCase();
-                            const agCuilDigits = (ag.cuil || "").replace(/[^\d]/g, "");
-                            const agLegajo = (ag.legajo || "").toLowerCase().trim();
-                            const agLegajoDigits = (ag.legajo || "").replace(/[^\d]/g, "");
-                            const agIdStr = String(ag.idAgente || ag.id || "");
-
-                            return submittedBatchTerms.some((term) => {
-                              const cleanText = term.toLowerCase().trim();
-                              const cleanDigits = term.replace(/[^\d]/g, "");
-
-                              const matchDigits =
-                                cleanDigits.length >= 6 &&
-                                ((agCuilDigits && (agCuilDigits === cleanDigits || agCuilDigits.includes(cleanDigits))) ||
-                                  (agLegajoDigits && agLegajoDigits === cleanDigits) ||
-                                  (agIdStr && agIdStr === cleanDigits));
-
-                              const matchText =
-                                cleanText.length >= 3 &&
-                                (agName.includes(cleanText) ||
-                                  cleanText.includes(agName) ||
-                                  agLegajo.includes(cleanText) ||
-                                  (cleanText.includes(" ") &&
-                                    cleanText
-                                      .split(" ")
-                                      .filter((w) => w.length > 2)
-                                      .every((w) => agName.includes(w))));
-
-                              return matchDigits || matchText;
-                            });
-                          });
-                        }
+                        const q = submittedSearchQuery.toLowerCase().trim();
+                        const filteredInModal = availableInModal.filter((ag: any) => {
+                          const nombre = (ag.nombre || "").toLowerCase();
+                          const cuil = (ag.cuil || "").toLowerCase();
+                          const legajo = (ag.legajo || "").toLowerCase();
+                          const cargo = (ag.cargo || "").toLowerCase();
+                          const hospital = (ag.hospitalNombre || "").toLowerCase();
+                          return (
+                            nombre.includes(q) ||
+                            cuil.includes(q) ||
+                            legajo.includes(q) ||
+                            cargo.includes(q) ||
+                            hospital.includes(q)
+                          );
+                        });
 
                         return (
                           <div className="space-y-3">
-                            {/* Batch Unmatched Alert */}
-                            {searchTab === "batch" && unmatchedBatchTerms.length > 0 && (
-                              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-700 dark:text-amber-300 space-y-1">
-                                <div className="flex items-center gap-1.5 font-bold">
-                                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                                  <span>
-                                    {unmatchedBatchTerms.length} término(s) de su Excel no tuvieron coincidencias en la nómina:
-                                  </span>
-                                </div>
-                                <div className="text-[11px] text-muted-foreground font-mono bg-background/50 p-2 rounded-lg max-h-20 overflow-y-auto">
-                                  {unmatchedBatchTerms.join(", ")}
-                                </div>
-                              </div>
-                            )}
-
                             {filteredInModal.length === 0 ? (
                               <div className="py-14 text-center text-xs text-muted-foreground">
-                                {searchTab === "single" ? (
-                                  <>
-                                    No se encontraron profesionales que coincidan con &ldquo;
-                                    <strong className="text-foreground">{submittedSearchQuery}</strong>
-                                    &rdquo;.
-                                  </>
-                                ) : (
-                                  <>
-                                    No se encontraron profesionales para ninguno de los términos pegados desde Excel.
-                                  </>
-                                )}
+                                No se encontraron agentes que coincidan con &ldquo;
+                                <strong className="text-foreground">{submittedSearchQuery}</strong>
+                                &rdquo;.
                               </div>
                             ) : (
                               filteredInModal.map((ag: any) => {
@@ -3255,6 +3021,19 @@ export default function LiquidationDetailClient({
                   </DialogContent>
                 </Dialog>
               </>
+            )}
+
+            {agentDistRows.length > 0 && (
+              <div className="w-full min-w-0">
+                <SearchBar
+                  placeholder="Buscar agente por nombre, CUIL o legajo..."
+                  value={agentSearchQuery}
+                  onChange={setAgentSearchQuery}
+                  onClear={() => setAgentSearchQuery("")}
+                  size="default"
+                  className="w-full min-w-0"
+                />
+              </div>
             )}
           </CardHeader>
 

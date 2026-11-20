@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { revalidatePath } from "next/cache";
 import path from "path";
 import fs from "fs";
@@ -2416,6 +2417,221 @@ export async function searchBatchAgentsForLiquidationAction(terms: string[], _ho
   } catch (err) {
     console.error("Error searching batch agents:", err);
     return [];
+  }
+}
+
+export interface ResolvedBulkAgent {
+  id: string;
+  idAgente: string;
+  cuil: string;
+  legajo: string;
+  nombre: string;
+  cargo: string;
+  hospitalId: number;
+  hospitalNombre: string;
+}
+
+export interface BulkIdentifierResolution {
+  status: "FOUND" | "AMBIGUOUS" | "NOT_FOUND";
+  matches: ResolvedBulkAgent[];
+}
+
+/**
+ * Resuelve masivamente una lista de DNIs (6-8 dígitos) y/o CUILs (11 dígitos)
+ * contra todo el padrón SISPER (`imPersonalMsp`) en bloques parametrizados seguros.
+ */
+export async function resolveBulkAgentsByIdentifiersAction(
+  identifiers: string[],
+  preferredEmpresaId?: number
+): Promise<{
+  success?: boolean;
+  resolved?: Record<string, BulkIdentifierResolution>;
+  error?: string;
+}> {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) {
+      return { error: "No autorizado. Debe iniciar sesión para validar el padrón." };
+    }
+
+    const uniqueIds = Array.from(
+      new Set(
+        (identifiers || [])
+          .map((raw) => String(raw || "").replace(/\D/g, ""))
+          .map((digits) => (digits.length === 11 ? digits : digits.replace(/^0+/, "")))
+          .filter((digits) => digits.length === 11 || (digits.length >= 6 && digits.length <= 8))
+      )
+    ).slice(0, 2000);
+
+    if (uniqueIds.length === 0) {
+      return { success: true, resolved: {} };
+    }
+
+    const allNums = uniqueIds.map((d) => Number(d)).filter((n) => Number.isSafeInteger(n) && n > 0);
+    const dniNums = uniqueIds
+      .filter((d) => d.length >= 6 && d.length <= 8)
+      .map((d) => Number(d))
+      .filter((n) => Number.isSafeInteger(n) && n > 0);
+
+    type RawMspRow = {
+      cuil: bigint | number | string | null;
+      idAgente: bigint | number | string | null;
+      legajo: string | null;
+      nombre: string | null;
+      idEmpresa: number;
+      hospitalNombre: string | null;
+    };
+
+    const rawRows: RawMspRow[] = [];
+    const CHUNK_SIZE = 150;
+
+    // 1) Búsqueda exacta por Cuil o IdAgente (cubre CUILs de 11 dígitos y DNIs cargados en IdAgente)
+    for (let i = 0; i < allNums.length; i += CHUNK_SIZE) {
+      const chunk = allNums.slice(i, i + CHUNK_SIZE);
+      if (chunk.length === 0) continue;
+      const rows = await prisma.$queryRaw<RawMspRow[]>(Prisma.sql`
+        SELECT
+          m.Cuil AS cuil,
+          m.IdAgente AS idAgente,
+          m.Legago AS legajo,
+          m.ApellidoyNombre AS nombre,
+          m.IdEmpresa AS idEmpresa,
+          e.Descripcion AS hospitalNombre
+        FROM imPersonalMsp m
+        LEFT JOIN EMPRESAS e ON e.IdEmpresa = m.IdEmpresa
+        WHERE m.Cuil IN (${Prisma.join(chunk)})
+           OR m.IdAgente IN (${Prisma.join(chunk)})
+        ORDER BY m.Periodo DESC
+      `);
+      rawRows.push(...rows);
+    }
+
+    // 2) Búsqueda por los 8 dígitos centrales del CUIL para DNIs de 6-8 dígitos
+    for (let i = 0; i < dniNums.length; i += CHUNK_SIZE) {
+      const chunk = dniNums.slice(i, i + CHUNK_SIZE);
+      if (chunk.length === 0) continue;
+      const rows = await prisma.$queryRaw<RawMspRow[]>(Prisma.sql`
+        SELECT
+          m.Cuil AS cuil,
+          m.IdAgente AS idAgente,
+          m.Legago AS legajo,
+          m.ApellidoyNombre AS nombre,
+          m.IdEmpresa AS idEmpresa,
+          e.Descripcion AS hospitalNombre
+        FROM imPersonalMsp m
+        LEFT JOIN EMPRESAS e ON e.IdEmpresa = m.IdEmpresa
+        WHERE m.Cuil IS NOT NULL
+          AND ((m.Cuil % CAST(1000000000 AS BIGINT)) / CAST(10 AS BIGINT)) IN (${Prisma.join(chunk)})
+        ORDER BY m.Periodo DESC
+      `);
+      rawRows.push(...rows);
+    }
+
+    // Deduplicar por CUIL único (prefiriendo fila del establecimiento actual si existe, si no el período más reciente)
+    const uniqueAgentByCuil = new Map<string, ResolvedBulkAgent>();
+    for (const row of rawRows) {
+      const cuilStr = row.cuil !== null && row.cuil !== undefined ? String(row.cuil).replace(/\D/g, "") : "";
+      const idAgenteStr =
+        row.idAgente !== null && row.idAgente !== undefined ? String(row.idAgente).replace(/\D/g, "") : "";
+      const canonicalKey = cuilStr || idAgenteStr;
+      if (!canonicalKey) continue;
+
+      const candidate: ResolvedBulkAgent = {
+        id: canonicalKey,
+        idAgente: idAgenteStr || canonicalKey,
+        cuil: cuilStr || idAgenteStr,
+        legajo: String(row.legajo || "").trim(),
+        nombre: String(row.nombre || "").trim() || `Agente #${canonicalKey}`,
+        cargo: "PROFESIONAL",
+        hospitalId: Number(row.idEmpresa || 0),
+        hospitalNombre: String(row.hospitalNombre || "").trim(),
+      };
+
+      const existing = uniqueAgentByCuil.get(canonicalKey);
+      if (!existing) {
+        uniqueAgentByCuil.set(canonicalKey, candidate);
+      } else if (
+        preferredEmpresaId &&
+        candidate.hospitalId === preferredEmpresaId &&
+        existing.hospitalId !== preferredEmpresaId
+      ) {
+        uniqueAgentByCuil.set(canonicalKey, candidate);
+      }
+    }
+
+    // Construir índices rápidos para resolver cada identificador solicitado
+    const byExactCuil = new Map<string, ResolvedBulkAgent>();
+    const byIdAgente = new Map<string, ResolvedBulkAgent[]>();
+    const byExtractedDni = new Map<string, ResolvedBulkAgent[]>();
+
+    const pushUnique = (map: Map<string, ResolvedBulkAgent[]>, key: string, ag: ResolvedBulkAgent) => {
+      if (!key) return;
+      const list = map.get(key) || [];
+      if (!list.some((item) => item.cuil === ag.cuil)) {
+        list.push(ag);
+        map.set(key, list);
+      }
+    };
+
+    for (const ag of uniqueAgentByCuil.values()) {
+      if (ag.cuil) {
+        byExactCuil.set(ag.cuil, ag);
+        if (ag.cuil.length === 11) {
+          try {
+            const dniPart = ((BigInt(ag.cuil) % BigInt(1000000000)) / BigInt(10)).toString();
+            pushUnique(byExtractedDni, dniPart, ag);
+          } catch {}
+        }
+      }
+      if (ag.idAgente) {
+        const cleanIdAg = ag.idAgente.replace(/^0+/, "");
+        pushUnique(byIdAgente, ag.idAgente, ag);
+        if (cleanIdAg && cleanIdAg !== ag.idAgente) {
+          pushUnique(byIdAgente, cleanIdAg, ag);
+        }
+      }
+    }
+
+    const resolved: Record<string, BulkIdentifierResolution> = {};
+
+    for (const id of uniqueIds) {
+      const candidateMap = new Map<string, ResolvedBulkAgent>();
+
+      const exact = byExactCuil.get(id);
+      if (exact) candidateMap.set(exact.cuil, exact);
+
+      for (const ag of byIdAgente.get(id) || []) {
+        candidateMap.set(ag.cuil, ag);
+      }
+
+      if (id.length >= 6 && id.length <= 8) {
+        for (const ag of byExtractedDni.get(id) || []) {
+          candidateMap.set(ag.cuil, ag);
+        }
+      }
+
+      const matches = Array.from(candidateMap.values()).sort((a, b) => {
+        if (preferredEmpresaId) {
+          const aPref = a.hospitalId === preferredEmpresaId ? 0 : 1;
+          const bPref = b.hospitalId === preferredEmpresaId ? 0 : 1;
+          if (aPref !== bPref) return aPref - bPref;
+        }
+        return a.nombre.localeCompare(b.nombre, "es");
+      });
+
+      if (matches.length === 1) {
+        resolved[id] = { status: "FOUND", matches };
+      } else if (matches.length > 1) {
+        resolved[id] = { status: "AMBIGUOUS", matches };
+      } else {
+        resolved[id] = { status: "NOT_FOUND", matches: [] };
+      }
+    }
+
+    return { success: true, resolved: serializeData(resolved) };
+  } catch (err: any) {
+    console.error("Error resolving bulk agents by identifiers:", err);
+    return { error: err?.message || "Error al validar los agentes contra el padrón SISPER." };
   }
 }
 

@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
-import { isUserAdmin } from "@/lib/constants";
+import { isUserAdmin, parseUserRoleIds } from "@/lib/constants";
 import { fetchLiquidationData } from "./actions";
 import { serializeData } from "@/lib/utils";
 import LiquidationsClientPage from "./liquidations-client";
@@ -13,7 +13,16 @@ export default async function LiquidationsPage({
   searchParams?: Promise<{ highlight?: string }>;
 }) {
   const session = await auth.api.getSession({ headers: await headers() });
-  const isAdmin = isUserAdmin((session?.user as any)?.role);
+  const sessionUser = session?.user as any;
+  const rawRole = String(sessionUser?.role || "");
+  const roleIds = parseUserRoleIds(rawRole);
+  const isAdmin = isUserAdmin(rawRole);
+  const isReadOnlyAuditorOnly = !isAdmin && !roleIds.includes("3") && roleIds.includes("5");
+  const canAssign = Boolean(sessionUser && !isReadOnlyAuditorOnly);
+  const currentUserName =
+    String(sessionUser?.name || "").trim() ||
+    String(sessionUser?.email || "").trim() ||
+    String(sessionUser?.operador || "").trim();
   const resolvedParams = searchParams ? await searchParams : undefined;
   const parsedHighlight = resolvedParams?.highlight ? parseInt(resolvedParams.highlight, 10) : NaN;
   const initialHighlightId = !isNaN(parsedHighlight) && parsedHighlight > 0 ? parsedHighlight : null;
@@ -23,6 +32,8 @@ export default async function LiquidationsPage({
     <LiquidationsClientPage
       initialData={serializeData(data)}
       isAdmin={isAdmin}
+      canAssign={canAssign}
+      currentUserName={currentUserName}
       initialHighlightId={initialHighlightId}
     />
   );

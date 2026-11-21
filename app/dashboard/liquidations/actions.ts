@@ -17,7 +17,7 @@ import {
   type HospitalNotificationRecipient,
 } from "@/lib/hospital-resolver";
 import { serializeData } from "@/lib/utils";
-import { isUserAdmin, isUserHospital } from "@/lib/constants";
+import { isUserAdmin, isUserHospital, parseUserRoleIds } from "@/lib/constants";
 import { generateLiquidationExcelBuffer } from "@/lib/export-liquidation-excel";
 import { sendLiquidationNotificationEmail } from "@/lib/email";
 import {
@@ -890,7 +890,7 @@ export async function updateLiquidationDetails(
 
     const currentLiq = await prisma.liquidacion.findUnique({
       where: { id: liquidationId },
-      select: { status: true },
+      select: { status: true, createdByName: true },
     });
 
     const isDistributed = currentLiq?.status === "DISTRIBUIDA" || currentLiq?.status === "DISTRIBUIDO";
@@ -1014,7 +1014,9 @@ export async function updateLiquidationDetails(
           ...(observaciones !== undefined ? { observaciones } : {}),
           ...(expediente !== undefined ? { expediente: expediente?.trim() || null } : {}),
           ...(normaLegal !== undefined ? { normaLegal: normaLegal?.trim() || null } : {}),
-          ...(currentUserName ? { createdByName: currentUserName } : {}),
+          ...(currentUserName && !currentLiq?.createdByName?.trim()
+            ? { createdByName: currentUserName }
+            : {}),
         },
       });
     });
@@ -1146,6 +1148,223 @@ export async function updateLiquidationObservaciones(
   } catch (error: any) {
     console.error("Error updating liquidation observaciones:", error);
     return { error: "Error al guardar las observaciones de la liquidación." };
+  }
+}
+
+/**
+ * Asigna una liquidación libre al operador liquidador o administrador actual de forma atómica.
+ * Si ya está asignada a otra persona, rechaza la operación hasta que su titular la desasigne.
+ */
+export async function assignLiquidationToSelfAction(liquidationId: number): Promise<{
+  success?: boolean;
+  createdByName?: string;
+  error?: string;
+}> {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) {
+      return { error: "No autorizado. Debe iniciar sesión." };
+    }
+
+    const sessionUser = session.user as any;
+    const rawRole = String(sessionUser?.role || "");
+    const roleIds = parseUserRoleIds(rawRole);
+    const isAdmin = isUserAdmin(rawRole);
+    const resolvedEmpresaId = await resolveUserEmpresaId({
+      id: Number(sessionUser.id),
+      hospitalId: sessionUser.hospitalId,
+      cuit: sessionUser.cuit,
+    });
+    const isHospitalUser = !isAdmin && isUserHospital(rawRole, resolvedEmpresaId ?? sessionUser?.hospitalId);
+    const isReadOnlyAuditorOnly = !isAdmin && !roleIds.includes("3") && roleIds.includes("5");
+
+    if (isHospitalUser || isReadOnlyAuditorOnly) {
+      return {
+        error: "Acceso denegado. Solo los Liquidadores y Administradores de UEP pueden asignarse liquidaciones.",
+      };
+    }
+
+    const assigneeName =
+      String(sessionUser?.name || "").trim() ||
+      String(sessionUser?.email || "").trim() ||
+      String(sessionUser?.operador || "").trim();
+
+    if (!assigneeName) {
+      return { error: "No se pudo identificar el nombre del operador actual." };
+    }
+
+    const txResult = await prisma.$transaction(async (tx) => {
+      const currentLiq = await tx.liquidacion.findUnique({
+        where: { id: liquidationId },
+        select: { id: true, status: true, createdByName: true },
+      });
+
+      if (!currentLiq) {
+        return { error: "La liquidación seleccionada no existe." };
+      }
+
+      const isDistributed = currentLiq.status === "DISTRIBUIDA" || currentLiq.status === "DISTRIBUIDO";
+      const isClosed = currentLiq.status === "CERRADA" || currentLiq.status === "CERRADO";
+      if (isDistributed || isClosed) {
+        return {
+          error: `No se puede asignar una liquidación en estado ${currentLiq.status}.`,
+        };
+      }
+
+      if (currentLiq.status !== "PENDIENTE" && !isAdmin) {
+        return {
+          error: "Esta liquidación ya fue notificada. Solo un Administrador puede modificar su asignación.",
+        };
+      }
+
+      const currentOwner = String(currentLiq.createdByName || "").trim();
+      if (currentOwner) {
+        if (currentOwner.toLowerCase() === assigneeName.toLowerCase()) {
+          return { success: true, createdByName: currentOwner };
+        }
+        return {
+          error: `Esta liquidación ya está asignada a ${currentOwner}. Debe desasignarla primero para que quede libre.`,
+        };
+      }
+
+      // Actualización condicional atómica (evita condición de carrera si dos operadores hacen clic al mismo tiempo)
+      const updated = await tx.liquidacion.updateMany({
+        where: {
+          id: liquidationId,
+          OR: [{ createdByName: null }, { createdByName: "" }],
+        },
+        data: { createdByName: assigneeName },
+      });
+
+      if (updated.count === 0) {
+        const fresh = await tx.liquidacion.findUnique({
+          where: { id: liquidationId },
+          select: { createdByName: true },
+        });
+        const freshOwner = String(fresh?.createdByName || "").trim() || "otro operador";
+        return {
+          error: `Esta liquidación acaba de ser asignada a ${freshOwner}. Debe desasignarla primero para que quede libre.`,
+        };
+      }
+
+      return { success: true, createdByName: assigneeName };
+    });
+
+    if (txResult.error) {
+      return { error: txResult.error };
+    }
+
+    revalidatePath("/dashboard/liquidations");
+    revalidatePath(`/dashboard/liquidations/${liquidationId}`);
+    return { success: true, createdByName: txResult.createdByName };
+  } catch (error: any) {
+    console.error("Error assigning liquidation to self:", error);
+    return { error: error?.message || "Error al asignar la liquidación." };
+  }
+}
+
+/**
+ * Desasigna (libera) una liquidación de forma atómica.
+ * Únicamente la persona actualmente asignada puede liberarla para que otro operador pueda tomarla.
+ */
+export async function unassignLiquidationSelfAction(liquidationId: number): Promise<{
+  success?: boolean;
+  createdByName?: null;
+  error?: string;
+}> {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) {
+      return { error: "No autorizado. Debe iniciar sesión." };
+    }
+
+    const sessionUser = session.user as any;
+    const rawRole = String(sessionUser?.role || "");
+    const roleIds = parseUserRoleIds(rawRole);
+    const isAdmin = isUserAdmin(rawRole);
+    const resolvedEmpresaId = await resolveUserEmpresaId({
+      id: Number(sessionUser.id),
+      hospitalId: sessionUser.hospitalId,
+      cuit: sessionUser.cuit,
+    });
+    const isHospitalUser = !isAdmin && isUserHospital(rawRole, resolvedEmpresaId ?? sessionUser?.hospitalId);
+    const isReadOnlyAuditorOnly = !isAdmin && !roleIds.includes("3") && roleIds.includes("5");
+
+    if (isHospitalUser || isReadOnlyAuditorOnly) {
+      return {
+        error: "Acceso denegado. Solo los Liquidadores y Administradores de UEP pueden desasignar liquidaciones.",
+      };
+    }
+
+    const currentOperatorName =
+      String(sessionUser?.name || "").trim() ||
+      String(sessionUser?.email || "").trim() ||
+      String(sessionUser?.operador || "").trim();
+
+    if (!currentOperatorName) {
+      return { error: "No se pudo identificar el nombre del operador actual." };
+    }
+
+    const txResult = await prisma.$transaction(async (tx) => {
+      const currentLiq = await tx.liquidacion.findUnique({
+        where: { id: liquidationId },
+        select: { id: true, status: true, createdByName: true },
+      });
+
+      if (!currentLiq) {
+        return { error: "La liquidación seleccionada no existe." };
+      }
+
+      const isDistributed = currentLiq.status === "DISTRIBUIDA" || currentLiq.status === "DISTRIBUIDO";
+      const isClosed = currentLiq.status === "CERRADA" || currentLiq.status === "CERRADO";
+      if (isDistributed || isClosed) {
+        return {
+          error: `No se puede desasignar una liquidación en estado ${currentLiq.status}.`,
+        };
+      }
+
+      if (currentLiq.status !== "PENDIENTE" && !isAdmin) {
+        return {
+          error: "Esta liquidación ya fue notificada y no puede desasignarse.",
+        };
+      }
+
+      const currentOwner = String(currentLiq.createdByName || "").trim();
+      if (!currentOwner) {
+        return { success: true };
+      }
+
+      if (currentOwner.toLowerCase() !== currentOperatorName.toLowerCase()) {
+        return {
+          error: `Solo ${currentOwner} puede desasignar esta liquidación para dejarla libre.`,
+        };
+      }
+
+      const updated = await tx.liquidacion.updateMany({
+        where: {
+          id: liquidationId,
+          createdByName: currentLiq.createdByName,
+        },
+        data: { createdByName: null },
+      });
+
+      if (updated.count === 0) {
+        return { error: "La asignación cambió mientras se procesaba. Actualizá e intentá nuevamente." };
+      }
+
+      return { success: true };
+    });
+
+    if (txResult.error) {
+      return { error: txResult.error };
+    }
+
+    revalidatePath("/dashboard/liquidations");
+    revalidatePath(`/dashboard/liquidations/${liquidationId}`);
+    return { success: true, createdByName: null };
+  } catch (error: any) {
+    console.error("Error unassigning liquidation:", error);
+    return { error: error?.message || "Error al desasignar la liquidación." };
   }
 }
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { fetchLiquidationData, calculateLiquidation, notifyHospital, syncLiquidationComprasFromErp } from "./actions";
+import { fetchLiquidationData, calculateLiquidation, notifyHospital, syncLiquidationComprasFromErp, assignLiquidationToSelfAction, unassignLiquidationSelfAction } from "./actions";
 import { cn } from "@/lib/utils";
 import { SearchBar } from "@/components/search-bar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,12 +31,16 @@ interface LiquidationsClientPageProps {
     totalPendingRcsCount: number;
   };
   isAdmin?: boolean;
+  canAssign?: boolean;
+  currentUserName?: string;
   initialHighlightId?: number | null;
 }
 
 export default function LiquidationsClientPage({
   initialData,
   isAdmin = false,
+  canAssign = false,
+  currentUserName = "",
   initialHighlightId = null,
 }: LiquidationsClientPageProps) {
   const router = useRouter();
@@ -51,6 +55,7 @@ export default function LiquidationsClientPage({
   const [enteringDetailsId, setEnteringDetailsId] = useState<number | null>(null);
   const [notifyingIds, setNotifyingIds] = useState<number[]>([]);
   const [syncingIds, setSyncingIds] = useState<number[]>([]);
+  const [assigningIds, setAssigningIds] = useState<number[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [warningMsg, setWarningMsg] = useState("");
@@ -275,6 +280,59 @@ export default function LiquidationsClientPage({
       setErrorMsg("Error al realizar la búsqueda en recibos pendientes.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleAssignToSelf = async (liqId: number) => {
+    setAssigningIds((prev) => (prev.includes(liqId) ? prev : [...prev, liqId]));
+    setErrorMsg("");
+    setSuccessMsg("");
+    try {
+      const res = await assignLiquidationToSelfAction(liqId);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      const nextName = res.createdByName || currentUserName;
+      setData((prev) => ({
+        ...prev,
+        liquidations: prev.liquidations.map((l) =>
+          l.id === liqId ? { ...l, createdByName: nextName } : l
+        ),
+      }));
+      setSuccessMsg(
+        `Te asignaste la liquidación LIQ-${String(liqId).padStart(4, "0")} correctamente.`
+      );
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Error al asignarse la liquidación.");
+    } finally {
+      setAssigningIds((prev) => prev.filter((id) => id !== liqId));
+    }
+  };
+
+  const handleUnassignFromSelf = async (liqId: number) => {
+    setAssigningIds((prev) => (prev.includes(liqId) ? prev : [...prev, liqId]));
+    setErrorMsg("");
+    setSuccessMsg("");
+    try {
+      const res = await unassignLiquidationSelfAction(liqId);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      setData((prev) => ({
+        ...prev,
+        liquidations: prev.liquidations.map((l) =>
+          l.id === liqId ? { ...l, createdByName: null } : l
+        ),
+      }));
+      setSuccessMsg(
+        `Desasignaste la liquidación LIQ-${String(liqId).padStart(4, "0")}. Quedó libre para otro operador.`
+      );
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Error al desasignar la liquidación.");
+    } finally {
+      setAssigningIds((prev) => prev.filter((id) => id !== liqId));
     }
   };
 
@@ -633,11 +691,15 @@ export default function LiquidationsClientPage({
         liquidations={paginatedLiquidations}
         isHospitalUser={false}
         isAdmin={isAdmin}
+        currentUserName={currentUserName}
         highlightedId={highlightedLiquidationId}
         onNotifyHospital={handleNotifyHospital}
         notifyingIds={notifyingIds}
         onSyncFromErp={handleSyncFromErp}
         syncingIds={syncingIds}
+        onAssignToSelf={canAssign ? handleAssignToSelf : undefined}
+        onUnassignFromSelf={canAssign ? handleUnassignFromSelf : undefined}
+        assigningIds={assigningIds}
         isLoading={isLoading}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}

@@ -15,6 +15,8 @@ import {
   FileDown,
   Users,
   UserCheck,
+  UserMinus,
+  Lock,
   Stethoscope,
   DollarSign,
   Search,
@@ -47,9 +49,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isUserHospital } from "@/lib/constants";
+import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isUserHospital, parseUserRoleIds } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, updateLiquidationNormaLegal, uploadDebitsFile, deleteDebitsFile, deleteDebitAttachment, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, syncLiquidationComprasFromErp } from "../actions";
+import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, updateLiquidationNormaLegal, uploadDebitsFile, deleteDebitsFile, deleteDebitAttachment, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, syncLiquidationComprasFromErp, assignLiquidationToSelfAction, unassignLiquidationSelfAction } from "../actions";
 import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
 import { NormaLegalModal } from "@/components/norma-legal-modal";
 import { NotificationAuditModal } from "@/components/notification-audit-modal";
@@ -94,6 +96,9 @@ export default function LiquidationDetailClient({
   const router = useRouter();
   const isAdmin = isUserAdmin(currentUser?.role);
   const isHospitalUser = isUserHospital(currentUser?.role, currentUser?.hospitalId);
+  const currentRoleIds = parseUserRoleIds(currentUser?.role);
+  const isReadOnlyAuditorOnly = !isAdmin && !currentRoleIds.includes("3") && currentRoleIds.includes("5");
+  const currentOperatorName = (currentUser?.name || currentUser?.email || "").trim();
 
   // EMPRESA (universo SISPER) del usuario hospital, resuelta en el servidor por CUIT.
   // Nunca usar currentUser.hospitalId (IDPROVEEDOR) ni el hospitalId de un renglón para filtrar nómina SISPER.
@@ -104,6 +109,7 @@ export default function LiquidationDetailClient({
 
   // Loading and feedback states
   const [saving, setSaving] = useState(false);
+  const [assigningSelf, setAssigningSelf] = useState(false);
   const [syncingFromErp, setSyncingFromErp] = useState(false);
   const [savingAgents, setSavingAgents] = useState(false);
   const [notifying, setNotifying] = useState(false);
@@ -942,6 +948,49 @@ export default function LiquidationDetailClient({
     }
   };
 
+  const handleAssignToSelf = async () => {
+    if (assigningSelf || goingBack) return;
+    setAssigningSelf(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await assignLiquidationToSelfAction(liq.id);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      const nextName = res.createdByName || currentOperatorName;
+      setLiq((prev: any) => ({ ...prev, createdByName: nextName }));
+      setSuccessMsg(`Te asignaste la liquidación LIQ-${String(liq.id).padStart(4, "0")} correctamente.`);
+      router.refresh();
+    } catch (e: any) {
+      setErrorMsg(e?.message || "Error al asignar la liquidación.");
+    } finally {
+      setAssigningSelf(false);
+    }
+  };
+
+  const handleUnassignFromSelf = async () => {
+    if (assigningSelf || goingBack) return;
+    setAssigningSelf(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await unassignLiquidationSelfAction(liq.id);
+      if (res.error) {
+        setErrorMsg(res.error);
+        return;
+      }
+      setLiq((prev: any) => ({ ...prev, createdByName: null }));
+      setSuccessMsg(`Desasignaste la liquidación LIQ-${String(liq.id).padStart(4, "0")}. Quedó libre para otro operador.`);
+      router.refresh();
+    } catch (e: any) {
+      setErrorMsg(e?.message || "Error al desasignar la liquidación.");
+    } finally {
+      setAssigningSelf(false);
+    }
+  };
+
   const handleNotifyHospital = () => {
     if (goingBack || !hasInvoices) return;
     setIsNotifyModalOpen(true);
@@ -1364,6 +1413,77 @@ export default function LiquidationDetailClient({
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap self-start sm:self-center">
+          {/* BOTÓN ASIGNARME / DESASIGNARME LIQUIDACIÓN (UEP Admin / Liquidador mientras esté editable) */}
+          {!isHospitalUser && !isReadOnlyAuditorOnly && !isDistributed && !isClosed && (isAdmin || !wasNotifiedBefore) && (() => {
+            const ownerName = String(liq.createdByName || "").trim();
+            const isAssigned = ownerName.length > 0;
+            const isAssignedToMe = Boolean(
+              isAssigned &&
+                currentOperatorName &&
+                ownerName.toLowerCase() === currentOperatorName.toLowerCase()
+            );
+
+            if (isAssignedToMe) {
+              return (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleUnassignFromSelf}
+                  disabled={assigningSelf || saving || goingBack}
+                  title="Desasignarte esta liquidación para dejarla libre a otro operador"
+                  className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
+                >
+                  {assigningSelf ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
+                      Liberando...
+                    </>
+                  ) : (
+                    <>
+                      <UserMinus className="h-3.5 w-3.5 shrink-0" />
+                      <span>Desasignarme</span>
+                    </>
+                  )}
+                </Button>
+              );
+            }
+
+            if (isAssigned) {
+              return (
+                <span
+                  className="inline-flex items-center gap-1.5 h-8.5 px-3 rounded-md border border-border bg-muted/50 text-muted-foreground font-semibold text-xs max-w-[240px]"
+                  title={`Esta liquidación está asignada a ${ownerName}. Solo ${ownerName} puede desasignarla.`}
+                >
+                  <Lock className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">Asignada a {ownerName}</span>
+                </span>
+              );
+            }
+
+            return (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleAssignToSelf}
+                disabled={assigningSelf || saving || goingBack}
+                title="Asignarte esta liquidación como operador responsable"
+                className="border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-xs"
+              >
+                {assigningSelf ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
+                    Asignando...
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="h-3.5 w-3.5 shrink-0" />
+                    <span>Asignarme esta liquidación</span>
+                  </>
+                )}
+              </Button>
+            );
+          })()}
+
           {/* BOTÓN NOTIFICAR INICIAL (PENDIENTE) */}
           {!isHospitalUser && liq.status === "PENDIENTE" && (
             <Button

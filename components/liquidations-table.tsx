@@ -37,6 +37,9 @@ import {
   FileDown,
   FileSpreadsheet,
   User,
+  UserCheck,
+  UserMinus,
+  Lock,
   MessageSquare,
   Building2,
   MoreVertical,
@@ -53,6 +56,7 @@ export interface LiquidationsTableProps {
   liquidations: any[];
   isHospitalUser?: boolean;
   isAdmin?: boolean;
+  currentUserName?: string;
   hospitalId?: number;
   hospitalName?: string;
   hospitalCuit?: string;
@@ -62,6 +66,9 @@ export interface LiquidationsTableProps {
   notifyingIds?: number[];
   onSyncFromErp?: (id: number) => Promise<void>;
   syncingIds?: number[];
+  onAssignToSelf?: (id: number) => Promise<void>;
+  onUnassignFromSelf?: (id: number) => Promise<void>;
+  assigningIds?: number[];
   isLoading?: boolean;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
@@ -83,6 +90,7 @@ export function LiquidationsTable({
   liquidations,
   isHospitalUser = false,
   isAdmin = false,
+  currentUserName = "",
   hospitalId,
   hospitalName,
   hospitalCuit,
@@ -92,6 +100,9 @@ export function LiquidationsTable({
   notifyingIds = [],
   onSyncFromErp,
   syncingIds = [],
+  onAssignToSelf,
+  onUnassignFromSelf,
+  assigningIds = [],
   isLoading = false,
   searchQuery,
   onSearchChange,
@@ -751,7 +762,7 @@ export function LiquidationsTable({
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    disabled={isEnteringAny || notifyingIds.includes(liq.id) || syncingIds.includes(liq.id)}
+                                    disabled={isEnteringAny || notifyingIds.includes(liq.id) || syncingIds.includes(liq.id) || assigningIds.includes(liq.id)}
                                     className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted border border-border/60 rounded-md cursor-pointer transition-colors"
                                     title="Opciones de liquidación"
                                   >
@@ -761,12 +772,14 @@ export function LiquidationsTable({
                                       <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-500" />
                                     ) : syncingIds.includes(liq.id) ? (
                                       <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-500" />
+                                    ) : assigningIds.includes(liq.id) ? (
+                                      <RefreshCw className="h-3.5 w-3.5 animate-spin text-teal-500" />
                                     ) : (
                                       <MoreVertical className="h-4 w-4" />
                                     )}
                                   </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-52 bg-popover text-popover-foreground border-border shadow-md p-1">
+                                <DropdownMenuContent align="end" className="w-56 bg-popover text-popover-foreground border-border shadow-md p-1">
                                   {/* Opción Ver / Editar */}
                                   <DropdownMenuItem
                                     onClick={() => {
@@ -780,6 +793,71 @@ export function LiquidationsTable({
                                     <Eye className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                                     <span>{canEdit ? "Ver / Editar Liquidación" : "Ver Liquidación"}</span>
                                   </DropdownMenuItem>
+
+                                  {/* Opción Asignarme / Desasignarme liquidación (UEP Admin / Liquidador) */}
+                                  {!isHospitalUser && canEdit && onAssignToSelf && (() => {
+                                    const ownerName = String(liq.createdByName || "").trim();
+                                    const isAssigned = ownerName.length > 0;
+                                    const isAlreadyMine = Boolean(
+                                      isAssigned &&
+                                        currentUserName &&
+                                        ownerName.toLowerCase() === currentUserName.trim().toLowerCase()
+                                    );
+                                    const isAssigning = assigningIds.includes(liq.id);
+
+                                    if (isAlreadyMine) {
+                                      return (
+                                        <DropdownMenuItem
+                                          onClick={() => {
+                                            if (!isAssigning && onUnassignFromSelf) {
+                                              onUnassignFromSelf(liq.id);
+                                            }
+                                          }}
+                                          disabled={isAssigning || !onUnassignFromSelf}
+                                          className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 focus:bg-amber-500/10"
+                                        >
+                                          {isAssigning ? (
+                                            <RefreshCw className="h-3.5 w-3.5 animate-spin text-amber-500 shrink-0" />
+                                          ) : (
+                                            <UserMinus className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                          )}
+                                          <span>Desasignarme liquidación</span>
+                                        </DropdownMenuItem>
+                                      );
+                                    }
+
+                                    if (isAssigned) {
+                                      return (
+                                        <DropdownMenuItem
+                                          disabled
+                                          title={`Ya asignada a ${ownerName}. Solo ${ownerName} puede desasignarla.`}
+                                          className="flex items-center gap-2 px-2.5 py-2 text-xs font-medium rounded-md text-muted-foreground opacity-75 cursor-not-allowed"
+                                        >
+                                          <Lock className="h-3.5 w-3.5 shrink-0" />
+                                          <span className="truncate">Asignada a {ownerName}</span>
+                                        </DropdownMenuItem>
+                                      );
+                                    }
+
+                                    return (
+                                      <DropdownMenuItem
+                                        onClick={() => {
+                                          if (!isAssigning) {
+                                            onAssignToSelf(liq.id);
+                                          }
+                                        }}
+                                        disabled={isAssigning}
+                                        className="flex items-center gap-2 px-2.5 py-2 text-xs font-semibold cursor-pointer rounded-md text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 focus:bg-teal-500/10"
+                                      >
+                                        {isAssigning ? (
+                                          <RefreshCw className="h-3.5 w-3.5 animate-spin text-teal-500 shrink-0" />
+                                        ) : (
+                                          <UserCheck className="h-3.5 w-3.5 text-teal-500 shrink-0" />
+                                        )}
+                                        <span>Asignarme esta liquidación</span>
+                                      </DropdownMenuItem>
+                                    );
+                                  })()}
 
                                   {/* Opción Sincronizar Compras desde ERP */}
                                   {!isHospitalUser && canEdit && onSyncFromErp && (

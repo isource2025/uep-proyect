@@ -96,7 +96,7 @@ export default async function DashboardPage() {
       value: fcCount,
       description: `Monto total: ${formatCurrency(totalInvoiced._sum.importe)}`,
       icon: FileText,
-      href: "/dashboard/invoices",
+      href: "/dashboard/liquidations",
       color: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20",
     },
     {

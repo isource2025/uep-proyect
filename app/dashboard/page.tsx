@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -34,9 +35,8 @@ export default async function DashboardPage() {
     );
   }
   // Fetch summary stats, active period, recent cbtes and aggregations in parallel to minimize latency
-  const [hospitalCount, mspAgentCount, legacyAgentCount, fcCount, rcCount, activePeriod, recentCbtes, totalInvoiced] = await Promise.all([
+  const [hospitalCount, legacyAgentCount, fcCount, rcCount, activePeriod, recentCbtes, totalInvoiced] = await Promise.all([
     prisma.empresa.count({ where: { id: { not: 1 }, activo: true } }),
-    prisma.imPersonalMsp.count(),
     prisma.agente.count(),
     prisma.cbte.count({ where: { type: "FC" } }),
     prisma.cbte.count({ where: { type: "RC" } }),
@@ -52,7 +52,19 @@ export default async function DashboardPage() {
     })
   ]);
 
-  const agentCount = mspAgentCount > 0 ? mspAgentCount : legacyAgentCount;
+  // Contar agentes ÚNICOS (por CUIL distinto) dentro del último período SISPER cargado
+  let mspUniqueAgentCount = 0;
+  if (activePeriod.sisperPeriodDate) {
+    const latestPeriodDate = new Date(`${activePeriod.sisperPeriodDate}T00:00:00.000Z`);
+    const countRows = await prisma.$queryRaw<{ total: number }[]>(Prisma.sql`
+      SELECT COUNT(DISTINCT COALESCE(CAST(Cuil AS VARCHAR(30)), CAST(IdAgente AS VARCHAR(30)), LTRIM(RTRIM(Legago)))) AS total
+      FROM imPersonalMsp
+      WHERE Periodo = ${latestPeriodDate}
+    `);
+    mspUniqueAgentCount = Number(countRows[0]?.total || 0);
+  }
+
+  const agentCount = mspUniqueAgentCount > 0 ? mspUniqueAgentCount : legacyAgentCount;
 
   // Format currency helper
   const formatCurrency = (val: any) => {
@@ -70,9 +82,11 @@ export default async function DashboardPage() {
       color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
     },
     {
-      title: "Agentes Médicos (SISPER)",
-      value: agentCount,
-      description: "Profesionales de la salud cargados desde Excel",
+      title: "Agentes (SISPER)",
+      value: agentCount.toLocaleString("es-AR"),
+      description: activePeriod.sisperLabel
+        ? `Agentes únicos en nómina ${activePeriod.sisperLabel}`
+        : "Agentes únicos cargados desde SISPER",
       icon: Users,
       href: "/dashboard/agents",
       color: "text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/20",

@@ -70,7 +70,9 @@ interface LiquidationDetailClientProps {
   };
   agents?: any[];
   extraSavedAgents?: any[];
-  agentsPeriodOrigin?: "current" | "previous" | "none";
+  agentsPeriodOrigin?: "current" | "previous" | "expired" | "none";
+  sisperPeriodLabel?: string | null;
+  sisperStatusMessage?: string | null;
   hospitalId?: number | null;
   hospitals?: any[];
   notificationHistory?: LiquidationNotificationHistoryItem[];
@@ -82,10 +84,13 @@ export default function LiquidationDetailClient({
   agents = [],
   extraSavedAgents = [],
   agentsPeriodOrigin = "none",
+  sisperPeriodLabel = null,
+  sisperStatusMessage = null,
   hospitalId: initialHospitalId,
   hospitals = [],
   notificationHistory = [],
 }: LiquidationDetailClientProps) {
+  const canLoadFromSisper = agentsPeriodOrigin === "current" || agentsPeriodOrigin === "previous";
   const router = useRouter();
   const isAdmin = isUserAdmin(currentUser?.role);
   const isHospitalUser = isUserHospital(currentUser?.role, currentUser?.hospitalId);
@@ -2610,21 +2615,60 @@ export default function LiquidationDetailClient({
             {/* SELECCIÓN Y AGREGADO DE AGENTES MEDIANTE MODAL (SOLO HOSPITAL) */}
             {isHospitalUser && (
               <>
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-muted/40 rounded-lg border border-border">
-                  <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-2 min-w-0">
-                    <span className="inline-flex h-2 w-2 rounded-full bg-teal-500 shrink-0" />
-                    <span className="break-words">
-                      Padrón general SISPER habilitado — buscá cualquier agente por apellido, nombre, CUIL o legajo.
-                    </span>
-                    {agentsPeriodOrigin === "current" && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                        Padrón activo
+                <div
+                  className={cn(
+                    "flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 rounded-lg border",
+                    agentsPeriodOrigin === "current" && "bg-muted/40 border-border",
+                    agentsPeriodOrigin === "previous" && "bg-amber-500/10 border-amber-500/35",
+                    !canLoadFromSisper && "bg-rose-500/10 border-rose-500/35"
+                  )}
+                >
+                  <div className="text-xs flex flex-col gap-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <span
+                        className={cn(
+                          "inline-flex h-2 w-2 rounded-full shrink-0",
+                          agentsPeriodOrigin === "current" && "bg-emerald-500",
+                          agentsPeriodOrigin === "previous" && "bg-amber-500",
+                          !canLoadFromSisper && "bg-rose-500"
+                        )}
+                      />
+                      <span className="break-words text-foreground font-medium">
+                        {canLoadFromSisper
+                          ? "Padrón general SISPER habilitado — buscá agentes activos o usá Carga Masiva."
+                          : "Carga de personal bloqueada: nómina SISPER desactualizada."}
                       </span>
-                    )}
-                    {agentsPeriodOrigin === "previous" && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                        Padrón: Mes anterior (suplente)
-                      </span>
+                      {agentsPeriodOrigin === "current" && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                          Nómina vigente{sisperPeriodLabel ? ` · ${sisperPeriodLabel}` : ""}
+                        </span>
+                      )}
+                      {agentsPeriodOrigin === "previous" && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/40">
+                          <AlertTriangle className="h-3 w-3 shrink-0" />
+                          Período anterior{sisperPeriodLabel ? ` · ${sisperPeriodLabel}` : ""} (1 mes de gracia)
+                        </span>
+                      )}
+                      {!canLoadFromSisper && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-800 dark:text-rose-200 border border-rose-500/40">
+                          <AlertTriangle className="h-3 w-3 shrink-0" />
+                          {agentsPeriodOrigin === "expired"
+                            ? `Nómina vencida${sisperPeriodLabel ? ` · ${sisperPeriodLabel}` : ""}`
+                            : "Sin nómina cargada"}
+                        </span>
+                      )}
+                    </div>
+                    {agentsPeriodOrigin !== "current" && sisperStatusMessage && (
+                      <p
+                        className={cn(
+                          "text-[11px] pl-4 break-words leading-snug",
+                          agentsPeriodOrigin === "previous"
+                            ? "text-amber-800 dark:text-amber-300"
+                            : "text-rose-700 dark:text-rose-300"
+                        )}
+                      >
+                        {sisperStatusMessage}
+                      </p>
                     )}
                   </div>
 
@@ -2633,8 +2677,8 @@ export default function LiquidationDetailClient({
                       type="button"
                       variant="outline"
                       onClick={() => setIsBulkModalOpen(true)}
-                      disabled={savingAgents}
-                      className="w-full sm:w-auto border-teal-500/40 bg-teal-500/5 hover:bg-teal-500/15 text-teal-700 dark:text-teal-300 font-bold gap-1.5 h-9 px-3.5 text-xs shrink-0 cursor-pointer"
+                      disabled={savingAgents || !canLoadFromSisper}
+                      className="w-full sm:w-auto border-teal-500/40 bg-teal-500/5 hover:bg-teal-500/15 text-teal-700 dark:text-teal-300 font-bold gap-1.5 h-9 px-3.5 text-xs shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
                       <span>Carga Masiva</span>
@@ -2649,8 +2693,8 @@ export default function LiquidationDetailClient({
                         setHasSearched(false);
                         setIsAddModalOpen(true);
                       }}
-                      disabled={savingAgents}
-                      className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-9 px-3.5 text-xs shrink-0 cursor-pointer"
+                      disabled={savingAgents || !canLoadFromSisper}
+                      className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-zinc-950 font-bold gap-1.5 h-9 px-3.5 text-xs shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <UserPlus className="h-3.5 w-3.5 shrink-0" />
                       <span>Añadir Agentes</span>

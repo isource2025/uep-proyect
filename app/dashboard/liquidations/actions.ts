@@ -8,7 +8,7 @@ import fs from "fs";
 import { uploadToStorage, deleteFromStorage } from "@/lib/storage";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { getActivePeriodInfo } from "@/lib/periods";
+import { getActivePeriodInfo, getActiveSisperPeriodFilter } from "@/lib/periods";
 import { cleanCuit } from "@/lib/hospital-mapping";
 import { filterLiquidationForHospital } from "@/lib/hospital-liquidation-scope";
 import {
@@ -1881,6 +1881,75 @@ export async function saveLiquidacionPersonalDistributions(
         ? Number(hospitalId)
         : 0;
 
+    // Validar agentes nuevos contra el Periodo SISPER vigente (mes actual o 1 mes de gracia;
+    // los agentes ya guardados previamente en esta liquidación se preservan para no afectar históricos).
+    const incomingNonZeroCuils = Array.from(
+      new Set(
+        distributions
+          .filter((d) => Number(d.honorarios || 0) > 0 || Number(d.sobreasignacion || 0) > 0)
+          .map((d) => String(d.cuil || d.idAgente || "").replace(/\D/g, ""))
+          .filter(Boolean)
+      )
+    );
+
+    if (incomingNonZeroCuils.length > 0) {
+      const existingSavedRows = await prisma.liquidacionPersonal.findMany({
+        where:
+          effectiveEmpresaId > 0
+            ? { idLiquidacion: liquidationId, idEmpresa: { in: [effectiveEmpresaId, 0] } }
+            : { idLiquidacion: liquidationId },
+        select: { cuil: true, idAgente: true },
+      });
+      const existingCuilSet = new Set(
+        existingSavedRows
+          .map((r) => (r.cuil ? r.cuil.toString() : r.idAgente ? r.idAgente.toString() : ""))
+          .filter(Boolean)
+      );
+
+      const newlyAddedCuils = incomingNonZeroCuils.filter((c) => !existingCuilSet.has(c));
+      if (newlyAddedCuils.length > 0) {
+        const { periodDate, info } = await getActiveSisperPeriodFilter();
+        if (!info.canLoadAgents || !periodDate) {
+          return { error: info.statusMessage };
+        }
+
+        const activeCuilSet = new Set<string>();
+        const CHUNK = 200;
+        for (let i = 0; i < newlyAddedCuils.length; i += CHUNK) {
+          const chunkBig = newlyAddedCuils
+            .slice(i, i + CHUNK)
+            .map((c) => {
+              try {
+                return BigInt(c);
+              } catch {
+                return null;
+              }
+            })
+            .filter((b): b is bigint => b !== null);
+
+          if (chunkBig.length === 0) continue;
+          const activeMatches = await prisma.imPersonalMsp.findMany({
+            where: {
+              periodo: periodDate,
+              OR: [{ cuil: { in: chunkBig } }, { idAgente: { in: chunkBig } }],
+            },
+            select: { cuil: true, idAgente: true },
+          });
+          for (const m of activeMatches) {
+            if (m.cuil) activeCuilSet.add(m.cuil.toString());
+            if (m.idAgente) activeCuilSet.add(m.idAgente.toString());
+          }
+        }
+
+        const inactiveCuils = newlyAddedCuils.filter((c) => !activeCuilSet.has(c));
+        if (inactiveCuils.length > 0) {
+          return {
+            error: `Hay ${inactiveCuils.length} agente(s) que no figuran activos en la nómina SISPER vigente (${info.sisperLabel || "actual"}): ${inactiveCuils.slice(0, 5).join(", ")}${inactiveCuils.length > 5 ? "..." : ""}.`,
+          };
+        }
+      }
+    }
+
     // Atomic transaction: cleans previous and inserts new rows safely scoped by IdEmpresa
     await prisma.$transaction(async (tx) => {
       // 1. Clean previous distribution rows for this hospital in this liquidation
@@ -2297,6 +2366,12 @@ export async function searchAgentsForLiquidationAction(query: string, _hospitalI
     const clean = query.trim();
     if (!clean || clean.length < 2) return [];
 
+    // Regla estricta de período vigente: solo agentes presentes en el último Periodo SISPER (0-1 mes de gracia)
+    const { periodDate, info } = await getActiveSisperPeriodFilter();
+    if (!info.canLoadAgents || !periodDate) {
+      return [];
+    }
+
     const cleanDigits = clean.replace(/[^\d]/g, "");
     let cuilBigInt: bigint | null = null;
     if (cleanDigits.length >= 6) {
@@ -2305,8 +2380,9 @@ export async function searchAgentsForLiquidationAction(query: string, _hospitalI
       } catch {}
     }
 
-    // Búsqueda abierta en todo el padrón SISPER (los agentes pueden desempeñarse en múltiples establecimientos)
+    // Búsqueda abierta en todo el padrón SISPER del período vigente (los agentes pueden desempeñarse en múltiples establecimientos)
     const where: any = {
+      periodo: periodDate,
       OR: [
         { apellidoyNombre: { contains: clean } },
         { legajo: { contains: clean } },
@@ -2454,6 +2530,12 @@ export async function resolveBulkAgentsByIdentifiersAction(
       return { error: "No autorizado. Debe iniciar sesión para validar el padrón." };
     }
 
+    // Regla estricta de período vigente: solo agentes presentes en el último Periodo SISPER (0-1 mes de gracia)
+    const { periodDate, info } = await getActiveSisperPeriodFilter();
+    if (!info.canLoadAgents || !periodDate) {
+      return { error: info.statusMessage };
+    }
+
     const uniqueIds = Array.from(
       new Set(
         (identifiers || [])
@@ -2485,7 +2567,7 @@ export async function resolveBulkAgentsByIdentifiersAction(
     const rawRows: RawMspRow[] = [];
     const CHUNK_SIZE = 150;
 
-    // 1) Búsqueda exacta por Cuil o IdAgente (cubre CUILs de 11 dígitos y DNIs cargados en IdAgente)
+    // 1) Búsqueda exacta por Cuil o IdAgente dentro del Periodo SISPER vigente
     for (let i = 0; i < allNums.length; i += CHUNK_SIZE) {
       const chunk = allNums.slice(i, i + CHUNK_SIZE);
       if (chunk.length === 0) continue;
@@ -2499,14 +2581,13 @@ export async function resolveBulkAgentsByIdentifiersAction(
           e.Descripcion AS hospitalNombre
         FROM imPersonalMsp m
         LEFT JOIN EMPRESAS e ON e.IdEmpresa = m.IdEmpresa
-        WHERE m.Cuil IN (${Prisma.join(chunk)})
-           OR m.IdAgente IN (${Prisma.join(chunk)})
-        ORDER BY m.Periodo DESC
+        WHERE m.Periodo = ${periodDate}
+          AND (m.Cuil IN (${Prisma.join(chunk)}) OR m.IdAgente IN (${Prisma.join(chunk)}))
       `);
       rawRows.push(...rows);
     }
 
-    // 2) Búsqueda por los 8 dígitos centrales del CUIL para DNIs de 6-8 dígitos
+    // 2) Búsqueda por los 8 dígitos centrales del CUIL para DNIs de 6-8 dígitos dentro del Periodo SISPER vigente
     for (let i = 0; i < dniNums.length; i += CHUNK_SIZE) {
       const chunk = dniNums.slice(i, i + CHUNK_SIZE);
       if (chunk.length === 0) continue;
@@ -2520,9 +2601,9 @@ export async function resolveBulkAgentsByIdentifiersAction(
           e.Descripcion AS hospitalNombre
         FROM imPersonalMsp m
         LEFT JOIN EMPRESAS e ON e.IdEmpresa = m.IdEmpresa
-        WHERE m.Cuil IS NOT NULL
+        WHERE m.Periodo = ${periodDate}
+          AND m.Cuil IS NOT NULL
           AND ((m.Cuil % CAST(1000000000 AS BIGINT)) / CAST(10 AS BIGINT)) IN (${Prisma.join(chunk)})
-        ORDER BY m.Periodo DESC
       `);
       rawRows.push(...rows);
     }

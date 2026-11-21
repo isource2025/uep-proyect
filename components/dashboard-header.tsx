@@ -15,8 +15,11 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "./theme-toggle";
 import { NotificationBell } from "./notification-bell";
 import type { InAppNotificationItem } from "@/lib/notification-types";
-import { User as UserIcon, LogOut, Shield, ChevronDown, Calendar, Menu, PanelLeft, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { User as UserIcon, LogOut, Shield, ChevronDown, Calendar, Menu, PanelLeft, Loader2, AlertTriangle, CheckCircle2, ArrowRight } from "lucide-react";
 import { useDashboard } from "./dashboard-context";
+import type { SisperPeriodStatus } from "@/lib/periods";
+import { cn } from "@/lib/utils";
 
 interface DashboardHeaderProps {
   user: {
@@ -26,6 +29,9 @@ interface DashboardHeaderProps {
     role: string;
   };
   activePeriodLabel?: string;
+  sisperStatus?: SisperPeriodStatus;
+  sisperStatusMessage?: string;
+  canManageSisper?: boolean;
   initialNotifications?: InAppNotificationItem[];
   showNotifications?: boolean;
 }
@@ -33,6 +39,9 @@ interface DashboardHeaderProps {
 export function DashboardHeader({
   user,
   activePeriodLabel = "Junio 2026",
+  sisperStatus = "current",
+  sisperStatusMessage = "Nómina SISPER vigente para el período en curso.",
+  canManageSisper = false,
   initialNotifications = [],
   showNotifications = true,
 }: DashboardHeaderProps) {
@@ -104,15 +113,105 @@ export function DashboardHeader({
           <PanelLeft className={`h-4.5 w-4.5 transition-transform duration-200 ${isDesktopCollapsed ? "rotate-180 text-emerald-500" : ""}`} />
         </Button>
 
-        {/* Current Active Period Widget */}
-        <div className="flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/25 px-2 sm:px-3 py-1 text-[11px] sm:text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-          <Calendar className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate min-w-0">
-            <span className="hidden sm:inline text-muted-foreground">Período Activo: </span>
-            <strong className="text-foreground">{activePeriodLabel}</strong>
-          </span>
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-        </div>
+        {/* Current Active Period Widget (Verde = Vigente | Anaranjado = Período anterior | Rojo = Vencido) */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              title={sisperStatusMessage}
+              className={cn(
+                "flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2 rounded-full border px-2 sm:px-3 py-1 text-[11px] sm:text-xs font-medium transition-colors cursor-pointer text-left",
+                sisperStatus === "current" &&
+                  "bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15",
+                sisperStatus === "previous" &&
+                  "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20",
+                (sisperStatus === "expired" || sisperStatus === "none") &&
+                  "bg-rose-500/15 border-rose-500/40 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20"
+              )}
+            >
+              {sisperStatus === "current" ? (
+                <Calendar className="h-3.5 w-3.5 shrink-0" />
+              ) : (
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              )}
+              <span className="truncate min-w-0">
+                <span className="hidden sm:inline text-muted-foreground">Período Activo: </span>
+                <strong className="text-foreground">{activePeriodLabel}</strong>
+              </span>
+              {sisperStatus === "previous" && (
+                <span className="hidden md:inline-flex items-center rounded-full bg-amber-500/20 px-1.5 py-0.2 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200 shrink-0">
+                  Período anterior
+                </span>
+              )}
+              {(sisperStatus === "expired" || sisperStatus === "none") && (
+                <span className="hidden md:inline-flex items-center rounded-full bg-rose-500/20 px-1.5 py-0.2 text-[10px] font-bold uppercase tracking-wide text-rose-800 dark:text-rose-200 shrink-0">
+                  Vencida
+                </span>
+              )}
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full animate-pulse shrink-0",
+                  sisperStatus === "current" && "bg-emerald-500",
+                  sisperStatus === "previous" && "bg-amber-500",
+                  (sisperStatus === "expired" || sisperStatus === "none") && "bg-rose-500"
+                )}
+              />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            className="w-[calc(100vw-2rem)] max-w-sm bg-popover border-border text-popover-foreground shadow-xl p-3 space-y-2.5"
+          >
+            <div className="flex items-start gap-2.5">
+              <div
+                className={cn(
+                  "mt-0.5 rounded-lg p-1.5 shrink-0",
+                  sisperStatus === "current" && "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+                  sisperStatus === "previous" && "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+                  (sisperStatus === "expired" || sisperStatus === "none") &&
+                    "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+                )}
+              >
+                {sisperStatus === "current" ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4" />
+                )}
+              </div>
+              <div className="min-w-0 space-y-1">
+                <p className="text-xs font-bold text-foreground">
+                  {sisperStatus === "current"
+                    ? `Nómina Vigente (${activePeriodLabel})`
+                    : sisperStatus === "previous"
+                    ? `Nómina de Período Anterior (${activePeriodLabel})`
+                    : sisperStatus === "expired"
+                    ? `Nómina Desactualizada (${activePeriodLabel})`
+                    : "Sin Nómina SISPER Cargada"}
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed break-words">
+                  {sisperStatusMessage}
+                </p>
+              </div>
+            </div>
+
+            {canManageSisper && sisperStatus !== "current" && (
+              <div className="pt-1 border-t border-border">
+                <Link
+                  href="/dashboard/agents"
+                  className={cn(
+                    "w-full inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors",
+                    sisperStatus === "previous"
+                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25"
+                      : "bg-rose-500/15 text-rose-700 dark:text-rose-300 hover:bg-rose-500/25"
+                  )}
+                >
+                  <span>Importar Nómina SISPER en Agentes</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Right side: User Actions & Theme Toggle */}

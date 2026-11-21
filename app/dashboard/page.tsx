@@ -82,7 +82,7 @@ export default async function DashboardPage() {
       value: fcCount,
       description: `Monto total: ${formatCurrency(totalInvoiced._sum.importe)}`,
       icon: FileText,
-      href: "/dashboard/import",
+      href: "/dashboard/invoices",
       color: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20",
     },
     {
@@ -107,14 +107,42 @@ export default async function DashboardPage() {
         </div>
         
         {activePeriod && (
-          <div className="flex items-center gap-3 rounded-xl bg-card border border-border p-3 self-start md:self-auto shadow-xs">
-            <CalendarDays className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-            <div className="text-left text-xs">
+          <div
+            className={`flex items-center gap-3 rounded-xl border p-3 self-start md:self-auto shadow-xs ${
+              activePeriod.sisperStatus === "current"
+                ? "bg-card border-emerald-500/30"
+                : activePeriod.sisperStatus === "previous"
+                ? "bg-amber-500/10 border-amber-500/40"
+                : "bg-rose-500/10 border-rose-500/40"
+            }`}
+          >
+            <CalendarDays
+              className={`h-5 w-5 shrink-0 ${
+                activePeriod.sisperStatus === "current"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : activePeriod.sisperStatus === "previous"
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-rose-600 dark:text-rose-400"
+              }`}
+            />
+            <div className="text-left text-xs min-w-0">
               <p className="font-semibold text-foreground">
                 Período Activo: {activePeriod.label}
               </p>
-              <p className="text-muted-foreground mt-0.5">
-                Nómina SISPER / Período {activePeriod.anio}
+              <p
+                className={`mt-0.5 ${
+                  activePeriod.sisperStatus === "current"
+                    ? "text-muted-foreground"
+                    : activePeriod.sisperStatus === "previous"
+                    ? "text-amber-700 dark:text-amber-300 font-medium"
+                    : "text-rose-700 dark:text-rose-300 font-medium"
+                }`}
+              >
+                {activePeriod.sisperStatus === "current"
+                  ? `Nómina SISPER vigente · Período ${activePeriod.anio}`
+                  : activePeriod.sisperStatus === "previous"
+                  ? "Nómina de período anterior (1 mes de gracia)"
+                  : "Nómina SISPER desactualizada — actualizar en Agentes"}
               </p>
             </div>
           </div>
@@ -163,9 +191,9 @@ export default async function DashboardPage() {
                 Últimos comprobantes de cobro (RC) y venta (FC) importados del ERP.
               </CardDescription>
             </div>
-            <Link href="/dashboard/import">
+            <Link href="/dashboard/liquidations">
               <Button size="sm" variant="outline" className="border-border text-foreground hover:bg-muted text-xs gap-1.5 h-8 cursor-pointer">
-                Importar Más
+                Ver Liquidaciones
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </Button>
             </Link>
@@ -230,14 +258,14 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent className="flex-1 flex flex-col justify-between space-y-4">
             <div className="grid gap-3">
-              <Link href="/dashboard/import">
+              <Link href="/dashboard/agents">
                 <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3 hover:bg-muted/60 cursor-pointer transition-all duration-200">
                   <div className="rounded-lg bg-teal-500/10 border border-teal-500/20 p-2 text-teal-600 dark:text-teal-400">
                     <Users className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-foreground">Importar Archivo SISPER</h3>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Sube nómina médica e identifica personal</p>
+                    <h3 className="text-xs font-bold text-foreground">Importar Nómina SISPER</h3>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Sube nómina mensual y consulta agentes activos</p>
                   </div>
                 </div>
               </Link>

@@ -76,6 +76,9 @@ export default async function DashboardLayout({
               role: displayRole,
             }}
             activePeriodLabel={activePeriod.label}
+            sisperStatus={activePeriod.sisperStatus}
+            sisperStatusMessage={activePeriod.statusMessage}
+            canManageSisper={isAdmin}
             initialNotifications={initialNotifications}
             showNotifications={showNotifications}
           />

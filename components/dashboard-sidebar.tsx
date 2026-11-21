@@ -11,7 +11,6 @@ import {
   Building2,
   Users,
   UserCog,
-  UploadCloud,
   FileDown,
   ChevronDown,
   X,
@@ -61,11 +60,6 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
             name: "Agentes",
             href: "/dashboard/agents",
             icon: Users,
-          },
-          {
-            name: "Importar Datos",
-            href: "/dashboard/import",
-            icon: UploadCloud,
           },
           {
             name: "Consolidación",

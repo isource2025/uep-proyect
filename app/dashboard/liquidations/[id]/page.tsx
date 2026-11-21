@@ -8,6 +8,7 @@ import { isUserAdmin, isUserHospital } from "@/lib/constants";
 import { cleanCuit } from "@/lib/hospital-mapping";
 import { filterLiquidationForHospital } from "@/lib/hospital-liquidation-scope";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
+import { getActiveSisperPeriodFilter } from "@/lib/periods";
 import { fetchLiquidationNotificationHistoryAction } from "@/app/dashboard/notifications/actions";
 import LiquidationDetailClient from "./liquidation-detail-client";
 
@@ -24,9 +25,10 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const [liquidationRaw, session] = await Promise.all([
+  const [liquidationRaw, session, activeSisper] = await Promise.all([
     fetchLiquidationById(liqId),
     auth.api.getSession({ headers: await headers() }),
+    getActiveSisperPeriodFilter(),
   ]);
 
   if (!liquidationRaw) {
@@ -73,67 +75,53 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
 
   let agents: any[] = [];
   let extraSavedAgents: any[] = [];
-  let agentsPeriodOrigin: "current" | "previous" | "none" = "none";
+  const agentsPeriodOrigin = activeSisper.info.sisperStatus;
 
-  // Optimized: Load agents only for the hospital(s) in this liquidation to keep payload small and fast
-  const whereAg: any = {};
-  if (targetEmpresaIds.length > 0) {
-    whereAg.idEmpresa = { in: targetEmpresaIds };
-  } else if (isHospitalUser) {
-    // Hospital sin efector resuelto: no exponer nómina de otros establecimientos
-    whereAg.idEmpresa = { in: [] };
-  }
+  // Cargar agentes seleccionables ESTRICTAMENTE desde el último Periodo vigente de imPersonalMsp
+  // (mes en curso o 1 mes de gracia; si está vencida >= 2 meses, no se habilita carga de nuevo personal)
+  if (activeSisper.info.canLoadAgents && activeSisper.periodDate) {
+    const whereAg: any = {
+      periodo: activeSisper.periodDate,
+    };
+    if (targetEmpresaIds.length > 0) {
+      whereAg.idEmpresa = { in: targetEmpresaIds };
+    } else if (isHospitalUser) {
+      // Hospital sin efector resuelto: no exponer nómina de otros establecimientos
+      whereAg.idEmpresa = { in: [] };
+    }
 
-  const mspAgents = await prisma.imPersonalMsp.findMany({
-    where: whereAg,
-    include: {
-      empresa: {
-        select: { id: true, descripcion: true },
+    const mspAgents = await prisma.imPersonalMsp.findMany({
+      where: whereAg,
+      include: {
+        empresa: {
+          select: { id: true, descripcion: true },
+        },
       },
-    },
-    orderBy: [{ apellidoyNombre: "asc" }, { idEmpresa: "asc" }],
-    take: targetEmpresaIds.length > 0 ? undefined : 300,
-  });
+      orderBy: [{ apellidoyNombre: "asc" }, { idEmpresa: "asc" }],
+      take: targetEmpresaIds.length > 0 ? undefined : 300,
+    });
 
-  if (mspAgents.length > 0) {
-    agentsPeriodOrigin = "current";
-    const seen = new Set<string>();
-    for (const ag of mspAgents) {
-      const rawCuil = ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ag.legajo.trim());
-      const agId = rawCuil;
-      // Key by unique agent ID (CUIL) to avoid duplicate lines in the selection modal
-      const key = `${agId}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        agents.push({
-          id: agId,
-          idAgente: agId,
-          cuil: ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ""),
-          legajo: ag.legajo.trim(),
-          nombre: ag.apellidoyNombre?.trim() || "",
-          cargo: "PROFESIONAL",
-          hospitalId: ag.idEmpresa,
-          hospitalNombre: ag.empresa?.descripcion?.trim() || "",
-        });
+    if (mspAgents.length > 0) {
+      const seen = new Set<string>();
+      for (const ag of mspAgents) {
+        const rawCuil = ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ag.legajo.trim());
+        const agId = rawCuil;
+        const key = `${agId}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          agents.push({
+            id: agId,
+            idAgente: agId,
+            cuil: ag.cuil ? ag.cuil.toString() : (ag.idAgente ? ag.idAgente.toString() : ""),
+            legajo: ag.legajo.trim(),
+            nombre: ag.apellidoyNombre?.trim() || "",
+            cargo: "PROFESIONAL",
+            hospitalId: ag.idEmpresa,
+            hospitalNombre: ag.empresa?.descripcion?.trim() || "",
+          });
+        }
       }
     }
-  }
-
-  // Fallback to legacy Agente table if imPersonalMsp is empty (nunca para usuarios de hospital: evitaría el aislamiento por CUIT)
-  if (agents.length === 0 && !isHospitalUser) {
-    const legacyAgents = await prisma.agente.findMany({
-      orderBy: { nombre: "asc" },
-    });
-    agents = legacyAgents.map((ag) => ({
-      id: ag.cuil || ag.id,
-      idAgente: ag.cuil || ag.id,
-      cuil: ag.cuil || "",
-      legajo: "",
-      nombre: ag.nombre,
-      cargo: ag.cargo && !ag.cargo.includes(ag.cuil || "") ? ag.cargo : "PROFESIONAL",
-      hospitalId: ag.hospitalId || undefined,
-      hospitalNombre: ag.establecimiento || "",
-    }));
   }
 
   // If there are already saved distributions for this liquidation, fetch their metadata to always display names & hospitals correctly
@@ -160,6 +148,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
             select: { id: true, descripcion: true },
           },
         },
+        orderBy: { periodo: "desc" },
       });
 
       const seenSaved = new Set<string>();
@@ -244,6 +233,8 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
       agents={serializeData(agents)}
       extraSavedAgents={serializeData(extraSavedAgents)}
       agentsPeriodOrigin={agentsPeriodOrigin}
+      sisperPeriodLabel={activeSisper.info.sisperLabel}
+      sisperStatusMessage={activeSisper.info.statusMessage}
       hospitalId={targetEmpresaId ?? null}
       hospitals={serializeData(allHospitals)}
       notificationHistory={serializeData(notificationHistory)}

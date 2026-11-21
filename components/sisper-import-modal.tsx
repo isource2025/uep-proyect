@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   UploadCloud,
   FileSpreadsheet,
@@ -9,6 +9,7 @@ import {
   AlertCircle,
   AlertTriangle,
   PlusCircle,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +46,8 @@ export function SisperImportModal({
   const setIsOpen = setControlledOpen || setInternalOpen;
 
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadPeriod, setUploadPeriod] = useState(
     defaultPeriod ? defaultPeriod.substring(0, 7) : new Date().toISOString().substring(0, 7)
   );
@@ -63,6 +66,29 @@ export function SisperImportModal({
     period: string;
   } | null>(null);
   const [confirmedCreateEmpresas, setConfirmedCreateEmpresas] = useState(false);
+
+  const handleSelectFile = (file: File | null) => {
+    if (!file) {
+      setUploadFile(null);
+      return;
+    }
+    const lower = file.name.toLowerCase();
+    if (!lower.endsWith(".xlsx") && !lower.endsWith(".xls") && !lower.endsWith(".csv")) {
+      setFeedbackMsg({
+        type: "error",
+        text: "Formato no soportado. Suba un archivo Excel (.xlsx, .xls) o CSV (.csv).",
+      });
+      return;
+    }
+    setFeedbackMsg(null);
+    setUploadFile(file);
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
 
   const handleUploadExcel = async (
     e?: React.FormEvent,
@@ -164,13 +190,14 @@ export function SisperImportModal({
       setConfirmReplacePrompt(null);
       setMissingEmpresasPrompt(null);
       setConfirmedCreateEmpresas(false);
+      setIsDragging(false);
     }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={handleModalClose}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-      <DialogContent className="border-border bg-card text-card-foreground sm:max-w-2xl md:max-w-3xl w-full max-h-[92vh] overflow-y-auto p-5 sm:p-6">
+      <DialogContent className="border-border bg-card text-card-foreground w-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] sm:max-w-2xl md:max-w-3xl max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader className="space-y-2">
           <DialogTitle className="text-foreground text-lg sm:text-xl font-bold flex items-center gap-2.5">
             <div className="h-9 w-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
@@ -346,33 +373,138 @@ export function SisperImportModal({
           </div>
         ) : (
           <form onSubmit={(e) => handleUploadExcel(e, false)} className="space-y-4 py-2">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="sisperUploadPeriod" className="text-xs sm:text-sm font-semibold">
-                  Período (Mes / Año):
-                </Label>
-                <Input
-                  id="sisperUploadPeriod"
-                  type="month"
-                  value={uploadPeriod}
-                  onChange={(e) => setUploadPeriod(e.target.value)}
-                  required
-                  className="bg-muted/40 border-border text-foreground text-xs sm:text-sm h-10 cursor-pointer"
-                />
-              </div>
+            <div className="space-y-1.5 sm:max-w-xs">
+              <Label htmlFor="sisperUploadPeriod" className="text-xs sm:text-sm font-semibold">
+                Período (Mes / Año):
+              </Label>
+              <Input
+                id="sisperUploadPeriod"
+                type="month"
+                value={uploadPeriod}
+                onChange={(e) => setUploadPeriod(e.target.value)}
+                required
+                disabled={uploading}
+                className="bg-muted/40 border-border text-foreground text-xs sm:text-sm h-10 cursor-pointer w-full"
+              />
+            </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="sisperExcelFile" className="text-xs sm:text-sm font-semibold">
-                  Archivo Excel (.xlsx, .xls, .csv):
-                </Label>
-                <Input
-                  id="sisperExcelFile"
-                  type="file"
-                  accept=".xlsx, .xls, .csv"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  required
-                  className="bg-muted/40 border-border text-foreground text-xs sm:text-sm h-10 cursor-pointer file:cursor-pointer"
-                />
+            <div className="space-y-1.5">
+              <Label htmlFor="sisperExcelFile" className="text-xs sm:text-sm font-semibold">
+                Archivo Excel (.xlsx, .xls, .csv):
+              </Label>
+              <input
+                ref={fileInputRef}
+                id="sisperExcelFile"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                disabled={uploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  handleSelectFile(file);
+                  e.target.value = "";
+                }}
+                className="hidden"
+              />
+
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => !uploading && fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (!uploading && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!uploading) setIsDragging(true);
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!uploading) setIsDragging(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragging(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDragging(false);
+                  if (uploading) return;
+                  const droppedFile = e.dataTransfer.files?.[0] || null;
+                  handleSelectFile(droppedFile);
+                }}
+                className={cn(
+                  "rounded-xl border-2 border-dashed p-5 sm:p-7 text-center transition-all select-none",
+                  uploading
+                    ? "opacity-60 cursor-not-allowed border-border bg-muted/20"
+                    : "cursor-pointer",
+                  isDragging
+                    ? "border-emerald-500 bg-emerald-500/10 scale-[1.01]"
+                    : uploadFile
+                    ? "border-emerald-500/50 bg-emerald-500/5 hover:bg-emerald-500/10"
+                    : "border-border bg-muted/20 hover:border-emerald-500/50 hover:bg-muted/40"
+                )}
+              >
+                {uploadFile ? (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-left max-w-full">
+                    <div className="flex items-center gap-3 min-w-0 flex-1 w-full">
+                      <div className="h-11 w-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                        <FileSpreadsheet className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs sm:text-sm font-bold text-foreground break-all">
+                          {uploadFile.name}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {formatFileSize(uploadFile.size)} · Hacé clic o arrastrá otro archivo para cambiarlo
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={uploading}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setUploadFile(null);
+                      }}
+                      className="h-8 px-2.5 text-xs text-muted-foreground hover:text-red-500 gap-1 shrink-0 cursor-pointer self-end sm:self-center"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Quitar
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
+                    <div
+                      className={cn(
+                        "h-12 w-12 rounded-full flex items-center justify-center transition-colors",
+                        isDragging
+                          ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                          : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      )}
+                    >
+                      <UploadCloud className="h-6 w-6" />
+                    </div>
+                    <p className="text-xs sm:text-sm font-semibold text-foreground break-words">
+                      {isDragging
+                        ? "Soltá el archivo Excel aquí para cargarlo"
+                        : "Arrastrá y soltá el Excel SISPER acá, o hacé clic para seleccionarlo"}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground break-words">
+                      Compatible con <span className="font-mono text-foreground">.xlsx</span>,{" "}
+                      <span className="font-mono text-foreground">.xls</span> y{" "}
+                      <span className="font-mono text-foreground">.csv</span>
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

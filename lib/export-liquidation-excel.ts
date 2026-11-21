@@ -592,6 +592,11 @@ export function buildLiquidationWorkbook(
   const hospitalMap = new Map<string, {
     id?: number;
     name: string;
+    localidad: string;
+    cuit: string;
+    brutoAPagar: number;
+    debitos: number;
+    ga: number;
     netoAPagar: number;
     honorarios: number;
     sobreasignacion: number;
@@ -601,15 +606,31 @@ export function buildLiquidationWorkbook(
   for (const d of details) {
     const hid = d.hospitalId || d.compra?.hospitalId;
     const name = d.prestadorNombre || d.hospital?.nombre || `Hospital #${hid || "?"}`;
+    const localidad = String(d.localidad || "").trim();
+    const cuit = formatCuit(d.cuit || d.hospital?.cuit || d.compra?.hospital?.cuit || "");
     const key = hid ? `id-${hid}` : `name-${name}`;
     const existing = hospitalMap.get(key) || {
       id: hid,
       name,
+      localidad: localidad || "-",
+      cuit: cuit || "-",
+      brutoAPagar: 0,
+      debitos: 0,
+      ga: 0,
       netoAPagar: 0,
       honorarios: 0,
       sobreasignacion: 0,
       gastos: 0,
     };
+    if ((!existing.localidad || existing.localidad === "-") && localidad) {
+      existing.localidad = localidad;
+    }
+    if ((!existing.cuit || existing.cuit === "-") && cuit) {
+      existing.cuit = cuit;
+    }
+    existing.brutoAPagar = formatMoney(existing.brutoAPagar + Number(d.brutoAPagar || 0));
+    existing.debitos = formatMoney(existing.debitos + Number(d.debitos || 0));
+    existing.ga = formatMoney(existing.ga + Number(d.ga || 0));
     existing.netoAPagar = formatMoney(existing.netoAPagar + Number(d.netoAPagar || 0));
     hospitalMap.set(key, existing);
   }
@@ -977,6 +998,182 @@ export function buildLiquidationWorkbook(
       { key: "hon", width: 20 },
       { key: "sob", width: 20 },
       { key: "suel", width: 20 },
+    ];
+  }
+
+  // =========================================================================
+  // 5. HOJA 5: GASTOS Y HONORARIOS MÉDICOS GENERAL (solo Sede UEP y Reporte Distribuido)
+  // =========================================================================
+  const isDistributedReport =
+    isExplicitDistributed ||
+    (!isExplicitPending && (effectiveStatus === "DISTRIBUIDA" || effectiveStatus === "DISTRIBUIDO"));
+
+  if (!isHospitalScoped && isDistributedReport) {
+    const wsGen = wb.addWorksheet("Gastos y Hon. Médicos General", {
+      pageSetup: {
+        orientation: "landscape",
+        paperSize: 9, // A4
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        horizontalCentered: true,
+        margins: { left: 0.25, right: 0.25, top: 0.3, bottom: 0.3, header: 0.15, footer: 0.15 },
+        showGridLines: true,
+      },
+      views: [{ showGridLines: true }],
+    });
+
+    wsGen.mergeCells("A1:N1");
+    const titleGen = wsGen.getCell("A1");
+    titleGen.value = "GASTOS Y HONORARIOS MÉDICOS GENERAL - UEP MSP";
+    titleGen.font = { name: "Arial", size: 12, bold: true, color: { argb: "FFFFFFFF" } };
+    titleGen.fill = titleFill;
+    titleGen.alignment = { horizontal: "center", vertical: "middle" };
+    wsGen.getRow(1).height = 26;
+
+    const headersGen = [
+      "LIQ",
+      "N° NORMA LEGAL",
+      "N° EXPTE",
+      "PRESTADORES",
+      "LOCALIDAD",
+      "CUIT N°",
+      "TOTAL BRUTO ($)",
+      "NETO A DISTRIBUIR ($)",
+      "DÉBITOS ($)",
+      "GASTO ADMIN. ($)",
+      "SOBREASIGNACIÓN ($)",
+      "HONORARIOS ($)",
+      "GASTOS DISPONIBLE ($)",
+      "CÓDIGO IMEDIC",
+    ];
+
+    const hGenRow = wsGen.getRow(3);
+    hGenRow.values = headersGen;
+    hGenRow.height = 24;
+    styleRow(hGenRow, 1, 14, {
+      font: { name: "Arial", size: 9, bold: true, color: { argb: "FF0F172A" } },
+      fill: headerFill,
+      border: thinBorder,
+      alignment: { vertical: "middle", horizontal: "center", wrapText: true },
+    });
+    hGenRow.getCell(1).alignment = { vertical: "middle", horizontal: "left" };
+    hGenRow.getCell(4).alignment = { vertical: "middle", horizontal: "left" };
+
+    const liqLabelGen = `Liq. N° ${liq.id} - ${clientName} - ${mesCarga}`;
+    const expteLabelGen = liq.expediente || "Sin asignar";
+
+    let genRowIdx = 4;
+    let genSumBruto = 0;
+    let genSumNeto = 0;
+    let genSumDebitos = 0;
+    let genSumGa = 0;
+    let genSumSob = 0;
+    let genSumHon = 0;
+    let genSumGastos = 0;
+
+    for (const h of Array.from(hospitalMap.values())) {
+      const totalAsignado = formatMoney(h.honorarios + h.sobreasignacion);
+      const gastosCalc = Math.max(0, formatMoney(h.netoAPagar - totalAsignado));
+
+      genSumBruto += h.brutoAPagar;
+      genSumNeto += h.netoAPagar;
+      genSumDebitos += h.debitos;
+      genSumGa += h.ga;
+      genSumSob += h.sobreasignacion;
+      genSumHon += h.honorarios;
+      genSumGastos += gastosCalc;
+
+      const r = wsGen.getRow(genRowIdx);
+      r.values = [
+        liqLabelGen,
+        normaLegalText,
+        expteLabelGen,
+        h.name,
+        h.localidad || "-",
+        h.cuit || "-",
+        formatMoney(h.brutoAPagar),
+        formatMoney(h.netoAPagar),
+        formatMoney(h.debitos),
+        formatMoney(h.ga),
+        formatMoney(h.sobreasignacion),
+        formatMoney(h.honorarios),
+        formatMoney(gastosCalc),
+        h.id ?? "-",
+      ];
+      r.height = 20;
+
+      styleRow(r, 1, 14, {
+        font: { name: "Arial", size: 9 },
+        border: thinBorder,
+        alignment: { vertical: "middle" },
+      });
+
+      r.getCell(1).alignment = { vertical: "middle", horizontal: "left" };
+      r.getCell(2).alignment = { vertical: "middle", horizontal: "center" };
+      r.getCell(3).alignment = { vertical: "middle", horizontal: "center" };
+      r.getCell(4).alignment = { vertical: "middle", horizontal: "left" };
+      r.getCell(5).alignment = { vertical: "middle", horizontal: "left" };
+      r.getCell(6).alignment = { vertical: "middle", horizontal: "center" };
+      for (let c = 7; c <= 13; c++) {
+        r.getCell(c).numFmt = accountingNumFmt;
+        r.getCell(c).alignment = { vertical: "middle", horizontal: "right" };
+      }
+      r.getCell(8).font = { name: "Arial", size: 9, bold: true, color: { argb: "FF047857" } };
+      r.getCell(14).alignment = { vertical: "middle", horizontal: "center" };
+
+      genRowIdx++;
+    }
+
+    // Fila Total General (sin sumar Código iMedic)
+    const totRowGen = wsGen.getRow(genRowIdx);
+    totRowGen.values = [
+      "TOTAL GENERAL",
+      "",
+      "",
+      "",
+      "",
+      "",
+      formatMoney(genSumBruto),
+      formatMoney(genSumNeto),
+      formatMoney(genSumDebitos),
+      formatMoney(genSumGa),
+      formatMoney(genSumSob),
+      formatMoney(genSumHon),
+      formatMoney(genSumGastos),
+      "",
+    ];
+    totRowGen.height = 24;
+
+    styleRow(totRowGen, 1, 14, {
+      font: { name: "Arial", size: 9, bold: true },
+      fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } },
+      border: doubleBottomBorder,
+      alignment: { vertical: "middle" },
+    });
+
+    totRowGen.getCell(1).alignment = { vertical: "middle", horizontal: "left" };
+    for (let c = 7; c <= 13; c++) {
+      totRowGen.getCell(c).numFmt = accountingNumFmt;
+      totRowGen.getCell(c).alignment = { vertical: "middle", horizontal: "right" };
+    }
+    totRowGen.getCell(8).font = { name: "Arial", size: 9, bold: true, color: { argb: "FF047857" } };
+
+    wsGen.columns = [
+      { key: "liq", width: 34 }, // LIQ
+      { key: "norma", width: 19 }, // N° NORMA LEGAL
+      { key: "expte", width: 20 }, // N° EXPTE
+      { key: "prest", width: 36 }, // PRESTADORES
+      { key: "loc", width: 18 }, // LOCALIDAD
+      { key: "cuit", width: 16 }, // CUIT N°
+      { key: "bruto", width: 19 }, // TOTAL BRUTO ($)
+      { key: "neto", width: 23 }, // NETO A DISTRIBUIR ($)
+      { key: "deb", width: 15 }, // DÉBITOS ($)
+      { key: "ga", width: 19 }, // GASTO ADMIN. ($)
+      { key: "sob", width: 22 }, // SOBREASIGNACIÓN ($)
+      { key: "hon", width: 18 }, // HONORARIOS ($)
+      { key: "gas", width: 23 }, // GASTOS DISPONIBLE ($)
+      { key: "imed", width: 17 }, // CÓDIGO IMEDIC
     ];
   }
 

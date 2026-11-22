@@ -33,6 +33,7 @@ import {
   Scale,
   Image as ImageIcon,
   Bell,
+  Sparkles,
 } from "lucide-react";
 import type { LiquidationNotificationHistoryItem } from "@/lib/notification-types";
 import { SearchBar } from "@/components/search-bar";
@@ -61,6 +62,14 @@ import {
   type BulkImportMergeMode,
 } from "@/components/bulk-distribution-modal";
 import { downloadLiquidationExcel } from "@/lib/export-liquidation-excel";
+import { detectErpBillingCircuit, type ErpFcItemRow } from "@/lib/erp-circuit";
+import { ErpFcItemsPanel } from "@/components/erp-fc-items-panel";
+import {
+  BulkHospitalDetailsModal,
+  type HospitalImportMergeMode,
+  type ImportedHospitalDetailRow,
+} from "@/components/bulk-hospital-details-modal";
+import { RgaAssistantModal } from "@/components/rga-assistant-modal";
 
 interface LiquidationDetailClientProps {
   liquidation: any;
@@ -78,6 +87,7 @@ interface LiquidationDetailClientProps {
   hospitalId?: number | null;
   hospitals?: any[];
   notificationHistory?: LiquidationNotificationHistoryItem[];
+  erpFcItems?: ErpFcItemRow[];
 }
 
 export default function LiquidationDetailClient({
@@ -91,6 +101,7 @@ export default function LiquidationDetailClient({
   hospitalId: initialHospitalId,
   hospitals = [],
   notificationHistory = [],
+  erpFcItems = [],
 }: LiquidationDetailClientProps) {
   const canLoadFromSisper = agentsPeriodOrigin === "current" || agentsPeriodOrigin === "previous";
   const router = useRouter();
@@ -220,8 +231,23 @@ export default function LiquidationDetailClient({
   const [isNormaLegalModalOpen, setIsNormaLegalModalOpen] = useState(false);
   const [isNotifyModalOpen, setIsNotifyModalOpen] = useState(false);
   const [isNotificationAuditModalOpen, setIsNotificationAuditModalOpen] = useState(false);
+  const [isBulkHospitalModalOpen, setIsBulkHospitalModalOpen] = useState(false);
+  const [isRgaAssistantModalOpen, setIsRgaAssistantModalOpen] = useState(false);
   const [globalGaPercent, setGlobalGaPercent] = useState("6");
   const [customGlobalGaPercent, setCustomGlobalGaPercent] = useState("");
+
+  const erpCircuit = useMemo(
+    () =>
+      detectErpBillingCircuit({
+        rcGrupoCbte: liq.rc?.puntoVenta,
+        clienteId: liq.rc?.clienteId,
+        clienteCuit: liq.rc?.cliente?.cuit,
+        clienteNombre: liq.rc?.cliente?.nombre,
+        appliedFcGrupos: (liq.rc?.appliedAsRc || []).map((a: any) => a?.fc?.puntoVenta),
+        erpFcItems,
+      }),
+    [liq.rc, erpFcItems]
+  );
 
   const isDistributed = liq.status === "DISTRIBUIDA" || liq.status === "DISTRIBUIDO";
   const wasNotifiedBefore = liq.status !== "PENDIENTE";
@@ -691,6 +717,63 @@ export default function LiquidationDetailClient({
 
     setEditableDetails((prev) => [...prev, newDetail]);
     setSuccessMsg("Nuevo renglón de factura añadido. Complete los datos y guarde los cambios.");
+  };
+
+  const handleApplyImportedHospitalDetails = (
+    importedRows: ImportedHospitalDetailRow[],
+    mode: HospitalImportMergeMode
+  ) => {
+    if (importedRows.length === 0) return;
+
+    const now = Date.now();
+    const mappedNewDetails = importedRows.map((row, idx) => ({
+      id: `manual-${now}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+      isNew: true,
+      liquidationId: liq.id,
+      hospitalId: row.hospitalId,
+      clienteId: liq.rc?.clienteId || null,
+      prestadorNombre: row.prestadorNombre,
+      cuit: row.cuit,
+      localidad: row.localidad || "CAPITAL",
+      periodo: row.periodo || mesCarga || liq.mesCarga || "",
+      fcHospital: row.fcHospital,
+      totalFacturado: row.totalFacturado,
+      creditos: row.creditos,
+      debitos: row.debitos,
+      ajustesOs: row.ajustesOs,
+      pendientesCobro: row.pendientesCobro,
+      pagosParcialesAnteriores: row.pagosParcialesAnteriores,
+      brutoAPagar: row.brutoAPagar,
+      ga: row.ga,
+      gaPercent: row.gaPercent,
+      ajusteRecupero: row.ajusteRecupero,
+      netoAPagar: row.netoAPagar,
+    }));
+
+    if (mode === "REPLACE") {
+      const persistedToDelete = (liq.details || [])
+        .map((d: any) => String(d.id))
+        .filter((id: string) => !id.startsWith("manual-"));
+      if (persistedToDelete.length > 0) {
+        setDeletedDetailIds((prev) => Array.from(new Set([...prev, ...persistedToDelete])));
+      }
+      setLiq((prev: any) => ({
+        ...prev,
+        details: mappedNewDetails,
+      }));
+      setEditableDetails(mappedNewDetails);
+    } else {
+      setLiq((prev: any) => ({
+        ...prev,
+        details: [...(prev.details || []), ...mappedNewDetails],
+      }));
+      setEditableDetails((prev) => [...prev, ...mappedNewDetails]);
+    }
+
+    setErrorMsg(null);
+    setSuccessMsg(
+      `Se cargaron ${mappedNewDetails.length} renglón(es) validados por CUIT en la planilla. Revise los valores y haga clic en "Guardar Ajustes de Liquidación" para confirmar.`
+    );
   };
 
   const handleRemoveDetail = (detailId: string) => {
@@ -2159,6 +2242,19 @@ export default function LiquidationDetailClient({
         </Card>
       </div>
 
+      {/* CIRCUITO ERP + DETALLE FACTURADO EN CBTESITEMS (Solo operadores UEP) */}
+      {!isHospitalUser && (
+        <ErpFcItemsPanel
+          circuit={erpCircuit}
+          erpFcItems={erpFcItems}
+          rcImporteTotal={Number(liq.rc?.importe || 0)}
+          detailsCount={(liq.details || []).length}
+          canEdit={!isLockedForLiquidationEdits}
+          onOpenBulkImport={() => setIsBulkHospitalModalOpen(true)}
+          onOpenRgaAssistant={() => setIsRgaAssistantModalOpen(true)}
+        />
+      )}
+
       {/* SECTION 2 - TABLA DE LIQUIDACIÓN POR HOSPITAL / PRESTADOR */}
       <Card className="border-border bg-card">
         <CardHeader className="p-4 pb-3 border-b border-border/80 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
@@ -2270,27 +2366,50 @@ export default function LiquidationDetailClient({
                 </div>
                 <div className="space-y-1.5 w-full">
                   <h4 className="font-bold text-foreground text-sm sm:text-base tracking-tight">
-                    Sin comprobantes de compras vinculados en el ERP
+                    {erpCircuit.usesComprasTable
+                      ? "Sin comprobantes de compras vinculados en el ERP"
+                      : `Circuito ${erpCircuit.label}: sin compras individuales en ERP`}
                   </h4>
                   <p className="text-muted-foreground text-xs leading-relaxed max-w-md mx-auto break-words">
-                    Las Facturas de Venta asociadas a este cobro aún no tienen compras vinculadas cargadas en la planilla (campo{" "}
-                    <code className="text-3xs font-mono bg-muted/80 px-1.5 py-0.5 rounded border border-border/60">
-                      IdTransaccionFacturaVta
-                    </code>{" "}
-                    o detalle en{" "}
-                    <code className="text-3xs font-mono bg-muted/80 px-1.5 py-0.5 rounded border border-border/60">
-                      CbtesItems
-                    </code>
-                    ).
+                    {erpCircuit.usesComprasTable ? (
+                      <>
+                        Las Facturas de Venta asociadas a este cobro aún no tienen compras vinculadas cargadas en la planilla (campo{" "}
+                        <code className="text-3xs font-mono bg-muted/80 px-1.5 py-0.5 rounded border border-border/60">
+                          IdTransaccionFacturaVta
+                        </code>{" "}
+                        o detalle en{" "}
+                        <code className="text-3xs font-mono bg-muted/80 px-1.5 py-0.5 rounded border border-border/60">
+                          CbtesItems
+                        </code>
+                        ).
+                      </>
+                    ) : (
+                      erpCircuit.description
+                    )}
                   </p>
                   <p className="text-muted-foreground/80 text-3xs leading-relaxed max-w-sm mx-auto break-words">
-                    Puede sincronizar automáticamente las facturas de hospitales desde el ERP o agregarlas manualmente a continuación.
+                    {erpCircuit.code === "RGA"
+                      ? "Utilice el Asistente RGA para vincular cada legajo de CbtesItems con su hospital validado por CUIT, o importe un Excel."
+                      : !erpCircuit.usesComprasTable
+                      ? "Importe el desglose por establecimiento pegando desde Excel o subiendo un archivo (.xlsx / .csv), o agregue filas manualmente."
+                      : "Puede sincronizar automáticamente las facturas de hospitales desde el ERP, importar un Excel o agregarlas manualmente a continuación."}
                   </p>
                 </div>
 
                 {!isLockedForLiquidationEdits && (
                   <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5 w-full">
-                    {!isHospitalUser && (
+                    {!isHospitalUser && erpCircuit.code === "RGA" && erpFcItems.some((i) => i.importeTotal > 0) && (
+                      <Button
+                        type="button"
+                        onClick={() => setIsRgaAssistantModalOpen(true)}
+                        disabled={saving || syncingFromErp}
+                        className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-bold gap-2 text-xs sm:text-sm h-9 px-4 cursor-pointer shadow-md transition-all active:scale-95"
+                      >
+                        <Sparkles className="h-4 w-4 shrink-0" />
+                        <span>Abrir Asistente RGA (ERP)</span>
+                      </Button>
+                    )}
+                    {!isHospitalUser && erpCircuit.usesComprasTable && (
                       <Button
                         type="button"
                         onClick={handleSyncFromErp}
@@ -2301,12 +2420,29 @@ export default function LiquidationDetailClient({
                         <span>{syncingFromErp ? "Sincronizando ERP..." : "Sincronizar Compras desde ERP"}</span>
                       </Button>
                     )}
+                    {!isHospitalUser && (
+                      <Button
+                        type="button"
+                        variant={erpCircuit.code !== "RGA" && !erpCircuit.usesComprasTable ? "default" : "outline"}
+                        onClick={() => setIsBulkHospitalModalOpen(true)}
+                        disabled={saving || syncingFromErp}
+                        className={cn(
+                          "w-full sm:w-auto font-bold gap-2 text-xs sm:text-sm h-9 px-4 cursor-pointer transition-all active:scale-95",
+                          erpCircuit.code !== "RGA" && !erpCircuit.usesComprasTable
+                            ? "bg-emerald-600 hover:bg-emerald-500 text-zinc-950 shadow-md"
+                            : "border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                        )}
+                      >
+                        <UploadCloud className="h-4 w-4 shrink-0" />
+                        <span>Importar Hospitales (Excel / Pegar)</span>
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
                       onClick={handleAddManualDetail}
                       disabled={saving || syncingFromErp}
-                      className="w-full sm:w-auto border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-2 text-xs sm:text-sm h-9 px-4 cursor-pointer transition-all active:scale-95"
+                      className="w-full sm:w-auto border-border text-foreground hover:bg-muted font-bold gap-2 text-xs sm:text-sm h-9 px-4 cursor-pointer transition-all active:scale-95"
                     >
                       <Plus className="h-4 w-4 shrink-0" />
                       <span>Agregar Factura Manualmente</span>
@@ -2718,19 +2854,45 @@ export default function LiquidationDetailClient({
             </Table>
           </div>
 
-          {/* BARRA INFERIOR DE ACCIONES DE FACTURA (AGREGAR MANUAL) */}
+          {/* BARRA INFERIOR DE ACCIONES DE FACTURA (AGREGAR MANUAL / IMPORTAR / ASISTENTE RGA) */}
           {!isLockedForLiquidationEdits && (
             <div className="p-3 border-t border-border/80 bg-muted/20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleAddManualDetail}
-                disabled={saving}
-                className="border-dashed border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-sm w-full sm:w-auto"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Agregar Factura Manualmente
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleAddManualDetail}
+                  disabled={saving}
+                  className="border-dashed border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-sm w-full sm:w-auto"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Agregar Factura Manualmente
+                </Button>
+                {!isHospitalUser && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsBulkHospitalModalOpen(true)}
+                    disabled={saving}
+                    className="border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-sm w-full sm:w-auto"
+                  >
+                    <UploadCloud className="h-3.5 w-3.5" />
+                    Importar Hospitales (Excel / Pegar)
+                  </Button>
+                )}
+                {!isHospitalUser && erpCircuit.code === "RGA" && erpFcItems.some((i) => i.importeTotal > 0) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsRgaAssistantModalOpen(true)}
+                    disabled={saving}
+                    className="border-indigo-500/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10 font-bold gap-1.5 text-xs h-8.5 cursor-pointer shadow-sm w-full sm:w-auto"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Asistente RGA (ERP)
+                  </Button>
+                )}
+              </div>
               <span className="text-3xs text-muted-foreground font-mono self-center">
                 {liq.details?.length || 0} factura(s) en esta liquidación
               </span>
@@ -3570,6 +3732,32 @@ export default function LiquidationDetailClient({
           clientName={liq.rc?.cliente?.nombre}
           initialHistory={notificationHistory}
         />
+      )}
+
+      {!isHospitalUser && !isLockedForLiquidationEdits && (
+        <>
+          <BulkHospitalDetailsModal
+            open={isBulkHospitalModalOpen}
+            onOpenChange={setIsBulkHospitalModalOpen}
+            providers={hospitals}
+            defaultPeriodo={mesCarga || liq.mesCarga || ""}
+            rcImporteTotal={Number(liq.rc?.importe || 0)}
+            existingDetailsCount={(liq.details || []).length}
+            circuit={erpCircuit}
+            onApply={handleApplyImportedHospitalDetails}
+          />
+
+          <RgaAssistantModal
+            open={isRgaAssistantModalOpen}
+            onOpenChange={setIsRgaAssistantModalOpen}
+            erpFcItems={erpFcItems}
+            providers={hospitals}
+            defaultPeriodo={mesCarga || liq.mesCarga || ""}
+            rcImporteTotal={Number(liq.rc?.importe || 0)}
+            existingDetailsCount={(liq.details || []).length}
+            onApply={handleApplyImportedHospitalDetails}
+          />
+        </>
       )}
 
       {/* MODAL LISTA DE COMPROBANTES DE DÉBITOS */}

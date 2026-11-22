@@ -10,6 +10,10 @@ import { filterLiquidationForHospital } from "@/lib/hospital-liquidation-scope";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import { getActiveSisperPeriodFilter } from "@/lib/periods";
 import { fetchLiquidationNotificationHistoryAction } from "@/app/dashboard/notifications/actions";
+import {
+  extractLocalidadFromNombre,
+  fetchCbtesItemsForFcs,
+} from "@/lib/erp-compras-resolver";
 import LiquidationDetailClient from "./liquidation-detail-client";
 
 interface PageProps {
@@ -191,39 +195,56 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
     });
   }
 
-  const healthcareProviders = await prisma.proveedor.findMany({
-    where: {
-      OR: [
-        { tipoProvId: 18 },
-        { nombre: { contains: "HOSPITAL" } },
-        { nombre: { contains: "CAPS" } },
-        { nombre: { contains: "CENTRO DE SALUD" } },
-        { nombre: { contains: "ESTACION SANITARIA" } },
-        { nombre: { contains: "INSTITUTO" } },
-        { nombre: { contains: "BANCO DE SANGRE" } },
-        { nombre: { contains: "LABORATORIO" } },
-      ],
-    },
-    orderBy: { nombre: "asc" },
-    select: {
-      id: true,
-      nombre: true,
-      cuit: true,
-    },
-  });
+  const appliedFcsMeta = (liquidationRaw.rc?.appliedAsRc || [])
+    .filter((a: any) => a?.fcId > 0)
+    .map((a: any) => ({
+      fcId: Number(a.fcId),
+      puntoVenta: a.fc?.puntoVenta ?? null,
+      numero: a.fc?.numero ?? null,
+      letra: a.fc?.letra ?? null,
+      type: a.fc?.type ?? null,
+    }));
+
+  const [healthcareProviders, historyRes, erpFcItems] = await Promise.all([
+    prisma.proveedor.findMany({
+      where: {
+        OR: [
+          { tipoProvId: 18 },
+          { nombre: { contains: "HOSP" } },
+          { nombre: { contains: "CAPS" } },
+          { nombre: { contains: "CENTRO DE SALUD" } },
+          { nombre: { contains: "ESTACION SANITARIA" } },
+          { nombre: { contains: "INSTITUTO" } },
+          { nombre: { contains: "BANCO DE SANGRE" } },
+          { nombre: { contains: "LABORATORIO" } },
+          { nombre: { contains: "EMERGENCIA" } },
+          { nombre: { contains: "PUESTO" } },
+          { nombre: { contains: "MATERNIDAD" } },
+          { nombre: { contains: "REHABILITACION" } },
+          { nombre: { contains: "SAPS" } },
+        ],
+      },
+      orderBy: { nombre: "asc" },
+      select: {
+        id: true,
+        nombre: true,
+        cuit: true,
+      },
+    }),
+    // Historial y auditoría de notificaciones (exclusivo para operadores UEP)
+    !isHospitalUser ? fetchLiquidationNotificationHistoryAction(liqId) : Promise.resolve(null),
+    // Detalle de CbtesItems de las FC aplicadas (solo lectura, exclusivo para operadores UEP)
+    !isHospitalUser ? fetchCbtesItemsForFcs(prisma, appliedFcsMeta) : Promise.resolve([]),
+  ]);
 
   const allHospitals = healthcareProviders.map((p) => ({
     id: p.id,
-    nombre: p.nombre || `Proveedor #${p.id}`,
-    descripcion: p.nombre || `Proveedor #${p.id}`,
+    nombre: p.nombre?.trim() || `Proveedor #${p.id}`,
+    descripcion: p.nombre?.trim() || `Proveedor #${p.id}`,
     cuit: p.cuit ? cleanCuit(p.cuit) : "",
-    localidad: "CAPITAL",
+    localidad: extractLocalidadFromNombre(p.nombre),
   }));
 
-  // Historial y auditoría de notificaciones (exclusivo para operadores UEP)
-  const historyRes = !isHospitalUser
-    ? await fetchLiquidationNotificationHistoryAction(liqId)
-    : null;
   const notificationHistory = historyRes?.history || [];
 
   return (
@@ -238,6 +259,7 @@ export default async function LiquidationDetailPage({ params }: PageProps) {
       hospitalId={targetEmpresaId ?? null}
       hospitals={serializeData(allHospitals)}
       notificationHistory={serializeData(notificationHistory)}
+      erpFcItems={serializeData(erpFcItems)}
     />
   );
 }

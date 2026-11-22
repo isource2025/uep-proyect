@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
 import { cleanCuit } from "@/lib/hospital-mapping";
+import type { ErpFcItemRow } from "@/lib/erp-circuit";
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
 
@@ -274,6 +275,56 @@ export async function resolveHospitalPurchasesForFcs(
     cbtesItemsCount,
     unmatchedRefs,
   };
+}
+
+/**
+ * Obtiene en modo solo lectura todos los renglones de CbtesItems de las Facturas de Venta (FC)
+ * aplicadas por un Recibo de Cobranza (RC), para inspección contable y asistente RGA.
+ */
+export async function fetchCbtesItemsForFcs(
+  db: DbClient,
+  appliedFcs: Array<{
+    fcId: number;
+    puntoVenta?: number | null;
+    numero?: number | null;
+    letra?: string | null;
+    type?: string | null;
+  }>
+): Promise<ErpFcItemRow[]> {
+  const uniqueFcIds = Array.from(new Set(appliedFcs.map((a) => a.fcId).filter((id) => id > 0)));
+  if (uniqueFcIds.length === 0) return [];
+
+  const metaByFcId = new Map(appliedFcs.map((a) => [a.fcId, a]));
+  const rawItems: CbteItemRow[] = [];
+
+  for (const chunk of chunkArray(uniqueFcIds, CHUNK_SIZE)) {
+    const rows = await db.$queryRaw<CbteItemRow[]>(
+      Prisma.sql`
+        SELECT IdTransaccion, NroRenglon, IdProducto, Descripcion, ImporteTotal, IdTrans_Origen
+        FROM CbtesItems
+        WHERE IdTransaccion IN (${Prisma.join(chunk)})
+        ORDER BY IdTransaccion ASC, NroRenglon ASC
+      `
+    );
+    rawItems.push(...rows);
+  }
+
+  return rawItems.map((row) => {
+    const meta = metaByFcId.get(row.IdTransaccion);
+    const pto = meta?.puntoVenta ? String(meta.puntoVenta).padStart(4, "0") : "0000";
+    const nro = meta?.numero ? String(meta.numero).padStart(8, "0") : String(row.IdTransaccion);
+    const tipo = (meta?.type || "FC").trim().toUpperCase();
+    const letra = meta?.letra ? `-${meta.letra.trim().toUpperCase()}` : "";
+    return {
+      fcId: row.IdTransaccion,
+      fcLabel: `${tipo}${letra} ${pto}-${nro}`,
+      fcGrupoCbte: meta?.puntoVenta ?? null,
+      nroRenglon: row.NroRenglon,
+      idProducto: row.IdProducto !== null && row.IdProducto !== undefined ? Number(row.IdProducto) : null,
+      descripcion: (row.Descripcion || "").replace(/\uFFFD/g, " ").replace(/\s+/g, " ").trim(),
+      importeTotal: toNum(row.ImporteTotal),
+    };
+  });
 }
 
 export function formatCompraVoucherNumber(comp: {

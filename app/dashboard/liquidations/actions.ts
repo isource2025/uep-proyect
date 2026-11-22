@@ -17,7 +17,7 @@ import {
   type HospitalNotificationRecipient,
 } from "@/lib/hospital-resolver";
 import { serializeData } from "@/lib/utils";
-import { isUserAdmin, isUserHospital, parseUserRoleIds } from "@/lib/constants";
+import { isUserAdmin, isUserHospital, isUserReadOnlyAuditor, parseUserRoleIds } from "@/lib/constants";
 import { generateLiquidationExcelBuffer } from "@/lib/export-liquidation-excel";
 import { sendLiquidationNotificationEmail } from "@/lib/email";
 import {
@@ -612,6 +612,13 @@ export async function fetchLiquidationData(
 // 2. Generate a new Liquidation header and hospital detail rows from an RC
 export async function calculateLiquidation(rcId: number) {
   try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    const sessionUser = session?.user as any;
+    if (!sessionUser) return { error: "No autorizado. Debe iniciar sesión." };
+    if (isUserHospital(sessionUser.role, sessionUser.hospitalId) || isUserReadOnlyAuditor(sessionUser.role)) {
+      return { error: "Acceso denegado. Su perfil no tiene permisos para generar liquidaciones." };
+    }
+
     const rc = await prisma.cbte.findUnique({
       where: { id: rcId },
       include: { cliente: true },
@@ -709,9 +716,9 @@ export async function syncLiquidationComprasFromErp(liquidationId: number) {
     const userRole = (session?.user as any)?.role;
     const userHospitalId = (session?.user as any)?.hospitalId;
 
-    if (isUserHospital(userRole, userHospitalId)) {
+    if (isUserHospital(userRole, userHospitalId) || isUserReadOnlyAuditor(userRole)) {
       return {
-        error: "Acceso denegado. Los establecimientos de salud no pueden sincronizar comprobantes del ERP.",
+        error: "Acceso denegado. Su perfil no tiene permisos para sincronizar comprobantes del ERP.",
       };
     }
 
@@ -887,6 +894,9 @@ export async function updateLiquidationDetails(
     const currentUserName = session?.user?.name || session?.user?.email || (session?.user as any)?.operador;
     const userRole = (session?.user as any)?.role;
     const isAdmin = isUserAdmin(userRole);
+    if (!session?.user || isUserReadOnlyAuditor(userRole)) {
+      return { error: "Acceso denegado. El perfil Auditor / Contable es de solo lectura y no puede modificar liquidaciones." };
+    }
 
     const currentLiq = await prisma.liquidacion.findUnique({
       where: { id: liquidationId },
@@ -1040,8 +1050,8 @@ export async function updateLiquidationExpediente(
     }
 
     const isHospitalUser = !!(session.user as any)?.hospitalId;
-    if (isHospitalUser) {
-      return { error: "Acceso denegado. La asignación de expediente es exclusiva del personal de UEP." };
+    if (isHospitalUser || isUserReadOnlyAuditor((session.user as any)?.role)) {
+      return { error: "Acceso denegado. Su perfil no tiene permisos para modificar el expediente." };
     }
 
     await prisma.liquidacion.update({
@@ -1071,8 +1081,8 @@ export async function updateLiquidationNormaLegal(
     }
 
     const isHospitalUser = !!(session.user as any)?.hospitalId;
-    if (isHospitalUser) {
-      return { success: false, error: "Acceso denegado. La asignación de norma legal es exclusiva del personal de UEP." };
+    if (isHospitalUser || isUserReadOnlyAuditor((session.user as any)?.role)) {
+      return { success: false, error: "Acceso denegado. Su perfil no tiene permisos para modificar la norma legal." };
     }
 
     let formatted = normaLegal?.trim() || "";
@@ -1131,8 +1141,8 @@ export async function updateLiquidationObservaciones(
     }
 
     const isHospitalUser = !!(session.user as any)?.hospitalId;
-    if (isHospitalUser) {
-      return { error: "Acceso denegado. Las observaciones internas son exclusivas del personal de UEP." };
+    if (isHospitalUser || isUserReadOnlyAuditor((session.user as any)?.role)) {
+      return { error: "Acceso denegado. Su perfil no tiene permisos para modificar observaciones." };
     }
 
     await prisma.liquidacion.update({
@@ -1176,7 +1186,7 @@ export async function assignLiquidationToSelfAction(liquidationId: number): Prom
       cuit: sessionUser.cuit,
     });
     const isHospitalUser = !isAdmin && isUserHospital(rawRole, resolvedEmpresaId ?? sessionUser?.hospitalId);
-    const isReadOnlyAuditorOnly = !isAdmin && !roleIds.includes("3") && roleIds.includes("5");
+    const isReadOnlyAuditorOnly = isUserReadOnlyAuditor(rawRole);
 
     if (isHospitalUser || isReadOnlyAuditorOnly) {
       return {
@@ -1288,7 +1298,7 @@ export async function unassignLiquidationSelfAction(liquidationId: number): Prom
       cuit: sessionUser.cuit,
     });
     const isHospitalUser = !isAdmin && isUserHospital(rawRole, resolvedEmpresaId ?? sessionUser?.hospitalId);
-    const isReadOnlyAuditorOnly = !isAdmin && !roleIds.includes("3") && roleIds.includes("5");
+    const isReadOnlyAuditorOnly = isUserReadOnlyAuditor(rawRole);
 
     if (isHospitalUser || isReadOnlyAuditorOnly) {
       return {
@@ -1371,6 +1381,11 @@ export async function unassignLiquidationSelfAction(liquidationId: number): Prom
 // 4. Upload file(s) with debit breakdown sent by Obra Social (PDF, Excel, Images)
 export async function uploadDebitsFile(formData: FormData) {
   try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user || isUserReadOnlyAuditor((session.user as any)?.role)) {
+      return { error: "Acceso denegado. El perfil Auditor / Contable no puede adjuntar ni modificar comprobantes." };
+    }
+
     const liquidationIdStr = formData.get("liquidationId") as string;
     const rawFiles = formData.getAll("files");
     const singleFile = formData.get("file") as File | null;
@@ -1441,6 +1456,11 @@ export async function uploadDebitsFile(formData: FormData) {
 
 export async function deleteDebitAttachment(attachmentId: string, liquidationId: number) {
   try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user || isUserReadOnlyAuditor((session.user as any)?.role)) {
+      return { success: false, error: "Acceso denegado. El perfil Auditor / Contable no puede eliminar comprobantes.", remaining: [] as any[] };
+    }
+
     const attachment = await prisma.adjunto.findUnique({
       where: { id: attachmentId },
     });
@@ -1477,6 +1497,11 @@ export async function deleteDebitAttachment(attachmentId: string, liquidationId:
 
 export async function deleteDebitsFile(liquidationId: number) {
   try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user || isUserReadOnlyAuditor((session.user as any)?.role)) {
+      return { success: false, error: "Acceso denegado. El perfil Auditor / Contable no puede eliminar comprobantes.", remaining: [] as any[] };
+    }
+
     const attachments = await prisma.adjunto.findMany({
       where: { liquidationId, deletedAt: null },
     });
@@ -1633,6 +1658,9 @@ export async function notifyHospital(
     const session = await auth.api.getSession({ headers: reqHeaders });
     const sessionUser = session?.user as any;
     const userRole = sessionUser?.role;
+    if (!sessionUser || isUserReadOnlyAuditor(userRole)) {
+      return { error: "Acceso denegado. El perfil Auditor / Contable no puede notificar ni modificar liquidaciones." };
+    }
     const isAdmin = isUserAdmin(userRole);
     const parsedEmisorId = sessionUser?.id ? parseInt(String(sessionUser.id), 10) : NaN;
     const emisorId = !isNaN(parsedEmisorId) ? parsedEmisorId : null;
@@ -2070,6 +2098,9 @@ export async function saveLiquidacionPersonalDistributions(
   try {
     const session = await auth.api.getSession({ headers: await headers() });
     const sessionUser = session?.user as any;
+    if (!sessionUser || isUserReadOnlyAuditor(sessionUser?.role)) {
+      return { error: "Acceso denegado. El perfil Auditor / Contable no puede modificar distribuciones." };
+    }
     const parsedEmisorId = sessionUser?.id ? parseInt(String(sessionUser.id), 10) : NaN;
     const emisorId = !isNaN(parsedEmisorId) ? parsedEmisorId : null;
     const emisorNombre =

@@ -4,19 +4,21 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
-import { isUserAdmin, isUserHospital, parseUserRoleIds } from "@/lib/constants";
+import { isUserAdmin, isUserHospital, isUserReadOnlyAuditor, isUserUepOperator } from "@/lib/constants";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 
-async function assertConsolidationOperatorAccess(): Promise<string | null> {
+async function assertConsolidationOperatorAccess(requireWrite = false): Promise<string | null> {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) return "No autorizado.";
   const user = session.user as any;
   const isAdmin = isUserAdmin(user?.role);
-  const userRoles = parseUserRoleIds(user?.role);
   const resolvedEmpresaId = await resolveUserEmpresaId(user);
   const isHospitalUser = !isAdmin && isUserHospital(user?.role, resolvedEmpresaId ?? user?.hospitalId);
-  if (isHospitalUser || (!isAdmin && userRoles.includes("2"))) {
+  if (isHospitalUser || !isUserUepOperator(user?.role)) {
     return "Acceso denegado: los reportes globales de consolidación son exclusivos para operadores UEP.";
+  }
+  if (requireWrite && isUserReadOnlyAuditor(user?.role)) {
+    return "Acceso denegado: el perfil Auditor / Contable tiene permisos de solo lectura y generación de reportes.";
   }
   return null;
 }
@@ -59,7 +61,7 @@ export async function fetchConsolidationData(periodAnio: number, periodMes: numb
 
 export async function closePeriodLiquidations(periodAnio: number, periodMes: number) {
   try {
-    const accessError = await assertConsolidationOperatorAccess();
+    const accessError = await assertConsolidationOperatorAccess(true);
     if (accessError) return { error: accessError };
     // Lock all liquidations of this period to CERRADA
     await prisma.liquidacion.updateMany({

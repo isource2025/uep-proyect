@@ -1,3 +1,7 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { isUserAdmin } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +24,11 @@ import { Settings, Pencil, Sliders, Landmark, Calculator } from "lucide-react";
 export const revalidate = 0;
 
 export default async function SettingsPage() {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user || !isUserAdmin((session.user as any)?.role)) {
+    redirect("/dashboard");
+  }
+
   // Fetch parameters from CParametros
   const params = await prisma.cParametro.findMany({
     orderBy: { id: "asc" },
@@ -28,6 +37,10 @@ export default async function SettingsPage() {
   // Server Action to update a parameter
   const handleUpdateParam = async (formData: FormData) => {
     "use server";
+    const actionSession = await auth.api.getSession({ headers: await headers() });
+    if (!actionSession?.user || !isUserAdmin((actionSession.user as any)?.role)) {
+      return;
+    }
     const id = formData.get("id") as string;
     const description = formData.get("description") as string;
     const notes = formData.get("notes") as string;

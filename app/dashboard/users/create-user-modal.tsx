@@ -85,35 +85,38 @@ export function UserModal({
     confirmPassword: "",
   });
 
-  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [selectedRole, setSelectedRole] = useState<string>("");
 
   const isEdit = mode === "edit" || !!user;
 
-  const getWorkplaceCuit = (hospitalIdValue: string, isLiq: boolean) => {
-    if (isLiq || !hospitalIdValue) return uepCuit;
+  const getWorkplaceCuit = (hospitalIdValue: string, isSedeUepOnly: boolean) => {
+    if (isSedeUepOnly || !hospitalIdValue) return uepCuit;
     const matched = hospitals.find((h) => String(h.id) === hospitalIdValue);
     return matched?.cuit || "";
   };
+
+  const isSedeUepOnlyRole = (roleId: string) => roleId === "1" || roleId === "2" || roleId === "3";
 
   // Initialize or reset form values when opening or when user changes
   useEffect(() => {
     if (open) {
       if (isEdit && user) {
-        // Parse comma-separated roles
-        const initialRoles = (user.role || "")
-          .split(",")
-          .map((r) => r.trim())
-          .filter(Boolean);
-        setSelectedRoles(initialRoles);
+        // Tomar el rol único del usuario
+        const initialRole =
+          (user.role || "")
+            .split(",")
+            .map((r) => r.trim())
+            .filter(Boolean)[0] || "";
+        setSelectedRole(initialRole);
 
-        const isUserLiquidador = initialRoles.includes("3");
-        const initialHospitalId = isUserLiquidador
+        const isUserSedeUepOnly = isSedeUepOnlyRole(initialRole);
+        const initialHospitalId = isUserSedeUepOnly
           ? ""
           : user.hospitalId
           ? String(user.hospitalId)
           : "";
         const resolvedCuit =
-          getWorkplaceCuit(initialHospitalId, isUserLiquidador) || user.cuit || "";
+          getWorkplaceCuit(initialHospitalId, isUserSedeUepOnly) || user.cuit || "";
 
         setFormData({
           name: user.name || "",
@@ -134,7 +137,7 @@ export function UserModal({
           password: "",
           confirmPassword: "",
         });
-        setSelectedRoles([]);
+        setSelectedRole("");
       }
       setError("");
       setFieldErrors({});
@@ -153,23 +156,10 @@ export function UserModal({
     }
   };
 
-  const toggleRole = (roleIdStr: string) => {
-    setSelectedRoles((prev) => {
-      const exists = prev.includes(roleIdStr);
-      if (exists) {
-        return prev.filter((id) => id !== roleIdStr);
-      }
-      let updated = [...prev, roleIdStr];
-      // Restricción de incompatibilidad: Admin (1) y Liquidador (3) no pueden coexistir
-      if (roleIdStr === "1") {
-        updated = updated.filter((id) => id !== "3");
-      } else if (roleIdStr === "3") {
-        updated = updated.filter((id) => id !== "1");
-      }
-      return updated;
-    });
-    if (roleIdStr === "3" && !selectedRoles.includes("3")) {
-      // El rol Liquidador es exclusivo de la UEP: forzar sede a Sede Central UEP y su CUIT
+  const selectRole = (roleIdStr: string) => {
+    setSelectedRole(roleIdStr);
+    if (isSedeUepOnlyRole(roleIdStr)) {
+      // Roles UEP (Admin, Auditor / Contable y Liquidador): forzar sede a Sede Central UEP y su CUIT
       setFormData((prevData) => ({ ...prevData, hospitalId: "", cuit: uepCuit }));
     }
     clearFieldError("role");
@@ -180,7 +170,7 @@ export function UserModal({
   ) => {
     const { name, value } = e.target;
     if (name === "hospitalId") {
-      const nextCuit = getWorkplaceCuit(value, selectedRoles.includes("3"));
+      const nextCuit = getWorkplaceCuit(value, isSedeUepOnlyRole(selectedRole));
       setFormData((prev) => ({ ...prev, hospitalId: value, cuit: nextCuit }));
       clearFieldError("hospitalId");
       clearFieldError("cuit");
@@ -210,13 +200,13 @@ export function UserModal({
     if (isEdit && user) {
       data.append("userId", String(user.id));
     }
-    const isLiquidador = selectedRoles.includes("3");
+    const isSedeUepOnly = isSedeUepOnlyRole(selectedRole);
     data.append("name", formData.name);
     data.append("email", formData.email);
     data.append("operador", formData.operador);
     data.append("cuit", formData.cuit);
-    data.append("role", selectedRoles.join(","));
-    data.append("hospitalId", isLiquidador ? "" : formData.hospitalId);
+    data.append("role", selectedRole);
+    data.append("hospitalId", isSedeUepOnly ? "" : formData.hospitalId);
     data.append("password", formData.password);
     data.append("confirmPassword", formData.confirmPassword);
 
@@ -272,8 +262,8 @@ export function UserModal({
               </DialogTitle>
               <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
                 {isEdit
-                  ? "Modifica los datos personales del operador, asigna sus roles y actualiza sus credenciales de acceso."
-                  : "Complete los datos personales, roles y credenciales para registrar al nuevo operador en el sistema."}
+                  ? "Modifica los datos personales del operador, asigna su rol y actualiza sus credenciales de acceso."
+                  : "Complete los datos personales, rol y credenciales para registrar al nuevo operador en el sistema."}
               </DialogDescription>
             </div>
           </div>
@@ -356,8 +346,8 @@ export function UserModal({
 
               <div className="space-y-1.5 sm:col-span-2">
                 {(() => {
-                  const isLiq = selectedRoles.includes("3");
-                  const resolvedCuit = getWorkplaceCuit(isLiq ? "" : formData.hospitalId, isLiq);
+                  const isSedeUepOnly = isSedeUepOnlyRole(selectedRole);
+                  const resolvedCuit = getWorkplaceCuit(isSedeUepOnly ? "" : formData.hospitalId, isSedeUepOnly);
                   const isCuitLocked = Boolean(resolvedCuit);
                   return (
                     <>
@@ -397,29 +387,33 @@ export function UserModal({
                 })()}
               </div>
 
-              {/* Selector de Roles Múltiples */}
+              {/* Selector de Rol Único */}
               <div className="space-y-1.5 sm:col-span-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-1">
                   <Label className="text-foreground text-xs font-semibold">
-                    Roles del Operador <span className="text-red-500">*</span>
+                    Rol del Operador <span className="text-red-500">*</span>
                   </Label>
                   <span className="text-2xs text-muted-foreground font-medium">
-                    (Puede seleccionar uno o varios roles)
+                    (Seleccione un único rol)
                   </span>
                 </div>
                 <div
-                  className={`grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 rounded-xl bg-muted/20 border transition-colors ${
+                  role="radiogroup"
+                  aria-label="Rol del Operador"
+                  className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 p-3 rounded-xl bg-muted/20 border transition-colors ${
                     fieldErrors.role ? "border-red-500/70 bg-red-500/5" : "border-border"
                   }`}
                 >
                   {Object.values(USER_ROLES).map((roleConfig) => {
-                    const isSelected = selectedRoles.includes(String(roleConfig.id));
+                    const isSelected = selectedRole === String(roleConfig.id);
                     return (
                       <button
                         key={roleConfig.id}
                         type="button"
+                        role="radio"
+                        aria-checked={isSelected}
                         title={roleConfig.description}
-                        onClick={() => toggleRole(String(roleConfig.id))}
+                        onClick={() => selectRole(String(roleConfig.id))}
                         className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left text-xs transition-all cursor-pointer select-none ${
                           isSelected
                             ? "bg-emerald-500/15 border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs"
@@ -427,7 +421,7 @@ export function UserModal({
                         }`}
                       >
                         <div
-                          className={`flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-md border transition-all ${
+                          className={`flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full border transition-all ${
                             isSelected
                               ? "bg-emerald-600 border-emerald-600 text-zinc-950"
                               : "border-muted-foreground/30 bg-transparent"
@@ -446,11 +440,11 @@ export function UserModal({
               </div>
 
               <div className="space-y-1.5 sm:col-span-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-1">
                   <Label htmlFor="hospitalId" className="text-foreground text-xs font-semibold">
                     Lugar Trabajo / Establecimiento Efector
                   </Label>
-                  {selectedRoles.includes("3") && (
+                  {isSedeUepOnlyRole(selectedRole) && (
                     <span className="text-3xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                       Exclusivo Sede UEP
                     </span>
@@ -459,12 +453,12 @@ export function UserModal({
                 <select
                   id="hospitalId"
                   name="hospitalId"
-                  value={selectedRoles.includes("3") ? "" : formData.hospitalId}
+                  value={isSedeUepOnlyRole(selectedRole) ? "" : formData.hospitalId}
                   onChange={handleChange}
-                  disabled={selectedRoles.includes("3")}
+                  disabled={isSedeUepOnlyRole(selectedRole)}
                   className={cn(
                     "flex h-10 w-full rounded-md border border-input bg-muted/40 text-foreground px-3 py-2 text-xs sm:text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 transition-colors",
-                    selectedRoles.includes("3")
+                    isSedeUepOnlyRole(selectedRole)
                       ? "opacity-75 cursor-not-allowed bg-muted/70 text-muted-foreground"
                       : "cursor-pointer"
                   )}
@@ -472,16 +466,16 @@ export function UserModal({
                   <option value="" className="bg-card text-foreground">
                     Sede Central UEP
                   </option>
-                  {!selectedRoles.includes("3") &&
+                  {!isSedeUepOnlyRole(selectedRole) &&
                     hospitals.map((h) => (
                       <option key={h.id} value={h.id} className="bg-card text-foreground">
                         {h.nombre || `Hospital ${h.id}`}
                       </option>
                     ))}
                 </select>
-                {selectedRoles.includes("3") && (
+                {isSedeUepOnlyRole(selectedRole) && (
                   <p className="text-[11px] text-muted-foreground">
-                    El rol <strong>Liquidador</strong> es exclusivo para agentes de la Unidad Ejecutora Provincial. La sede queda bloqueada y asignada a la <strong>Sede Central UEP</strong>.
+                    Los roles de Sede Central (<strong>Administrador General</strong>, <strong>Auditor / Contable</strong> y <strong>Liquidador</strong>) operan exclusivamente en la <strong>Sede Central UEP</strong>.
                   </p>
                 )}
               </div>

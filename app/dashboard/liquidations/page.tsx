@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
-import { isUserAdmin, parseUserRoleIds } from "@/lib/constants";
+import { isUserAdmin, isUserReadOnlyAuditor } from "@/lib/constants";
 import { fetchLiquidationData } from "./actions";
 import { serializeData } from "@/lib/utils";
 import LiquidationsClientPage from "./liquidations-client";
@@ -15,9 +15,8 @@ export default async function LiquidationsPage({
   const session = await auth.api.getSession({ headers: await headers() });
   const sessionUser = session?.user as any;
   const rawRole = String(sessionUser?.role || "");
-  const roleIds = parseUserRoleIds(rawRole);
   const isAdmin = isUserAdmin(rawRole);
-  const isReadOnlyAuditorOnly = !isAdmin && !roleIds.includes("3") && roleIds.includes("5");
+  const isReadOnlyAuditorOnly = isUserReadOnlyAuditor(rawRole);
   const canAssign = Boolean(sessionUser && !isReadOnlyAuditorOnly);
   const currentUserName =
     String(sessionUser?.name || "").trim() ||
@@ -32,6 +31,7 @@ export default async function LiquidationsPage({
     <LiquidationsClientPage
       initialData={serializeData(data)}
       isAdmin={isAdmin}
+      isReadOnlyAuditor={isReadOnlyAuditorOnly}
       canAssign={canAssign}
       currentUserName={currentUserName}
       initialHighlightId={initialHighlightId}

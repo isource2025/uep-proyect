@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import { isUserAdmin } from "@/lib/constants";
+import { isUserAdmin, USER_ROLES } from "@/lib/constants";
 import { resolveHospitalWorkAssignment, UEP_EMPRESA_ID } from "@/lib/hospital-resolver";
 
 export type UserActionResult = {
@@ -34,7 +34,7 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
   const password = (formData.get("password") as string || "");
   const confirmPassword = (formData.get("confirmPassword") as string || "");
   
-  // Parse multi-role selection
+  // Parse single-role selection (cada usuario solo puede tener un único rol)
   const rawRoles = formData.getAll("roles").map((r) => String(r).trim()).filter(Boolean);
   const rawRoleSingle = (formData.get("role") as string || "").trim();
   const allRoles = Array.from(
@@ -43,7 +43,7 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
       ...(rawRoleSingle ? rawRoleSingle.split(",").map((r) => r.trim()).filter(Boolean) : []),
     ])
   );
-  const role = allRoles.join(",");
+  const role = allRoles[0] || "";
 
   const cuit = (formData.get("cuit") as string || "").trim();
   const hospitalIdStr = (formData.get("hospitalId") as string || "").trim();
@@ -79,11 +79,14 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
     fieldErrors.confirmPassword = "Las contraseñas no coinciden.";
   }
 
-  // 4. Validar Rol
+  // 4. Validar Rol único
+  const invalidRoles = allRoles.filter((r) => !USER_ROLES[r]);
   if (!role || allRoles.length === 0) {
-    fieldErrors.role = "Debe seleccionar al menos un rol para el operador.";
-  } else if (allRoles.includes("1") && allRoles.includes("3")) {
-    fieldErrors.role = "Un usuario no puede ser Administrador General y Liquidador simultáneamente.";
+    fieldErrors.role = "Debe seleccionar un rol para el operador.";
+  } else if (allRoles.length > 1) {
+    fieldErrors.role = "Cada usuario puede tener asignado un único rol.";
+  } else if (invalidRoles.length > 0) {
+    fieldErrors.role = "El rol seleccionado no es válido.";
   }
 
   // 5. Validar Código de Operador
@@ -128,9 +131,9 @@ export async function createUserAction(formData: FormData): Promise<UserActionRe
     const authContext = await auth.$context;
     const hashedPassword = await authContext.password.hash(password);
 
-    const isLiquidador = allRoles.includes("3");
-    // El rol Liquidador es exclusivo de la UEP (sede bloqueada en null/Sede Central)
-    const rawEmpresaId = (!isLiquidador && hospitalIdStr) ? parseInt(hospitalIdStr, 10) : null;
+    const isSedeUepOnlyRole = role === "1" || role === "2" || role === "3";
+    // Solo el rol Hospital / CAPS (4) se vincula a un efector; los roles UEP (Admin, Auditor / Contable y Liquidador) van a Sede Central UEP
+    const rawEmpresaId = (!isSedeUepOnlyRole && hospitalIdStr) ? parseInt(hospitalIdStr, 10) : null;
     const assignment = await resolveHospitalWorkAssignment(rawEmpresaId);
     const manualCuit = cuit ? cuit.replace(/[^\d]/g, "") : null;
     const effectiveCuit = assignment.cuit || manualCuit || null;
@@ -210,7 +213,7 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
   const password = (formData.get("password") as string || "");
   const confirmPassword = (formData.get("confirmPassword") as string || "");
 
-  // Parse multi-role selection
+  // Parse single-role selection (cada usuario solo puede tener un único rol)
   const rawRoles = formData.getAll("roles").map((r) => String(r).trim()).filter(Boolean);
   const rawRoleSingle = (formData.get("role") as string || "").trim();
   const allRoles = Array.from(
@@ -219,7 +222,7 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
       ...(rawRoleSingle ? rawRoleSingle.split(",").map((r) => r.trim()).filter(Boolean) : []),
     ])
   );
-  const role = allRoles.join(",");
+  const role = allRoles[0] || "";
 
   const cuit = (formData.get("cuit") as string || "").trim();
   const hospitalIdStr = (formData.get("hospitalId") as string || "").trim();
@@ -265,11 +268,14 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
     fieldErrors.password = "Debe ingresar la nueva contraseña.";
   }
 
-  // 4. Validar Rol
+  // 4. Validar Rol único
+  const invalidRoles = allRoles.filter((r) => !USER_ROLES[r]);
   if (!role || allRoles.length === 0) {
-    fieldErrors.role = "Debe seleccionar al menos un rol para el operador.";
-  } else if (allRoles.includes("1") && allRoles.includes("3")) {
-    fieldErrors.role = "Un usuario no puede ser Administrador General y Liquidador simultáneamente.";
+    fieldErrors.role = "Debe seleccionar un rol para el operador.";
+  } else if (allRoles.length > 1) {
+    fieldErrors.role = "Cada usuario puede tener asignado un único rol.";
+  } else if (invalidRoles.length > 0) {
+    fieldErrors.role = "El rol seleccionado no es válido.";
   }
 
   // 5. Validar Código de Operador
@@ -318,9 +324,9 @@ export async function updateUserAction(formData: FormData): Promise<UserActionRe
       hashedPassword = await authContext.password.hash(password);
     }
 
-    const isLiquidador = allRoles.includes("3");
-    // El rol Liquidador es exclusivo de la UEP (sede bloqueada en null/Sede Central)
-    const rawEmpresaId = (!isLiquidador && hospitalIdStr) ? parseInt(hospitalIdStr, 10) : null;
+    const isSedeUepOnlyRole = role === "1" || role === "2" || role === "3";
+    // Solo el rol Hospital / CAPS (4) se vincula a un efector; los roles UEP (Admin, Auditor / Contable y Liquidador) van a Sede Central UEP
+    const rawEmpresaId = (!isSedeUepOnlyRole && hospitalIdStr) ? parseInt(hospitalIdStr, 10) : null;
     const assignment = await resolveHospitalWorkAssignment(rawEmpresaId);
     const manualCuit = cuit ? cuit.replace(/[^\d]/g, "") : null;
     const effectiveCuit = assignment.cuit || manualCuit || null;

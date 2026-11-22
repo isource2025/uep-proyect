@@ -29,9 +29,10 @@ interface Period {
 
 interface ConsolidationClientProps {
   periods: Period[];
+  canClosePeriod?: boolean;
 }
 
-export function ConsolidationClient({ periods }: ConsolidationClientProps) {
+export function ConsolidationClient({ periods, canClosePeriod = true }: ConsolidationClientProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<string>("");
   const [liquidations, setLiquidations] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -498,6 +499,11 @@ export function ConsolidationClient({ periods }: ConsolidationClientProps) {
               <div className="flex items-center justify-center gap-2 p-3 bg-muted rounded-lg border border-border text-muted-foreground text-xs font-bold w-full">
                 <Lock className="h-4 w-4 text-muted-foreground" />
                 Período Cerrado
+              </div>
+            ) : !canClosePeriod ? (
+              <div className="flex items-center justify-center gap-2 p-3 bg-amber-500/10 rounded-lg border border-amber-500/25 text-amber-700 dark:text-amber-400 text-xs font-semibold w-full text-center">
+                <Lock className="h-4 w-4 shrink-0 text-amber-500" />
+                <span>Perfil Auditor / Contable: descarga de reportes habilitada (sin cierre de período).</span>
               </div>
             ) : closing ? (
               <Button disabled className="w-full bg-red-600 text-zinc-950 font-bold text-xs h-10 gap-1.5">

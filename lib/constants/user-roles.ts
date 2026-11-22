@@ -11,7 +11,7 @@ export interface UserRoleConfig {
   badgeClasses: string;
   isAdmin?: boolean;
   isHospital?: boolean;
-  isMedico?: boolean;
+  isAuditor?: boolean;
 }
 
 export const USER_ROLES: Record<string, UserRoleConfig> = {
@@ -25,11 +25,11 @@ export const USER_ROLES: Record<string, UserRoleConfig> = {
   },
   "2": {
     id: "2",
-    name: "Médico / Personal MSP",
-    shortCode: "MEDICO",
-    description: "Profesional de la salud registrado para percepción de honorarios o sobreasignaciones.",
+    name: "Auditor / Contable",
+    shortCode: "AUDITOR",
+    description: "Perfil de solo lectura en liquidaciones con descarga de reportes y acceso a consolidación mensual.",
     badgeClasses: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25",
-    isMedico: true,
+    isAuditor: true,
   },
   "3": {
     id: "3",
@@ -45,13 +45,6 @@ export const USER_ROLES: Record<string, UserRoleConfig> = {
     description: "Director o administrador de efector sanitario. Realiza distribución de fondos asignados.",
     badgeClasses: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/25",
     isHospital: true,
-  },
-  "5": {
-    id: "5",
-    name: "Auditor / Consulta",
-    shortCode: "AUDITOR",
-    description: "Perfil de solo lectura para auditoría y visualización de reportes consolidados.",
-    badgeClasses: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25",
   },
 };
 
@@ -104,4 +97,21 @@ export function isUserHospital(rolesStr?: string | null, hospitalId?: number | n
   if (hospitalId && hospitalId > 0) return true;
   const roleIds = parseUserRoleIds(rolesStr);
   return roleIds.some((id) => USER_ROLES[id]?.isHospital);
+}
+
+/**
+ * Determina si el usuario es únicamente Auditor / Contable (solo lectura en liquidaciones,
+ * con acceso a descarga de reportes y consolidación mensual).
+ */
+export function isUserReadOnlyAuditor(rolesStr?: string | null): boolean {
+  const roleIds = parseUserRoleIds(rolesStr);
+  return !isUserAdmin(rolesStr) && !roleIds.includes("3") && roleIds.includes("2");
+}
+
+/**
+ * Determina si el usuario es operador de Sede Central UEP (Admin, Liquidador o Auditor / Contable).
+ */
+export function isUserUepOperator(rolesStr?: string | null): boolean {
+  const roleIds = parseUserRoleIds(rolesStr);
+  return isUserAdmin(rolesStr) || roleIds.includes("3") || roleIds.includes("2");
 }

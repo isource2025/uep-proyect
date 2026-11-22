@@ -56,6 +56,7 @@ export interface LiquidationsTableProps {
   liquidations: any[];
   isHospitalUser?: boolean;
   isAdmin?: boolean;
+  isReadOnlyAuditor?: boolean;
   currentUserName?: string;
   hospitalId?: number;
   hospitalName?: string;
@@ -90,6 +91,7 @@ export function LiquidationsTable({
   liquidations,
   isHospitalUser = false,
   isAdmin = false,
+  isReadOnlyAuditor = false,
   currentUserName = "",
   hospitalId,
   hospitalName,
@@ -164,7 +166,7 @@ export function LiquidationsTable({
   };
 
   const handleTriggerDistributedDownload = (liq: any) => {
-    if (!isHospitalUser) {
+    if (!isHospitalUser && !isReadOnlyAuditor) {
       setNormaLegalTargetLiq(liq);
     } else {
       handleDownloadDistributedExcel(liq);

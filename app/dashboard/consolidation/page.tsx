@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { ConsolidationClient } from "./consolidation-client";
 
 import { getAvailablePeriods } from "@/lib/periods";
-import { isUserAdmin, isUserHospital, parseUserRoleIds } from "@/lib/constants";
+import { isUserAdmin, isUserHospital, isUserReadOnlyAuditor, isUserUepOperator } from "@/lib/constants";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import { ClientRedirect } from "@/components/client-redirect";
 
@@ -17,13 +17,13 @@ export default async function ConsolidationPage() {
   });
 
   const user = session?.user as any;
-  const userRoles = parseUserRoleIds(user?.role);
   const isAdmin = isUserAdmin(user?.role);
   const resolvedEmpresaId = user ? await resolveUserEmpresaId(user) : undefined;
   const isHospitalUser = !isAdmin && isUserHospital(user?.role, resolvedEmpresaId ?? user?.hospitalId);
+  const isUepOperator = isUserUepOperator(user?.role);
+  const isReadOnlyAuditor = isUserReadOnlyAuditor(user?.role);
 
-  if (!session || (!isAdmin && userRoles.includes("2"))) {
-    // Only Admins (role "1") and Operators can access consolidation reports
+  if (!session) {
     redirect("/dashboard");
   }
 
@@ -34,6 +34,10 @@ export default async function ConsolidationPage() {
         label="Redirigiendo al Portal del Hospital..."
       />
     );
+  }
+
+  if (!isUepOperator) {
+    redirect("/dashboard");
   }
 
   // Fetch available periods derived from SISPER / Liquidations
@@ -54,7 +58,7 @@ export default async function ConsolidationPage() {
         </p>
       </div>
 
-      <ConsolidationClient periods={periods} />
+      <ConsolidationClient periods={periods} canClosePeriod={!isReadOnlyAuditor} />
     </div>
   );
 }

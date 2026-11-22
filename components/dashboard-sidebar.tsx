@@ -38,37 +38,26 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
   const isAdmin = userRoles.includes("1");
   const isHospitalUser = !isAdmin && user?.hospitalId !== undefined && user?.hospitalId !== null;
 
-  // Submenu items under Configuración filtered by permissions
-  const configSubItems = [
-    ...(isAdmin
-      ? [
-          {
-            name: "Usuarios",
-            href: "/dashboard/users",
-            icon: UserCog,
-          },
-        ]
-      : []),
-    {
-      name: "Hospitales",
-      href: "/dashboard/hospitals",
-      icon: Building2,
-    },
-    ...(isAdmin
-      ? [
-          {
-            name: "Agentes",
-            href: "/dashboard/agents",
-            icon: Users,
-          },
-          {
-            name: "Consolidación",
-            href: "/dashboard/consolidation",
-            icon: FileDown,
-          },
-        ]
-      : []),
-  ];
+  // Submenu items under Configuración (exclusivo Administradores)
+  const configSubItems = isAdmin
+    ? [
+        {
+          name: "Usuarios",
+          href: "/dashboard/users",
+          icon: UserCog,
+        },
+        {
+          name: "Hospitales",
+          href: "/dashboard/hospitals",
+          icon: Building2,
+        },
+        {
+          name: "Agentes",
+          href: "/dashboard/agents",
+          icon: Users,
+        },
+      ]
+    : [];
 
   const isConfigActive = configSubItems.some((sub) => pathname.startsWith(sub.href));
   const [isConfigOpen, setIsConfigOpen] = useState(true);
@@ -95,6 +84,8 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
 
   const isDashboardActive = pathname === "/dashboard";
   const isLiquidationsActive = pathname.startsWith("/dashboard/liquidations");
+  const isConsolidationActive = pathname.startsWith("/dashboard/consolidation");
+  const canSeeConsolidation = isAdmin || userRoles.includes("3") || userRoles.includes("2");
 
   const sidebarNavContent = isHospitalUser ? (
     <nav className="flex-1 space-y-1.5 px-4 py-6 overflow-y-auto">
@@ -167,67 +158,91 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
         <span>Liquidaciones</span>
       </Link>
 
-      {/* 3. Configuración with Submenu */}
-      <div className="pt-1">
-        <button
-          type="button"
-          onClick={() => setIsConfigOpen(!isConfigOpen)}
+      {/* 3. Consolidación */}
+      {canSeeConsolidation && (
+        <Link
+          href="/dashboard/consolidation"
+          onClick={closeMobileSidebar}
           className={cn(
-            "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 group cursor-pointer",
-            isConfigActive
-              ? "text-emerald-600 dark:text-emerald-400 font-semibold"
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 group relative",
+            isConsolidationActive
+              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-l-2 border-emerald-500 rounded-l-none pl-2.5"
               : "hover:bg-muted/80 hover:text-foreground text-muted-foreground"
           )}
         >
-          <div className="flex items-center gap-3">
-            <Settings
-              className={cn(
-                "h-4 w-4 transition-colors",
-                isConfigActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground group-hover:text-foreground"
-              )}
-            />
-            <span>Configuración</span>
-          </div>
-          <ChevronDown
+          <FileDown
             className={cn(
-              "h-4 w-4 text-muted-foreground transition-transform duration-200",
-              isConfigOpen ? "rotate-0" : "-rotate-90"
+              "h-4 w-4 transition-colors",
+              isConsolidationActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground group-hover:text-foreground"
             )}
           />
-        </button>
+          <span>Consolidación</span>
+        </Link>
+      )}
 
-        {/* Submenu links */}
-        {isConfigOpen && (
-          <div className="ml-4 mt-1 space-y-1 border-l border-border pl-3">
-            {configSubItems.map((sub) => {
-              const isSubActive = pathname.startsWith(sub.href);
-              const SubIcon = sub.icon;
+      {/* 4. Configuración with Submenu (Exclusivo Administradores) */}
+      {isAdmin && (
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={() => setIsConfigOpen(!isConfigOpen)}
+            className={cn(
+              "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 group cursor-pointer",
+              isConfigActive
+                ? "text-emerald-600 dark:text-emerald-400 font-semibold"
+                : "hover:bg-muted/80 hover:text-foreground text-muted-foreground"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <Settings
+                className={cn(
+                  "h-4 w-4 transition-colors",
+                  isConfigActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground group-hover:text-foreground"
+                )}
+              />
+              <span>Configuración</span>
+            </div>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                isConfigOpen ? "rotate-0" : "-rotate-90"
+              )}
+            />
+          </button>
 
-              return (
-                <Link
-                  key={sub.href}
-                  href={sub.href}
-                  onClick={closeMobileSidebar}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium transition-all duration-150 group",
-                    isSubActive
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold"
-                      : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-                  )}
-                >
-                  <SubIcon
+          {/* Submenu links */}
+          {isConfigOpen && (
+            <div className="ml-4 mt-1 space-y-1 border-l border-border pl-3">
+              {configSubItems.map((sub) => {
+                const isSubActive = pathname.startsWith(sub.href);
+                const SubIcon = sub.icon;
+
+                return (
+                  <Link
+                    key={sub.href}
+                    href={sub.href}
+                    onClick={closeMobileSidebar}
                     className={cn(
-                      "h-3.5 w-3.5 transition-colors",
-                      isSubActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground group-hover:text-foreground"
+                      "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-xs font-medium transition-all duration-150 group",
+                      isSubActive
+                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold"
+                        : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
                     )}
-                  />
-                  <span>{sub.name}</span>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                  >
+                    <SubIcon
+                      className={cn(
+                        "h-3.5 w-3.5 transition-colors",
+                        isSubActive ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground group-hover:text-foreground"
+                      )}
+                    />
+                    <span>{sub.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </nav>
   );
 

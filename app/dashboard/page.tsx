@@ -10,6 +10,7 @@ import { Building2, Users, FileText, Landmark, ArrowUpRight, DollarSign, Calenda
 import Link from "next/link";
 import { getActivePeriodInfo } from "@/lib/periods";
 import { ClientRedirect } from "@/components/client-redirect";
+import { isUserReadOnlyAuditor } from "@/lib/constants";
 
 export const revalidate = 0; // Force dynamic rendering so database updates show immediately
 
@@ -24,6 +25,7 @@ export default async function DashboardPage() {
     .map((r) => r.trim())
     .filter(Boolean);
   const isAdmin = userRoles.includes("1");
+  const isReadOnlyAuditor = isUserReadOnlyAuditor(user?.role);
   const isHospitalOnly = !isAdmin && !!user?.hospitalId;
 
   if (isHospitalOnly) {
@@ -78,7 +80,7 @@ export default async function DashboardPage() {
       value: hospitalCount,
       description: "Establecimientos de salud en el sistema",
       icon: Building2,
-      href: "/dashboard/hospitals",
+      href: isAdmin ? "/dashboard/hospitals" : undefined,
       color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
     },
     {
@@ -88,7 +90,7 @@ export default async function DashboardPage() {
         ? `Agentes únicos en nómina ${activePeriod.sisperLabel}`
         : "Agentes únicos cargados desde SISPER",
       icon: Users,
-      href: "/dashboard/agents",
+      href: isAdmin ? "/dashboard/agents" : undefined,
       color: "text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/20",
     },
     {
@@ -272,17 +274,19 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent className="flex-1 flex flex-col justify-between space-y-4">
             <div className="grid gap-3">
-              <Link href="/dashboard/agents">
-                <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3 hover:bg-muted/60 cursor-pointer transition-all duration-200">
-                  <div className="rounded-lg bg-teal-500/10 border border-teal-500/20 p-2 text-teal-600 dark:text-teal-400">
-                    <Users className="h-4 w-4" />
+              {isAdmin && (
+                <Link href="/dashboard/agents">
+                  <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3 hover:bg-muted/60 cursor-pointer transition-all duration-200">
+                    <div className="rounded-lg bg-teal-500/10 border border-teal-500/20 p-2 text-teal-600 dark:text-teal-400">
+                      <Users className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-bold text-foreground">Importar Nómina SISPER</h3>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Sube nómina mensual y consulta agentes activos</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-foreground">Importar Nómina SISPER</h3>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Sube nómina mensual y consulta agentes activos</p>
-                  </div>
-                </div>
-              </Link>
+                </Link>
+              )}
 
               <Link href="/dashboard/liquidations">
                 <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/20 p-3 hover:bg-muted/60 cursor-pointer transition-all duration-200">
@@ -290,8 +294,14 @@ export default async function DashboardPage() {
                     <DollarSign className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-foreground">Calcular Liquidación</h3>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Generar liquidaciones automáticas basadas en RCs</p>
+                    <h3 className="text-xs font-bold text-foreground">
+                      {isReadOnlyAuditor ? "Consultar Liquidaciones" : "Calcular Liquidación"}
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {isReadOnlyAuditor
+                        ? "Visualizar liquidaciones y descargar reportes oficiales"
+                        : "Generar liquidaciones automáticas basadas en RCs"}
+                    </p>
                   </div>
                 </div>
               </Link>

@@ -31,6 +31,7 @@ interface LiquidationsClientPageProps {
     totalPendingRcsCount: number;
   };
   isAdmin?: boolean;
+  isReadOnlyAuditor?: boolean;
   canAssign?: boolean;
   currentUserName?: string;
   initialHighlightId?: number | null;
@@ -39,6 +40,7 @@ interface LiquidationsClientPageProps {
 export default function LiquidationsClientPage({
   initialData,
   isAdmin = false,
+  isReadOnlyAuditor = false,
   canAssign = false,
   currentUserName = "",
   initialHighlightId = null,
@@ -504,10 +506,12 @@ export default function LiquidationsClientPage({
       <div>
         <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
           <Calculator className="h-8 w-8 text-emerald-500" />
-          Generación y Ajuste de Liquidaciones
+          {isReadOnlyAuditor ? "Consulta de Liquidaciones" : "Generación y Ajuste de Liquidaciones"}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Calcule y administre las liquidaciones transaccionales por Obra Social y modifique débitos, créditos y gastos por hospital.
+          {isReadOnlyAuditor
+            ? "Perfil Auditor / Contable (solo lectura): consulte liquidaciones, audite notificaciones y descargue reportes oficiales."
+            : "Calcule y administre las liquidaciones transaccionales por Obra Social y modifique débitos, créditos y gastos por hospital."}
         </p>
       </div>
 
@@ -532,8 +536,8 @@ export default function LiquidationsClientPage({
         </div>
       )}
 
-      {/* Pending Calculations Card */}
-      {(initialData.totalPendingRcsCount > 0 || pendingSearchQuery) ? (
+      {/* Pending Calculations Card (Hidden for read-only Auditor / Contable) */}
+      {!isReadOnlyAuditor && ((initialData.totalPendingRcsCount > 0 || pendingSearchQuery) ? (
         <Card className="border-emerald-500/25 bg-emerald-500/5 text-foreground">
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
@@ -684,18 +688,19 @@ export default function LiquidationsClientPage({
           <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
           <span className="text-xs">Todos los recibos de cobro importados han sido liquidados.</span>
         </div>
-      )}
+      ))}
 
       {/* Centralized Dynamic Liquidations Table */}
       <LiquidationsTable
         liquidations={paginatedLiquidations}
         isHospitalUser={false}
         isAdmin={isAdmin}
+        isReadOnlyAuditor={isReadOnlyAuditor}
         currentUserName={currentUserName}
         highlightedId={highlightedLiquidationId}
-        onNotifyHospital={handleNotifyHospital}
+        onNotifyHospital={!isReadOnlyAuditor ? handleNotifyHospital : undefined}
         notifyingIds={notifyingIds}
-        onSyncFromErp={handleSyncFromErp}
+        onSyncFromErp={!isReadOnlyAuditor ? handleSyncFromErp : undefined}
         syncingIds={syncingIds}
         onAssignToSelf={canAssign ? handleAssignToSelf : undefined}
         onUnassignFromSelf={canAssign ? handleUnassignFromSelf : undefined}

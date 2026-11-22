@@ -159,26 +159,23 @@ export function UsersTableClient({
                       <TableCell className="text-xs">
                         <div className="flex flex-wrap items-center gap-1 max-w-[220px]">
                           {(() => {
-                            const userRoles = parseUserRoleIds(u.role);
-                            if (userRoles.length === 0) {
+                            const primaryRoleId = parseUserRoleIds(u.role)[0];
+                            if (!primaryRoleId) {
                               return <span className="text-muted-foreground text-3xs italic">Sin rol</span>;
                             }
-                            return userRoles.map((roleId) => {
-                              const config = getUserRoleConfig(roleId);
-                              return (
-                                <span
-                                  key={roleId}
-                                  title={config.description}
-                                  className={cn(
-                                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-3xs font-semibold border",
-                                    getUserRoleBadge(roleId)
-                                  )}
-                                >
-                                  <ShieldCheck className="h-3 w-3 shrink-0" />
-                                  {config.name}
-                                </span>
-                              );
-                            });
+                            const config = getUserRoleConfig(primaryRoleId);
+                            return (
+                              <span
+                                title={config.description}
+                                className={cn(
+                                  "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-3xs font-semibold border",
+                                  getUserRoleBadge(primaryRoleId)
+                                )}
+                              >
+                                <ShieldCheck className="h-3 w-3 shrink-0" />
+                                {config.name}
+                              </span>
+                            );
                           })()}
                         </div>
                       </TableCell>

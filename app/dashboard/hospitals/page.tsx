@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +20,9 @@ export default async function HospitalsPage({
 }) {
   const session = await auth.api.getSession({ headers: await headers() });
   const isAdmin = isUserAdmin((session?.user as any)?.role);
+  if (!session?.user || !isAdmin) {
+    redirect("/dashboard");
+  }
 
   const resolvedSearchParams = await searchParams;
   const query = resolvedSearchParams.query || "";

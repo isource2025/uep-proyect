@@ -106,8 +106,8 @@ export async function fetchInAppNotificationsAction(): Promise<InAppNotification
       });
     }
 
-    // Lado UEP (Admin o Liquidador / Auditor)
-    const isUepOperator = isAdmin || userRoles.includes("3") || userRoles.includes("5");
+    // Lado UEP (Admin, Liquidador o Auditor / Contable)
+    const isUepOperator = isAdmin || userRoles.includes("3") || userRoles.includes("2");
     if (!isUepOperator) return [];
 
     const rows = await prisma.notificacion.findMany({
@@ -258,7 +258,7 @@ export async function fetchLiquidationNotificationHistoryAction(
       return { error: "Acceso denegado." };
     }
 
-    const isUepOperator = isAdmin || userRoles.includes("3") || userRoles.includes("5");
+    const isUepOperator = isAdmin || userRoles.includes("3") || userRoles.includes("2");
     if (!isUepOperator) {
       return { error: "Sin permisos para consultar auditoría de notificaciones." };
     }

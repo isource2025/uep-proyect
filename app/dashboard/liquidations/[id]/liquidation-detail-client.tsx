@@ -49,7 +49,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isUserHospital, parseUserRoleIds } from "@/lib/constants";
+import { getLiquidationStatusConfig, getLiquidationStatusBadge, isUserAdmin, isUserHospital, isUserReadOnlyAuditor } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { updateLiquidationDetails, updateLiquidationObservaciones, updateLiquidationExpediente, updateLiquidationNormaLegal, uploadDebitsFile, deleteDebitsFile, deleteDebitAttachment, notifyHospital, saveLiquidacionPersonalDistributions, searchAgentsForLiquidationAction, syncLiquidationComprasFromErp, assignLiquidationToSelfAction, unassignLiquidationSelfAction } from "../actions";
 import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
@@ -96,8 +96,7 @@ export default function LiquidationDetailClient({
   const router = useRouter();
   const isAdmin = isUserAdmin(currentUser?.role);
   const isHospitalUser = isUserHospital(currentUser?.role, currentUser?.hospitalId);
-  const currentRoleIds = parseUserRoleIds(currentUser?.role);
-  const isReadOnlyAuditorOnly = !isAdmin && !currentRoleIds.includes("3") && currentRoleIds.includes("5");
+  const isReadOnlyAuditorOnly = isUserReadOnlyAuditor(currentUser?.role);
   const currentOperatorName = (currentUser?.name || currentUser?.email || "").trim();
 
   // EMPRESA (universo SISPER) del usuario hospital, resuelta en el servidor por CUIT.
@@ -157,7 +156,7 @@ export default function LiquidationDetailClient({
   };
 
   const handleTriggerDistributedDownload = () => {
-    if (!isHospitalUser) {
+    if (!isHospitalUser && !isReadOnlyAuditorOnly) {
       setIsNormaLegalModalOpen(true);
     } else {
       handleDownloadDistributedReport();
@@ -227,7 +226,7 @@ export default function LiquidationDetailClient({
   const isDistributed = liq.status === "DISTRIBUIDA" || liq.status === "DISTRIBUIDO";
   const wasNotifiedBefore = liq.status !== "PENDIENTE";
   const isClosed = liq.status === "CERRADA" || liq.status === "CERRADO";
-  const isLockedForLiquidationEdits = isHospitalUser || (!isAdmin && wasNotifiedBefore) || isClosed || isDistributed;
+  const isLockedForLiquidationEdits = isHospitalUser || isReadOnlyAuditorOnly || (!isAdmin && wasNotifiedBefore) || isClosed || isDistributed;
 
   const mapDetailToEditable = (d: any) => {
     const totalFact = Math.max(0, Number(d.totalFacturado || 0));
@@ -1485,7 +1484,7 @@ export default function LiquidationDetailClient({
           })()}
 
           {/* BOTÓN NOTIFICAR INICIAL (PENDIENTE) */}
-          {!isHospitalUser && liq.status === "PENDIENTE" && (
+          {!isHospitalUser && !isReadOnlyAuditorOnly && liq.status === "PENDIENTE" && (
             <Button
               onClick={handleNotifyHospital}
               disabled={notifying || saving || goingBack || !hasInvoices}
@@ -1562,6 +1561,8 @@ export default function LiquidationDetailClient({
               title={
                 isHospitalUser
                   ? "Descargar reporte de distribución correspondiente a su establecimiento"
+                  : isReadOnlyAuditorOnly
+                  ? "Descargar reporte oficial distribuido"
                   : "Asignar disposición ministerial y descargar reporte oficial distribuido"
               }
             >
@@ -1639,6 +1640,15 @@ export default function LiquidationDetailClient({
       </div>
 
       {/* BANNER INFORMATIVO: LIQUIDACIÓN DISTRIBUIDA */}
+      {isReadOnlyAuditorOnly && (
+        <div className="flex items-start gap-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
+          <Lock className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
+          <p className="leading-relaxed">
+            <strong>Modo Auditor / Contable (Solo lectura):</strong> puede consultar el detalle completo de la liquidación, revisar adjuntos, ver la auditoría de avisos y descargar reportes oficiales, pero no realizar modificaciones.
+          </p>
+        </div>
+      )}
+
       {isDistributed && (
         <div className="rounded-lg border border-teal-500/30 bg-teal-500/10 p-3.5 text-xs text-teal-800 dark:text-teal-200 flex items-start gap-2.5 shadow-xs animate-fade-in">
           <CheckCircle2 className="h-4 w-4 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
@@ -1652,7 +1662,7 @@ export default function LiquidationDetailClient({
       )}
 
       {/* BANNER INFORMATIVO PARA LIQUIDADORES EN LIQUIDACIONES NOTIFICADAS */}
-      {!isHospitalUser && wasNotifiedBefore && !isAdmin && !isDistributed && !isClosed && (
+      {!isHospitalUser && !isReadOnlyAuditorOnly && wasNotifiedBefore && !isAdmin && !isDistributed && !isClosed && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2.5 shadow-xs animate-fade-in">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <div>
@@ -1734,11 +1744,12 @@ export default function LiquidationDetailClient({
               <div className="space-y-1">
                 <Label className="text-[10px] text-muted-foreground uppercase font-bold">Mes Carga</Label>
                 <Input
+                  disabled={isLockedForLiquidationEdits}
                   type="text"
                   value={mesCarga}
                   onChange={(e) => setMesCarga(e.target.value)}
                   placeholder="06/2026"
-                  className="h-8 text-xs bg-background border-border font-semibold text-foreground max-w-[130px] placeholder:text-muted-foreground/75"
+                  className="h-8 text-xs bg-background border-border font-semibold text-foreground max-w-[130px] placeholder:text-muted-foreground/75 disabled:opacity-75"
                 />
               </div>
 
@@ -1748,7 +1759,7 @@ export default function LiquidationDetailClient({
                     <FileText className="h-3 w-3 text-emerald-500" />
                     N° Expediente
                   </Label>
-                  {(expediente || "") !== initialExpedienteRef.current && !isHospitalUser && (
+                  {(expediente || "") !== initialExpedienteRef.current && !isHospitalUser && !isReadOnlyAuditorOnly && (
                     <Button
                       size="sm"
                       type="button"
@@ -1762,12 +1773,12 @@ export default function LiquidationDetailClient({
                   )}
                 </div>
                 <Input
-                  disabled={isHospitalUser}
+                  disabled={isHospitalUser || isReadOnlyAuditorOnly}
                   type="text"
                   value={expediente}
                   onChange={(e) => setExpediente(e.target.value)}
                   placeholder="316-0000/2026"
-                  className="h-8 text-xs bg-background border-border font-mono font-semibold text-foreground max-w-[170px] placeholder:text-muted-foreground/75"
+                  className="h-8 text-xs bg-background border-border font-mono font-semibold text-foreground max-w-[170px] placeholder:text-muted-foreground/75 disabled:opacity-75"
                 />
               </div>
 
@@ -1777,7 +1788,7 @@ export default function LiquidationDetailClient({
                     <Scale className="h-3 w-3 text-cyan-500" />
                     N° Norma Legal
                   </Label>
-                  {(normaLegal || "") !== initialNormaLegalRef.current && !isHospitalUser && (
+                  {(normaLegal || "") !== initialNormaLegalRef.current && !isHospitalUser && !isReadOnlyAuditorOnly && (
                     <Button
                       size="sm"
                       type="button"
@@ -1791,12 +1802,12 @@ export default function LiquidationDetailClient({
                   )}
                 </div>
                 <Input
-                  disabled={isHospitalUser}
+                  disabled={isHospitalUser || isReadOnlyAuditorOnly}
                   type="text"
                   value={normaLegal}
                   onChange={(e) => setNormaLegal(e.target.value)}
                   placeholder={isDistributed ? "Disp N° XXX" : "Sin asignar"}
-                  className="h-8 text-xs bg-background border-border font-mono font-semibold text-foreground max-w-[170px] placeholder:text-muted-foreground/75"
+                  className="h-8 text-xs bg-background border-border font-mono font-semibold text-foreground max-w-[170px] placeholder:text-muted-foreground/75 disabled:opacity-75"
                 />
               </div>
             </div>
@@ -1878,15 +1889,17 @@ export default function LiquidationDetailClient({
                         >
                           {fileInfo.label}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteAttachment(att.id, att.fileName)}
-                          disabled={uploading}
-                          title="Eliminar este comprobante"
-                          className="text-muted-foreground hover:text-red-500 cursor-pointer p-0.5 rounded transition-colors disabled:opacity-50"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                        {!isReadOnlyAuditorOnly && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAttachment(att.id, att.fileName)}
+                            disabled={uploading}
+                            title="Eliminar este comprobante"
+                            className="text-muted-foreground hover:text-red-500 cursor-pointer p-0.5 rounded transition-colors disabled:opacity-50"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1894,74 +1907,82 @@ export default function LiquidationDetailClient({
               </div>
             )}
 
-            {/* Drag-and-drop dropzone (always visible for adding files) */}
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!uploading) setIsDraggingDebits(true);
-              }}
-              onDragEnter={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!uploading) setIsDraggingDebits(true);
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDraggingDebits(false);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setIsDraggingDebits(false);
-                if (uploading) return;
-                const droppedFiles = Array.from(e.dataTransfer.files || []);
-                if (droppedFiles.length > 0) processFilesUpload(droppedFiles);
-              }}
-              onClick={() => {
-                if (!uploading) debitsFileInputRef.current?.click();
-              }}
-              className={cn(
-                "relative flex flex-col items-center justify-center p-2 rounded-lg border-2 border-dashed transition-all cursor-pointer text-center select-none mt-1",
-                isDraggingDebits
-                  ? "border-emerald-500 bg-emerald-500/15 ring-2 ring-emerald-500/30 scale-[1.01]"
-                  : "border-emerald-500/30 hover:border-emerald-500/60 bg-emerald-500/5 hover:bg-emerald-500/10",
-                attachments.length > 0 ? "py-2" : "py-3"
-              )}
-            >
-              {uploading ? (
-                <div className="flex items-center justify-center gap-1.5 py-1">
-                  <RefreshCw className="h-4 w-4 animate-spin text-emerald-500" />
-                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                    Subiendo archivo(s)...
-                  </span>
-                </div>
-              ) : isDraggingDebits ? (
-                <div className="flex items-center justify-center gap-1.5 py-1 animate-pulse">
-                  <UploadCloud className="h-5 w-5 text-emerald-500" />
-                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                    ¡Soltá los archivos aquí!
-                  </span>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-0.5">
-                  <div className="flex items-center gap-1 text-xs font-bold text-foreground">
-                    <UploadCloud className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <span>
-                      {attachments.length > 0 ? "Agregar más comprobantes" : "Arrastrá archivos aquí"} o{" "}
-                      <span className="text-emerald-600 dark:text-emerald-400 underline">examinar</span>
+            {/* Drag-and-drop dropzone (hidden for read-only Auditor / Contable) */}
+            {!isReadOnlyAuditorOnly ? (
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!uploading) setIsDraggingDebits(true);
+                }}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!uploading) setIsDraggingDebits(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDraggingDebits(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsDraggingDebits(false);
+                  if (uploading) return;
+                  const droppedFiles = Array.from(e.dataTransfer.files || []);
+                  if (droppedFiles.length > 0) processFilesUpload(droppedFiles);
+                }}
+                onClick={() => {
+                  if (!uploading) debitsFileInputRef.current?.click();
+                }}
+                className={cn(
+                  "relative flex flex-col items-center justify-center p-2 rounded-lg border-2 border-dashed transition-all cursor-pointer text-center select-none mt-1",
+                  isDraggingDebits
+                    ? "border-emerald-500 bg-emerald-500/15 ring-2 ring-emerald-500/30 scale-[1.01]"
+                    : "border-emerald-500/30 hover:border-emerald-500/60 bg-emerald-500/5 hover:bg-emerald-500/10",
+                  attachments.length > 0 ? "py-2" : "py-3"
+                )}
+              >
+                {uploading ? (
+                  <div className="flex items-center justify-center gap-1.5 py-1">
+                    <RefreshCw className="h-4 w-4 animate-spin text-emerald-500" />
+                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                      Subiendo archivo(s)...
                     </span>
                   </div>
-                  <p className="text-[9px] text-muted-foreground font-medium">
-                    Múltiples archivos permitidos (PDF, Excel, JPG, PNG)
-                  </p>
-                </div>
-              )}
-            </div>
+                ) : isDraggingDebits ? (
+                  <div className="flex items-center justify-center gap-1.5 py-1 animate-pulse">
+                    <UploadCloud className="h-5 w-5 text-emerald-500" />
+                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                      ¡Soltá los archivos aquí!
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div className="flex items-center gap-1 text-xs font-bold text-foreground">
+                      <UploadCloud className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span>
+                        {attachments.length > 0 ? "Agregar más comprobantes" : "Arrastrá archivos aquí"} o{" "}
+                        <span className="text-emerald-600 dark:text-emerald-400 underline">examinar</span>
+                      </span>
+                    </div>
+                    <p className="text-[9px] text-muted-foreground font-medium">
+                      Múltiples archivos permitidos (PDF, Excel, JPG, PNG)
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              attachments.length === 0 && (
+                <p className="text-3xs text-muted-foreground italic text-center py-3">
+                  Sin comprobantes de débitos adjuntos.
+                </p>
+              )
+            )}
           </div>
 
-          {/* OBSERVACIONES DEL LIQUIDADOR (Estrictamente uso interno para operadores y administradores - editable en todos los estados) */}
+          {/* OBSERVACIONES DEL LIQUIDADOR (Estrictamente uso interno para operadores y administradores - solo lectura para Auditor / Contable) */}
           {!isHospitalUser && (
             <div className="md:col-span-2 xl:col-span-4 mt-1 pt-3 border-t border-border/60">
               <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
@@ -1971,9 +1992,11 @@ export default function LiquidationDetailClient({
                 </Label>
                 <div className="flex items-center gap-2">
                   <span className="text-3xs text-muted-foreground">
-                    Editable en todos los estados • Exclusivo UEP
+                    {isReadOnlyAuditorOnly
+                      ? "Solo lectura • Auditor / Contable"
+                      : "Editable en todos los estados • Exclusivo UEP"}
                   </span>
-                  {(observaciones || "") !== initialObservacionesRef.current && (
+                  {!isReadOnlyAuditorOnly && (observaciones || "") !== initialObservacionesRef.current && (
                     <Button
                       size="sm"
                       type="button"
@@ -1997,10 +2020,14 @@ export default function LiquidationDetailClient({
                 </div>
               </div>
               <textarea
-                disabled={saving || savingObs}
+                disabled={isReadOnlyAuditorOnly || saving || savingObs}
                 value={observaciones}
                 onChange={(e) => setObservaciones(e.target.value)}
-                placeholder="Escriba notas u observaciones sobre esta liquidación (ej. débitos acordados, acuerdos con la O.S., etc.)..."
+                placeholder={
+                  isReadOnlyAuditorOnly
+                    ? "Sin observaciones registradas."
+                    : "Escriba notas u observaciones sobre esta liquidación (ej. débitos acordados, acuerdos con la O.S., etc.)..."
+                }
                 rows={2}
                 className="w-full text-xs bg-background border border-border rounded-lg p-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:opacity-75 resize-y font-normal"
               />
@@ -2154,6 +2181,8 @@ export default function LiquidationDetailClient({
             <CardDescription className="text-3xs text-muted-foreground mt-0.5">
               {isHospitalUser
                 ? "Valores calculados para su establecimiento de salud."
+                : isReadOnlyAuditorOnly
+                ? "Vista de auditoría contable (solo lectura). Los montos y comprobantes no pueden modificarse con este perfil."
                 : "Complete las celdas numéricas o seleccione el porcentaje de gastos para cada Obra Social."}
             </CardDescription>
           </div>
@@ -2174,7 +2203,7 @@ export default function LiquidationDetailClient({
               </Button>
             )}
 
-            {!isHospitalUser && (liq.details || []).length > 0 && (
+            {!isHospitalUser && !isLockedForLiquidationEdits && (liq.details || []).length > 0 && (
               <div className="flex items-center gap-1.5 bg-muted/50 border border-border rounded-lg p-1 px-2 text-3xs">
                 <Percent className="h-3.5 w-3.5 text-blue-500" />
                 <span className="font-semibold text-muted-foreground whitespace-nowrap">GA Global:</span>
@@ -2307,13 +2336,13 @@ export default function LiquidationDetailClient({
                       <TableHead className="font-semibold text-3xs uppercase text-right">GA (% / $)</TableHead>
                       <TableHead className="font-semibold text-3xs uppercase text-right">ADELANTOS</TableHead>
                       <TableHead className="font-semibold text-3xs uppercase text-right">NETO A DISTRIBUIR</TableHead>
-                      {!isHospitalUser && <TableHead className="w-10 text-center"></TableHead>}
+                      {!isLockedForLiquidationEdits && <TableHead className="w-10 text-center"></TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredDetails.length === 0 ? (
                       <TableRow className="border-border">
-                        <TableCell colSpan={isHospitalUser ? 15 : 16} className="text-center py-10">
+                        <TableCell colSpan={isLockedForLiquidationEdits ? 15 : 16} className="text-center py-10">
                           <div className="flex flex-col items-center justify-center max-w-sm mx-auto text-center space-y-2">
                             <div className="h-9 w-9 rounded-full bg-muted/80 flex items-center justify-center text-muted-foreground mb-1">
                               <Search className="h-4 w-4" />

@@ -6,7 +6,7 @@ import { DashboardHeader } from "@/components/dashboard-header";
 import { DashboardProvider } from "@/components/dashboard-context";
 import { getActivePeriodInfo } from "@/lib/periods";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
-import { parseUserRoleIds, isUserAdmin, isUserHospital, getUserRoleConfig } from "@/lib/constants";
+import { parseUserRoleIds, isUserAdmin, isUserHospital, isUserUepOperator, getUserRoleConfig } from "@/lib/constants";
 import { fetchInAppNotificationsAction } from "@/app/dashboard/notifications/actions";
 
 export const dynamic = "force-dynamic";
@@ -32,8 +32,7 @@ export default async function DashboardLayout({
   const rawRoleStr = (session.user as any).role || "";
   const userRoles = parseUserRoleIds(rawRoleStr);
   const isAdmin = isUserAdmin(rawRoleStr);
-  const isMedico = userRoles.includes("2");
-  const isUepOperator = isAdmin || userRoles.includes("3") || userRoles.includes("5");
+  const isUepOperator = isUserUepOperator(rawRoleStr);
 
   const [activePeriod, resolvedHospitalId, initialNotifications] = await Promise.all([
     getActivePeriodInfo(),
@@ -52,8 +51,6 @@ export default async function DashboardLayout({
   const primaryRoleConfig = userRoles.length > 0 ? getUserRoleConfig(userRoles[0]) : null;
   const displayRole = isAdmin
     ? "ADMIN"
-    : isMedico
-    ? "MEDICO"
     : isHospital
     ? "HOSPITAL"
     : primaryRoleConfig?.shortCode || "LIQUIDADOR";

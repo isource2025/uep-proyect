@@ -1,10 +1,8 @@
-import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ConsolidationClient } from "./consolidation-client";
-
-import { getAvailablePeriods } from "@/lib/periods";
+import { fetchConsolidationWorkspaceAction } from "./actions";
 import { isUserAdmin, isUserHospital, isUserReadOnlyAuditor, isUserUepOperator } from "@/lib/constants";
 import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import { ClientRedirect } from "@/components/client-redirect";
@@ -40,25 +38,36 @@ export default async function ConsolidationPage() {
     redirect("/dashboard");
   }
 
-  // Fetch available periods derived from SISPER / Liquidations
-  const rawPeriods = await getAvailablePeriods();
-  const periods = rawPeriods.map((p) => ({
-    anio: p.anio,
-    mes: p.mes,
-    iva: "V",
-    fechaCierre: null,
-  }));
+  const workspaceRes = await fetchConsolidationWorkspaceAction();
+  const initialWorkspace = workspaceRes.data || {
+    pendingLiquidations: [],
+    inProgressCounts: {
+      pendiente: 0,
+      notificado: 0,
+      enProceso: 0,
+      rectificada: 0,
+      total: 0,
+    },
+    closedBatches: [],
+    availableYears: [new Date().getFullYear()],
+  };
 
   return (
     <div className="space-y-6 text-foreground">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Consolidación y Cierre</h1>
-        <p className="text-sm text-muted-foreground">
-          Módulo de consolidación y reportes para envío a SISPER y Tesorería.
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+          Consolidación y Reportes TGP
+        </h1>
+        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+          Bandeja de liquidaciones distribuidas listas para consolidar, generación de planillas oficiales (TGP 6 hojas, SISPER y Tesorería) e historial de cierres mensuales y acumulados anuales.
         </p>
       </div>
 
-      <ConsolidationClient periods={periods} canClosePeriod={!isReadOnlyAuditor} />
+      <ConsolidationClient
+        initialWorkspace={initialWorkspace}
+        initialError={workspaceRes.error}
+        canClosePeriod={!isReadOnlyAuditor}
+      />
     </div>
   );
 }

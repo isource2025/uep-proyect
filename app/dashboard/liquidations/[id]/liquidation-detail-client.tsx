@@ -1225,8 +1225,11 @@ export default function LiquidationDetailClient({
         return;
       }
 
-      if (file.size > 50 * 1024 * 1024) {
-        setErrorMsg(`El archivo "${file.name}" excede el tamaño máximo permitido (50 MB).`);
+      const MAX_DEBIT_FILE_SIZE_MB = 10;
+      if (file.size > MAX_DEBIT_FILE_SIZE_MB * 1024 * 1024) {
+        setErrorMsg(
+          `El archivo "${file.name}" excede el tamaño máximo permitido (${MAX_DEBIT_FILE_SIZE_MB} MB). Comprima o reduzca el archivo antes de subirlo.`
+        );
         return;
       }
     }
@@ -2051,7 +2054,7 @@ export default function LiquidationDetailClient({
                       </span>
                     </div>
                     <p className="text-[9px] text-muted-foreground font-medium">
-                      Múltiples archivos permitidos (PDF, Excel, JPG, PNG)
+                      Múltiples archivos permitidos (PDF, Excel, JPG, PNG · Máx. 10 MB c/u)
                     </p>
                   </div>
                 )}

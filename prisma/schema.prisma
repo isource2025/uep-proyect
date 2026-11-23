@@ -32,10 +32,11 @@ model User {
   hospital      Proveedor? @relation(fields: [hospitalId], references: [id], map: "User_hospitalId_fkey")
   estado        Int?      @default(1) @map("Estado")
 
-  sessions               Session[]
-  accounts               Account[]
-  notificacionesEmitidas Notificacion[]        @relation("NotificacionEmisor")
-  notificacionesLeidas   NotificacionLectura[] @relation("NotificacionLector")
+  sessions                Session[]
+  accounts                Account[]
+  notificacionesEmitidas  Notificacion[]        @relation("NotificacionEmisor")
+  notificacionesLeidas    NotificacionLectura[] @relation("NotificacionLector")
+  consolidacionesCerradas Consolidacion[]       @relation("ConsolidacionCreador")
 
   @@map("imPersonal")
 }
@@ -216,6 +217,8 @@ model Liquidacion {
   normaLegal     String?              // Disposición oficial e.g. "Disp N° 123"
   
   status         String               @default("PENDIENTE") // PENDIENTE, NOTIFICADO, EN PROCESO, DISTRIBUIDA, CERRADA
+  consolidacionId Int?
+  consolidacion  Consolidacion?       @relation(fields: [consolidacionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   
@@ -224,6 +227,27 @@ model Liquidacion {
   personalDistributions LiquidacionPersonal[]
   attachments    Adjunto[]
   notificaciones Notificacion[]
+
+  @@index([consolidacionId])
+}
+
+model Consolidacion {
+  id                 Int           @id @default(autoincrement())
+  anio               Int           @db.SmallInt
+  mes                Int           @db.SmallInt
+  descripcion        String        @db.NVarChar(120)
+  observaciones      String?       @db.NVarChar(500)
+  cerradaPorId       Int?
+  cerradaPor         User?         @relation("ConsolidacionCreador", fields: [cerradaPorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cerradaPorNombre   String?       @db.NVarChar(120)
+  cerradaAt          DateTime      @default(now())
+  reporteTgpUrl      String?       @db.NVarChar(500)
+  reporteTgpFileName String?       @db.NVarChar(200)
+
+  liquidaciones      Liquidacion[]
+
+  @@index([anio, mes])
+  @@map("Consolidacion")
 }
 
 model LiquidacionDetalle {

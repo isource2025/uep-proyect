@@ -1406,6 +1406,16 @@ export async function uploadDebitsFile(formData: FormData) {
       return { error: "Faltan parámetros requeridos para la carga de comprobantes." };
     }
 
+    const MAX_DEBIT_FILE_SIZE_MB = 10;
+    const MAX_DEBIT_FILE_SIZE_BYTES = MAX_DEBIT_FILE_SIZE_MB * 1024 * 1024;
+    for (const file of files) {
+      if (file.size > MAX_DEBIT_FILE_SIZE_BYTES) {
+        return {
+          error: `El archivo "${file.name}" supera el límite máximo permitido de ${MAX_DEBIT_FILE_SIZE_MB} MB. Comprima o reduzca el archivo antes de subirlo.`,
+        };
+      }
+    }
+
     const liquidationId = parseInt(liquidationIdStr, 10);
     const uploadedResults: { fileName: string; fileUrl: string }[] = [];
 

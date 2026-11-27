@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SearchBar } from "@/components/search-bar";
+import { ResumenLiquidacionesButton } from "@/components/resumen-liquidaciones-button";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -409,6 +410,12 @@ export function ConsolidationClient({
               </span>
             </div>
           )}
+
+          <ResumenLiquidacionesButton
+            size="sm"
+            label="Resumen Liquidaciones"
+            className="h-8.5 text-xs"
+          />
 
           <Button
             type="button"

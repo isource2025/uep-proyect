@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
-import { isUserAdmin, isUserReadOnlyAuditor } from "@/lib/constants";
+import { isUserAdmin, isUserHospital, isUserReadOnlyAuditor, isUserUepOperator } from "@/lib/constants";
+import { resolveUserEmpresaId } from "@/lib/hospital-resolver";
 import { fetchLiquidationData } from "./actions";
 import { serializeData } from "@/lib/utils";
 import LiquidationsClientPage from "./liquidations-client";
@@ -16,7 +17,10 @@ export default async function LiquidationsPage({
   const sessionUser = session?.user as any;
   const rawRole = String(sessionUser?.role || "");
   const isAdmin = isUserAdmin(rawRole);
+  const resolvedEmpresaId = sessionUser ? await resolveUserEmpresaId(sessionUser) : undefined;
+  const isHospitalUser = !isAdmin && isUserHospital(rawRole, resolvedEmpresaId ?? sessionUser?.hospitalId);
   const isReadOnlyAuditorOnly = isUserReadOnlyAuditor(rawRole);
+  const canDownloadResumen = Boolean(sessionUser && !isHospitalUser && isUserUepOperator(rawRole));
   const canAssign = Boolean(sessionUser && !isReadOnlyAuditorOnly);
   const currentUserName =
     String(sessionUser?.name || "").trim() ||
@@ -33,6 +37,7 @@ export default async function LiquidationsPage({
       isAdmin={isAdmin}
       isReadOnlyAuditor={isReadOnlyAuditorOnly}
       canAssign={canAssign}
+      canDownloadResumen={canDownloadResumen}
       currentUserName={currentUserName}
       initialHighlightId={initialHighlightId}
     />

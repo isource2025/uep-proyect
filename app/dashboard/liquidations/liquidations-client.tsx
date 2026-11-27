@@ -22,6 +22,7 @@ import {
 import { Calculator, Receipt, Eye, CheckCircle2, RefreshCw, AlertCircle, UploadCloud, FileText, Download, Building2, Save } from "lucide-react";
 import { LiquidationsTable } from "@/components/liquidations-table";
 import { NotifyHospitalModal } from "@/components/notify-hospital-modal";
+import { ResumenLiquidacionesButton } from "@/components/resumen-liquidaciones-button";
 
 interface LiquidationsClientPageProps {
   initialData: {
@@ -33,6 +34,7 @@ interface LiquidationsClientPageProps {
   isAdmin?: boolean;
   isReadOnlyAuditor?: boolean;
   canAssign?: boolean;
+  canDownloadResumen?: boolean;
   currentUserName?: string;
   initialHighlightId?: number | null;
 }
@@ -42,6 +44,7 @@ export default function LiquidationsClientPage({
   isAdmin = false,
   isReadOnlyAuditor = false,
   canAssign = false,
+  canDownloadResumen = false,
   currentUserName = "",
   initialHighlightId = null,
 }: LiquidationsClientPageProps) {
@@ -503,16 +506,26 @@ export default function LiquidationsClientPage({
   return (
     <div className="space-y-6 text-foreground">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <Calculator className="h-8 w-8 text-emerald-500" />
-          {isReadOnlyAuditor ? "Consulta de Liquidaciones" : "Generación y Ajuste de Liquidaciones"}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {isReadOnlyAuditor
-            ? "Perfil Auditor / Contable (solo lectura): consulte liquidaciones, audite notificaciones y descargue reportes oficiales."
-            : "Calcule y administre las liquidaciones transaccionales por Obra Social y modifique débitos, créditos y gastos por hospital."}
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Calculator className="h-7 w-7 sm:h-8 sm:w-8 shrink-0 text-emerald-500" />
+            <span className="break-words">
+              {isReadOnlyAuditor ? "Consulta de Liquidaciones" : "Generación y Ajuste de Liquidaciones"}
+            </span>
+          </h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1 break-words">
+            {isReadOnlyAuditor
+              ? "Perfil Auditor / Contable (solo lectura): consulte liquidaciones, audite notificaciones y descargue reportes oficiales."
+              : "Calcule y administre las liquidaciones transaccionales por Obra Social y modifique débitos, créditos y gastos por hospital."}
+          </p>
+        </div>
+
+        {canDownloadResumen && (
+          <div className="shrink-0 w-full sm:w-auto">
+            <ResumenLiquidacionesButton className="w-full sm:w-auto" />
+          </div>
+        )}
       </div>
 
       {errorMsg && (
